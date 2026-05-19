@@ -1,0 +1,22 @@
+# Rust / Cargo
+target/
+wasm/pkg/
+
+# Node
+node_modules/
+frontend/node_modules/
+server/node_modules/
+
+# Build-Ausgaben
+frontend/dist/
+*.wasm
+
+# OS
+.DS_Store
+.Spotlight-V100
+.Trashes
+
+# Editor
+.vscode/
+.idea/
+*.swp
