@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import PanelSlot from './ui/PanelSlot'
 import FractalView from './panels/FractalView'
+import GlitchOverlay from './ui/GlitchOverlay'
 
 // ── Text-Panels ───────────────────────────────────────────────────────────────
 import SystemLog         from './panels/SystemLog'
@@ -19,6 +20,9 @@ import { VoxelThermal, VoxelNeon, VoxelLava, VoxelMatrix } from './panels/VoxelS
 import PlasmaDemo        from './panels/PlasmaDemo'
 import EnhanceView       from './panels/EnhanceView'
 import AllYourBase       from './panels/AllYourBase'
+import GlobePanel        from './panels/GlobePanel'
+import BinaryRain        from './panels/BinaryRain'
+import DNAHelix          from './panels/DNAHelix'
 import {
   FireScene, StarfieldScene, TunnelScene, RotozoomScene,
   MetaballsScene, DotCloudScene, BoingScene, LissajousScene,
@@ -42,14 +46,16 @@ const POOL_G = [PseudoCode]
 
 // Visuelle Pools — grafische Panels, brauchen querformatige Container.
 // Die Rotation sorgt dafür, dass im Laufe der Zeit alle Szenen erscheinen.
-// Voxel-Szenen stehen bewusst vorne (sofort sichtbar bei Layout-Start).
+// Voxel + Globe vorne für sofortigen Wow-Effekt beim Seitenload.
 const POOL_V1: React.ComponentType[] = [
-  VoxelDemo, VoxelThermal, VoxelLava, EnhanceView, FireScene, StarfieldScene,
-  BoingScene, LissajousScene, FractalSeahorse, FractalSpiral, FractalTendril, AllYourBase,
+  VoxelDemo, GlobePanel, VoxelThermal, VoxelLava, EnhanceView,
+  FireScene, StarfieldScene, BoingScene, LissajousScene,
+  FractalSeahorse, FractalSpiral, FractalTendril, AllYourBase,
 ]
 const POOL_V2: React.ComponentType[] = [
-  VoxelNeon, VoxelMatrix, PlasmaDemo, TunnelScene, RotozoomScene, MetaballsScene,
-  DotCloudScene, FractalLightning, FractalElephant, FractalMini,
+  VoxelNeon, VoxelMatrix, BinaryRain, DNAHelix, PlasmaDemo,
+  TunnelScene, RotozoomScene, MetaballsScene, DotCloudScene,
+  FractalLightning, FractalElephant, FractalMini,
   FractalDendrite, FractalAntenna, FractalSwirl, FractalSatellite,
 ]
 
@@ -95,6 +101,9 @@ export default function App() {
 
   return (
     <div className="bg-black text-green-400 h-screen flex flex-col font-mono overflow-hidden">
+
+      {/* Bildstörungs-Overlay — liegt über allem, reagiert nicht auf Maus */}
+      <GlitchOverlay />
 
       {/* Kopfzeile */}
       <header className="border-b border-green-900 px-3 py-1 flex items-center gap-3 shrink-0">

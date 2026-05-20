@@ -9,7 +9,7 @@ export default function PanelSlot({
   pool: React.ComponentType[]
   className?: string
 }) {
-  const [idx, setIdx]         = useState(0)
+  const [idx, setIdx]         = useState(() => Math.floor(Math.random() * pool.length))
   const [visible, setVisible] = useState(true)
 
   useEffect(() => {
