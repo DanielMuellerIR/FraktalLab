@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import React, { useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 // ── Konstanten ────────────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ function makeVoxelScene(
     camHBase?: number; camHAmp?: number; camHFloor?: number
     scanlines?: boolean
   } = {}
-): () => JSX.Element {
+): () => React.JSX.Element {
   const {
     horizon    = H * 0.42,
     scale      = 120,
@@ -80,7 +80,7 @@ function makeVoxelScene(
     useEffect(() => {
       const canvas = canvasRef.current
       if (!canvas) return
-      const ctx = canvas.getContext('2d')
+      const ctx = canvas.getContext('2d')!
       if (!ctx) return
 
       let rafId: number
@@ -190,11 +190,20 @@ function makeVoxelScene(
 
     return (
       <Panel title={title}>
-        <canvas
-          ref={canvasRef}
-          width={W} height={H}
-          style={{ width: '100%', height: '100%', imageRendering: 'pixelated', display: 'block' }}
-        />
+        <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <canvas
+            ref={canvasRef}
+            width={W} height={H}
+            style={{
+              width: '100%',
+              height: 'auto',
+              maxHeight: '100%',
+              aspectRatio: `${W} / ${H}`,
+              imageRendering: 'pixelated',
+              display: 'block',
+            }}
+          />
+        </div>
       </Panel>
     )
   }
@@ -318,11 +327,11 @@ export const VoxelLava = makeVoxelScene(
   { camHBase: 95, camHAmp: 18, camHFloor: 52 },
 )
 
-// ── Variante: MATRIX TERRAIN ──────────────────────────────────────────────────
+// ── Variante: PHOSPHOR TERRAIN ────────────────────────────────────────────────
 // Grüner Phosphor-Look: Täler dunkelgrün, Gipfel hellgrün.
 // Niedrige Auflösung für groben Demoscene-Pixel-Charakter, hohe Kamerageschwindigkeit.
 export const VoxelMatrix = makeVoxelScene(
-  'MATRIX TERRAIN // GREEN SECTOR',
+  'PHOSPHOR TERRAIN // GREEN SECTOR',
   160, 100,
   hmMatrix,
   (th, fog) => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import React, { useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 interface Location { cx: number; cy: number }
@@ -20,10 +20,12 @@ function applyTransform(pixels: Uint8ClampedArray, t: ColorTransform) {
         break
       }
       case 'cold': {
-        // Kaltes Blau-Türkis
-        pixels[i]   = Math.min(255, r * 0.15 | 0)
-        pixels[i+1] = Math.min(255, g * 0.55 | 0)
-        pixels[i+2] = Math.min(255, (b * 1.4 + r * 0.35) | 0)
+        // Kaltes Blau-Türkis — Mindesthelligkeit damit dunkle Regionen nicht rein schwarz werden
+        const lum = (r + g + b) / 3
+        const boost = Math.max(0, 40 - lum)   // Grundhelligkeit auch bei dunklen Pixeln
+        pixels[i]   = Math.min(255, (r * 0.1 | 0) + boost * 0.3)
+        pixels[i+1] = Math.min(255, (g * 0.5 | 0) + boost * 0.6)
+        pixels[i+2] = Math.min(255, ((b * 1.5 + r * 0.4) | 0) + boost)
         break
       }
       case 'hot': {
@@ -57,14 +59,14 @@ function makeFractalScene(
   // Zoom-Inkrement-Bereich pro 16.7ms (normiert).
   // 0.015 = ruhig, 0.20 = sehr schnell
   zoomRange:       [number, number] = [0.015, 0.15],
-): () => JSX.Element {
+): () => React.JSX.Element {
   const W = 160, H = 107
 
   return function FractalScene() {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const stateRef  = useRef({
-      // Zufälliger Einstieg — bei jedem Mount ein anderer Startpunkt + Zoom
-      zoom:      1.5 + Math.random() * 50,
+      // Zufälliger Einstieg mitten in interessantem Zoom-Bereich (nicht zoom~1 → zeigt schwarzes Inneres)
+      zoom:      80 + Math.random() * 2000,
       locIdx:    Math.floor(Math.random() * locs.length),
       fadeAlpha: 0,
       fading:    false,
@@ -99,13 +101,13 @@ function makeFractalScene(
         const loc = locs[s.locIdx]
         s.zoom *= Math.pow(1 + s.increment, dt / 16.7)
 
-        if (s.zoom > 8e10 && !s.fading) s.fading = true
+        if (s.zoom > 3e4 && !s.fading) s.fading = true
 
         if (s.fading) {
           s.fadeAlpha = Math.min(1, s.fadeAlpha + 0.06)
           if (s.fadeAlpha >= 1) {
             s.locIdx    = (s.locIdx + 1) % locs.length
-            s.zoom      = 1.5 + Math.random() * 50   // nächste Runde: neuer Einstieg
+            s.zoom      = 80 + Math.random() * 2000   // Einstieg mitten in interessantem Bereich
             s.fading    = false
             s.increment = zoomRange[0] + Math.random() * (zoomRange[1] - zoomRange[0])
           }

@@ -33,7 +33,6 @@ export default function DNAHelix() {
       const steps  = 28          // Basenpaar-Schritte entlang der Y-Achse
       const cx     = W / 2
       const radius = 14          // Helix-Radius
-      const pitch  = H / steps   // vertikaler Abstand zwischen Basenpaaren
 
       // Alle Segmente sammeln und nach Z sortieren (Painter's Algorithm)
       type Seg = { y: number; x1: number; x2: number; z: number; colorA: string; colorB: string; pair: number }
@@ -102,7 +101,7 @@ export default function DNAHelix() {
       <canvas
         ref={canvasRef}
         width={80} height={50}
-        style={{ width: '100%', height: '100%', imageRendering: 'pixelated', display: 'block' }}
+        style={{ width: '100%', height: 'auto', maxHeight: '100%', aspectRatio: '80 / 50', imageRendering: 'pixelated', display: 'block' }}
       />
     </Panel>
   )

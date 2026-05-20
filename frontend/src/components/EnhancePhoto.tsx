@@ -51,10 +51,11 @@ export default function EnhancePhoto() {
   const [running, setRunning]   = useState(false)
   const [done, setDone]         = useState(false)
 
-  // Zufälliges Foto von picsum.photos — 20 verschiedene Seeds, eines pro Mount gewählt
+  // Überwachungskamera-Stil: Menschen in der Öffentlichkeit, Straßen, Menschenmengen.
+  // loremflickr liefert nach Keywords gefilterte Bilder mit CORS-Unterstützung.
   useEffect(() => {
-    const seed = Math.floor(Math.random() * 20) + 1
-    const src = `https://picsum.photos/seed/${seed}/320/213`
+    const seed = Math.floor(Math.random() * 60) + 1
+    const src = `https://loremflickr.com/320/213/street,people,crowd,urban?lock=${seed}`
 
     const img = new Image()
     img.crossOrigin = 'anonymous'   // CORS für canvas-Rendering erforderlich

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 // PanelSlot: wechselt zufällig zwischen Panel-Komponenten aus einem Pool.
 // Fade-Out → Komponente tauschen → Fade-In mit CSS-Transition.
+// Kleiner ⟳-Button oben rechts zum manuellen Weiterschalten.
 export default function PanelSlot({
   pool,
   className = '',
@@ -12,28 +13,48 @@ export default function PanelSlot({
   const [idx, setIdx]         = useState(() => Math.floor(Math.random() * pool.length))
   const [visible, setVisible] = useState(true)
 
+  // Zum nächsten Panel wechseln (nie dasselbe zweimal hintereinander)
+  function skipTo(next?: number) {
+    setVisible(false)
+    setTimeout(() => {
+      setIdx(i => {
+        if (next !== undefined) return next
+        let n = i
+        while (n === i) n = Math.floor(Math.random() * pool.length)
+        return n
+      })
+      setVisible(true)
+    }, 300)
+  }
+
   useEffect(() => {
     // Keine Rotation nötig, wenn nur eine Komponente im Pool
     if (pool.length <= 1) return
 
-    // Zufälliges Intervall: 30 s – 10 min
-    const delay = 30_000 + Math.random() * 570_000
-    const t = setTimeout(() => {
-      setVisible(false)  // Fade-Out
-      setTimeout(() => {
-        setIdx(i => (i + 1) % pool.length)  // Nächste Komponente
-        setVisible(true)                     // Fade-In
-      }, 400)
-    }, delay)
+    // Zufälliges Intervall: 45 s – 8 min
+    const delay = 45_000 + Math.random() * 435_000
+    const t = setTimeout(() => skipTo(), delay)
     return () => clearTimeout(t)
-  }, [idx, pool.length])
+  }, [idx, pool.length])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const Component = pool[idx]
   return (
     <div
-      className={`transition-opacity duration-[400ms] min-h-0 h-full ${visible ? 'opacity-100' : 'opacity-0'} ${className}`}
+      className={`relative transition-opacity duration-[300ms] min-h-0 h-full ${visible ? 'opacity-100' : 'opacity-0'} ${className}`}
     >
       <Component />
+      {/* Skip-Button: nur sichtbar wenn mehrere Panels im Pool */}
+      {pool.length > 1 && (
+        <button
+          onClick={() => skipTo()}
+          title="Zufälliges Panel"
+          className="absolute top-[2px] right-[2px] z-10 w-5 h-4 text-[9px]
+                     text-green-900 hover:text-green-400 transition-colors leading-none
+                     flex items-center justify-center"
+        >
+          ⟳
+        </button>
+      )}
     </div>
   )
 }

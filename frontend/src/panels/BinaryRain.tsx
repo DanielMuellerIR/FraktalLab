@@ -18,7 +18,7 @@ type Drop = {
 }
 
 function makeDrops(): Drop[] {
-  return Array.from({ length: COLS }, (_, i) => ({
+  return Array.from({ length: COLS }, () => ({
     y:     -Math.random() * H * 2,
     speed: 0.4 + Math.random() * 0.8,
     len:   8 + Math.floor(Math.random() * 20),

@@ -1,9 +1,9 @@
 import { useRef, useState, useEffect } from 'react'
 import Panel from '../ui/Panel'
 
-// Direkte MP4-URL von archive.org — kein iframe nötig, volle Kontrolle über Mute.
-// Falls archive.org CORS verweigert: Video erscheint nicht, kein Crash.
-const VIDEO_SRC = 'https://archive.org/download/youtube-dIQ53t0gv_4/youtube-dIQ53t0gv_4.mp4'
+// Korrekte Datei-URL: Dateiname = dIQ53t0gv_4.mp4 (ohne "youtube-"-Prefix).
+// COEP: credentialless in vite.config.ts erlaubt das ohne crossOrigin-Attribut.
+const VIDEO_SRC = 'https://archive.org/download/youtube-dIQ53t0gv_4/dIQ53t0gv_4.mp4'
 
 export default function AllYourBase() {
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -32,7 +32,6 @@ export default function AllYourBase() {
           loop
           muted
           playsInline
-          crossOrigin="anonymous"
           style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
         />
         {/* Ton-Toggle — dezent in der Ecke */}

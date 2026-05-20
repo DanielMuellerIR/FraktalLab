@@ -17,8 +17,9 @@ export default function FractalCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // Zoom-State im Ref statt im React-State — kein Re-render-Overhead pro Frame
   // Zufälliger Einstieg: andere Location und Zoom-Stufe bei jedem Laden
+  // eslint-disable-next-line react-hooks/purity
   const stateRef  = useRef({
-    zoom:      1.0 + Math.random() * 40,
+    zoom:      80 + Math.random() * 800,
     locIdx:    Math.floor(Math.random() * LOCATIONS.length),
     fadeAlpha: 0,
     fading:    false,
@@ -61,15 +62,15 @@ export default function FractalCanvas() {
           s.zoom *= 1.015
 
           // Übergang auslösen bevor Floating-Point-Artefakte sichtbar werden
-          if (s.zoom > 8e10 && !s.fading) s.fading = true
+          if (s.zoom > 3e4 && !s.fading) s.fading = true
 
           if (s.fading) {
             // Fade-Out: Alpha bis 1 erhöhen
             s.fadeAlpha = Math.min(1, s.fadeAlpha + 0.04)
             if (s.fadeAlpha >= 1) {
-              // Location wechseln und Zoom zurücksetzen
+              // Location wechseln, Zoom auf mittleren Bereich zurücksetzen (nicht zoom=1 → sonst große schwarze Fläche)
               s.locIdx = (s.locIdx + 1) % LOCATIONS.length
-              s.zoom   = 1.0
+              s.zoom   = 80 + Math.random() * 800
               s.fading = false
             }
           } else {
@@ -106,6 +107,7 @@ export default function FractalCanvas() {
   return (
     <canvas
       ref={canvasRef}
+      data-testid="fractal-canvas"
       style={{ display: 'block', width: '100%', height: '100%', imageRendering: 'pixelated' }}
     />
   )

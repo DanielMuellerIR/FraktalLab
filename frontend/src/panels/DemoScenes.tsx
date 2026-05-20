@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import React, { useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 // ── HSL→RGB Helfer ───────────────────────────────────────────────────────────
@@ -26,7 +26,7 @@ function makeScene(
   mkState: () => any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   draw: (buf: Uint8ClampedArray, W: number, H: number, t: number, s: any) => void,
-): () => JSX.Element {
+): () => React.JSX.Element {
   return function Scene() {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -52,11 +52,21 @@ function makeScene(
 
     return (
       <Panel title={title}>
-        <canvas
-          ref={canvasRef}
-          width={W} height={H}
-          style={{ width:'100%', height:'100%', imageRendering:'pixelated', display:'block' }}
-        />
+        {/* Zentrierende Wrapper-Box: Canvas skaliert mit korrektem Seitenverhältnis */}
+        <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <canvas
+            ref={canvasRef}
+            width={W} height={H}
+            style={{
+              width: '100%',
+              height: 'auto',
+              maxHeight: '100%',
+              aspectRatio: `${W} / ${H}`,
+              imageRendering: 'pixelated',
+              display: 'block',
+            }}
+          />
+        </div>
       </Panel>
     )
   }
@@ -139,7 +149,7 @@ export const TunnelScene = makeScene(
 
 // ── Effekt 4: Rotozoom — rotierende + zoomende Kacheln ───────────────────────
 export const RotozoomScene = makeScene(
-  'MATRIX ROTATION // DECRYPTING', 80, 50,
+  'TESSERACT ROTATION // DECRYPTING', 80, 50,
   () => null,
   (buf, W, H, t) => {
     const ts  = t * 0.001

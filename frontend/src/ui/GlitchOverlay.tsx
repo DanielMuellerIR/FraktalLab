@@ -73,6 +73,10 @@ export default function GlitchOverlay() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
+    // Sofort korrekte Canvas-Dimensionen setzen (sonst erst beim ersten Glitch)
+    canvas.width  = window.innerWidth
+    canvas.height = window.innerHeight
+
     let rafId: number
     let nextTimeout: ReturnType<typeof setTimeout>
 
@@ -96,8 +100,8 @@ export default function GlitchOverlay() {
         const elapsed = now - start
         if (elapsed >= duration) {
           ctx!.clearRect(0, 0, canvas!.width, canvas!.height)
-          // Nächsten Glitch einplanen: 60–180 Sekunden
-          const next = 60_000 + Math.random() * 120_000
+          // Nächsten Glitch einplanen: 20–60 Sekunden
+          const next = 20_000 + Math.random() * 40_000
           nextTimeout = setTimeout(runGlitch, next)
           return
         }
@@ -125,8 +129,8 @@ export default function GlitchOverlay() {
       rafId = requestAnimationFrame(glitchFrame)
     }
 
-    // Erster Glitch: 5–10 Sekunden nach Seitenload (zum Testen früh genug)
-    const firstDelay = 5_000 + Math.random() * 5_000
+    // Erster Glitch: 3–6 Sekunden nach Seitenload
+    const firstDelay = 3_000 + Math.random() * 3_000
     nextTimeout = setTimeout(runGlitch, firstDelay)
 
     return () => {
@@ -138,6 +142,7 @@ export default function GlitchOverlay() {
   return (
     <canvas
       ref={canvasRef}
+      data-testid="glitch-overlay"
       style={{
         position:      'fixed',
         top:           0,

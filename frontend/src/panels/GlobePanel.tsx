@@ -121,7 +121,7 @@ export default function GlobePanel() {
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const ctx = canvas.getContext('2d')
+    const ctx = canvas.getContext('2d')!
     if (!ctx) return
 
     let rafId: number
@@ -403,17 +403,21 @@ export default function GlobePanel() {
 
   return (
     <Panel title="GLOBAL SURVEILLANCE // SECTOR 7">
-      <canvas
-        ref={canvasRef}
-        width={W}
-        height={H}
-        style={{
-          width: '100%',
-          height: '100%',
-          imageRendering: 'pixelated',
-          display: 'block',
-        }}
-      />
+      <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}>
+        <canvas
+          ref={canvasRef}
+          width={W}
+          height={H}
+          style={{
+            width: '100%',
+            height: 'auto',
+            maxHeight: '100%',
+            aspectRatio: `${W} / ${H}`,
+            imageRendering: 'pixelated',
+            display: 'block',
+          }}
+        />
+      </div>
     </Panel>
   )
 }

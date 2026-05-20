@@ -1,6 +1,6 @@
 # Rust / Cargo
 target/
-wasm/pkg/
+# wasm/pkg/ wird NICHT ignoriert — Netlify hat kein Rust, pkg muss ins Repo
 
 # Node
 node_modules/
@@ -20,3 +20,8 @@ frontend/dist/
 .vscode/
 .idea/
 *.swp
+
+# Playwright
+frontend/test-results/
+frontend/playwright-report/
+frontend/tests/screenshots/
