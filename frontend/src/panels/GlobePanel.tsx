@@ -186,62 +186,112 @@ export default function GlobePanel() {
       }
     }
 
+    // ── Hilfsfunktion: Scan-Eckmarkierungen um Ziel ────────────────────────────
+    // Zeichnet 4 Ecken eines Aiming-Rahmens um (sx, sy).
+    function drawTargetBox(sx: number, sy: number, alpha: number, t: number) {
+      const pulse = 0.6 + 0.4 * Math.sin(t * 0.006)
+      const a     = alpha * pulse
+      const half  = 18
+      const arm   = 7
+
+      ctx.strokeStyle = `rgba(74,222,128,${a})`
+      ctx.lineWidth   = 1.5
+
+      for (const [dx, dy] of [[-1,-1],[1,-1],[-1,1],[1,1]] as [number,number][]) {
+        const cx = sx + dx * half
+        const cy = sy + dy * half
+        ctx.beginPath()
+        ctx.moveTo(cx, cy); ctx.lineTo(cx - dx * arm, cy)
+        ctx.moveTo(cx, cy); ctx.lineTo(cx, cy - dy * arm)
+        ctx.stroke()
+      }
+
+      ctx.strokeStyle = `rgba(74,222,128,${a * 0.2})`
+      ctx.lineWidth   = 0.5
+      ctx.strokeRect(sx - half, sy - half, half * 2, half * 2)
+    }
+
     // ── Hilfsfunktion: Daten-Overlay zeichnen ───────────────────────────────
-    // Zeigt CIA-style Metadaten zur aktuellen Ziel-Kapitale.
-    // W und H werden als Parameter übergeben (aktuelle Canvas-Größe).
+    // Zeigt CIA-style Metadaten zur Ziel-Kapitale. Verankert am Ziel-Punkt.
     function drawDataOverlay(
       alpha: number,
       cap: typeof CAPITALS[0],
       t: number,
-      W: number,
+      W: number, H: number,
+      sx: number, sy: number,
     ) {
       if (alpha <= 0) return
 
-      // Formatierung der Koordinaten (N/S, E/W)
-      const latStr = `${Math.abs(cap.lat).toFixed(2)}°${cap.lat >= 0 ? 'N' : 'S'}`
-      const lonStr = `${Math.abs(cap.lon).toFixed(2)}°${cap.lon >= 0 ? 'E' : 'W'}`
+      const latStr = `${Math.abs(cap.lat).toFixed(2)}\xb0${cap.lat >= 0 ? 'N' : 'S'}`
+      const lonStr = `${Math.abs(cap.lon).toFixed(2)}\xb0${cap.lon >= 0 ? 'E' : 'W'}`
 
-      // Bedrohungslevel → Farbe
       const threatColor: Record<string, string> = {
         LOW: '#22c55e', MODERATE: '#a3e635', ELEVATED: '#facc15',
         HIGH: '#f97316', CRITICAL: '#ef4444',
       }
       const tc = threatColor[cap.threat] ?? '#22c55e'
 
+      // Font-Größe skaliert mit Canvas-Breite
+      const fSize = Math.max(9, Math.min(13, W * 0.032))
+      const lineH = fSize + 4
+      const pad   = 8
+
       const lines = [
-        { text: '▶ TARGET ACQUIRED', color: `rgba(74,222,128,${alpha})` },
-        { text: `  ${cap.name}`,         color: `rgba(134,239,172,${alpha})` },
-        { text: `  ${cap.country}`,      color: `rgba(74,222,128,${alpha * 0.8})` },
-        { text: `  COORDS: ${latStr} ${lonStr}`, color: `rgba(74,222,128,${alpha * 0.7})` },
-        { text: `  POPULATION: ${cap.pop}`,      color: `rgba(74,222,128,${alpha * 0.7})` },
-        { text: `  THREAT: ${cap.threat}`,        color: `rgba(${hexToRgba(tc)},${alpha})` },
-        { text: `  ${cap.intel}`,                 color: `rgba(74,222,128,${alpha * 0.75})` },
-        { text: '  CLASSIFICATION: TS/SCI',       color: `rgba(74,222,128,${alpha * 0.6})` },
+        { text: '▶ TARGET ACQUIRED',         color: `rgba(74,222,128,${alpha})`,         bold: true  },
+        { text: cap.name,                          color: `rgba(134,239,172,${alpha})`,        bold: true  },
+        { text: cap.country,                       color: `rgba(74,222,128,${alpha * 0.85})`,  bold: false },
+        { text: `${latStr}  ${lonStr}`,            color: `rgba(74,222,128,${alpha * 0.75})`,  bold: false },
+        { text: `POP: ${cap.pop}`,                 color: `rgba(74,222,128,${alpha * 0.75})`,  bold: false },
+        { text: `THREAT: ${cap.threat}`,           color: `rgba(${hexToRgba(tc)},${alpha})`,   bold: false },
+        { text: cap.intel,                         color: `rgba(74,222,128,${alpha * 0.8})`,   bold: false },
+        { text: 'CLASSIFICATION: TS/SCI',          color: `rgba(74,222,128,${alpha * 0.55})`,  bold: false },
       ]
 
-      const lineH = 9     // Zeilenhöhe in Pixeln
-      const pad   = 5     // Innenabstand der Box
-      const boxW  = 145
-      const boxH  = lines.length * lineH + pad * 2
-      const boxX  = W - boxW - 4   // rechtsbündig mit 4px Rand
-      const boxY  = 4
+      const boxW = Math.min(W * 0.45, Math.max(fSize * 22, 190))
+      const boxH = lines.length * lineH + pad * 2
 
-      // Halbtransparenter Hintergrund
-      ctx.fillStyle = `rgba(0,20,0,${alpha * 0.85})`
+      // Box links oder rechts am Ziel verankern
+      const anchorRight = sx < W * 0.55
+      const boxX = anchorRight
+        ? Math.min(sx + 28, W - boxW - 4)
+        : Math.max(sx - 28 - boxW, 4)
+      const boxY = Math.max(4, Math.min(H - boxH - 4, sy - boxH / 2))
+
+      // Verbindungslinie (gestrichelt)
+      const lineEndX = anchorRight ? boxX : boxX + boxW
+      ctx.strokeStyle = `rgba(74,222,128,${alpha * 0.4})`
+      ctx.lineWidth   = 0.8
+      ctx.setLineDash([3, 3])
+      ctx.beginPath()
+      ctx.moveTo(sx, sy)
+      ctx.lineTo(lineEndX, boxY + boxH / 2)
+      ctx.stroke()
+      ctx.setLineDash([])
+
+      // Hintergrund
+      ctx.fillStyle = `rgba(0,15,0,${alpha * 0.90})`
       ctx.fillRect(boxX, boxY, boxW, boxH)
 
-      // Rahmen (blinkt leicht)
-      const blink = 0.5 + 0.5 * Math.sin(t * 0.006)
+      // Blinke-Rahmen
+      const blink = 0.55 + 0.45 * Math.sin(t * 0.006)
       ctx.strokeStyle = `rgba(74,222,128,${alpha * blink})`
-      ctx.lineWidth = 0.5
+      ctx.lineWidth   = 1
       ctx.strokeRect(boxX, boxY, boxW, boxH)
 
-      // Textzeilen
-      ctx.font = '7px monospace'
+      // Trennlinie nach Kopfzeilen (nach Zeile 1, 0-indiziert)
+      const sepY = boxY + pad + 2 * lineH + 1
+      ctx.strokeStyle = `rgba(74,222,128,${alpha * 0.3})`
+      ctx.lineWidth   = 0.5
+      ctx.beginPath()
+      ctx.moveTo(boxX + 4, sepY)
+      ctx.lineTo(boxX + boxW - 4, sepY)
+      ctx.stroke()
+
       ctx.textBaseline = 'top'
       lines.forEach((line, i) => {
+        ctx.font      = `${line.bold ? 'bold ' : ''}${fSize}px monospace`
         ctx.fillStyle = line.color
-        ctx.fillText(line.text, boxX + pad, boxY + pad + i * lineH)
+        ctx.fillText(line.text, boxX + pad, boxY + pad + i * lineH, boxW - pad * 2)
       })
     }
 
@@ -355,30 +405,30 @@ export default function GlobePanel() {
         const isTarget = idx === s.targetIdx
 
         if (isTarget && (s.phase === 'locked' || s.phase === 'releasing')) {
-          // ── Ziel-Fadenkreuz mit Puls ──────────────────────────────────
-          const pulse = 0.5 + 0.5 * Math.sin(t * 0.008)
           const crossA = (s.phase === 'locked') ? 1 : s.dataAlpha
-          const size = 6 + 2 * pulse   // pulsierendes Kreuz
+          const pulse  = 0.5 + 0.5 * Math.sin(t * 0.008)
+          const size   = 5 + 2 * pulse
+
+          // Fadenkreuz
           ctx.strokeStyle = `rgba(74,222,128,${crossA})`
           ctx.lineWidth = 1
-
-          // Horizontaler Balken des Fadenkreuzes
           ctx.beginPath()
-          ctx.moveTo(sx - size, sy)
-          ctx.lineTo(sx + size, sy)
+          ctx.moveTo(sx - size, sy); ctx.lineTo(sx + size, sy)
+          ctx.moveTo(sx, sy - size); ctx.lineTo(sx, sy + size)
           ctx.stroke()
 
-          // Vertikaler Balken
+          // Pulsierender Kreis
+          ctx.strokeStyle = `rgba(74,222,128,${crossA * pulse * 0.5})`
           ctx.beginPath()
-          ctx.moveTo(sx, sy - size)
-          ctx.lineTo(sx, sy + size)
+          ctx.arc(sx, sy, size * 1.6, 0, Math.PI * 2)
           ctx.stroke()
 
-          // Pulsierender Kreis um das Fadenkreuz
-          ctx.strokeStyle = `rgba(74,222,128,${crossA * pulse * 0.6})`
-          ctx.beginPath()
-          ctx.arc(sx, sy, size * 1.5, 0, Math.PI * 2)
-          ctx.stroke()
+          // Scan-Eckrahmen um den Zielpunkt
+          drawTargetBox(sx, sy, crossA, t)
+
+          // Ziel-Punkt speichern für den Overlay-Aufruf unten
+          ;(stateRef.current as AnimState & { _tsx: number; _tsy: number })._tsx = sx
+          ;(stateRef.current as AnimState & { _tsx: number; _tsy: number })._tsy = sy
 
         } else {
           // Normaler Punkt (2px Radius, pulst leicht)
@@ -392,8 +442,10 @@ export default function GlobePanel() {
 
       // ── Daten-Overlay (locked + releasing) ──────────────────────────────
       if (s.dataAlpha > 0) {
-        // Aktuelle Canvas-Breite als Parameter übergeben
-        drawDataOverlay(s.dataAlpha, CAPITALS[s.targetIdx], t, W)
+        const ts = s as AnimState & { _tsx?: number; _tsy?: number }
+        const osx = ts._tsx ?? cx
+        const osy = ts._tsy ?? cy
+        drawDataOverlay(s.dataAlpha, CAPITALS[s.targetIdx], t, W, H, osx, osy)
       }
 
       // ── Phasen-Status-Indikator (oben links) ────────────────────────────

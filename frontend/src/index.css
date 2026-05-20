@@ -7,3 +7,20 @@ html, body, #root { margin: 0; padding: 0; height: 100%; overflow: hidden; }
   from { background-position: 200% center; }
   to   { background-position: -200% center; }
 }
+
+/* Layout-Wechsel: OS-Desktop-Slide-Effekt */
+@keyframes slideOutLeft {
+  from { transform: translateX(0%); }
+  to   { transform: translateX(-100%); }
+}
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0%); }
+}
+.layout-slide-out {
+  animation: slideOutLeft 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
+}
+.layout-slide-in {
+  animation: slideInRight 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
