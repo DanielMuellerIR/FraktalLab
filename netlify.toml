@@ -1,0 +1,12 @@
+[build]
+  # Netlify hat kein Rust — wasm/pkg/ wird committed und landet im Repo
+  base    = "frontend"
+  command = "npm install && npm run build"
+  publish = "frontend/dist"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # Pflicht für WASM
+    Cross-Origin-Opener-Policy   = "same-origin"
+    Cross-Origin-Embedder-Policy = "credentialless"
