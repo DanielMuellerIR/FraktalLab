@@ -1,9 +1,6 @@
 import { useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
-// Sehr niedrige Auflösung → grobe Pixel, typischer Demoscene-Look
-const W = 80, H = 50
-
 // Konvertiert HSL → RGB (s und l als 0..1)
 function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   const c = (1 - Math.abs(2 * l - 1)) * s
@@ -31,11 +28,42 @@ export default function PlasmaDemo() {
     let rafId: number
     let running = true
 
+    // ── ResizeObserver: Canvas-Auflösung == Container-Größe ─────────────────
+    const resize = () => {
+      if (!canvas) return
+      canvas.width  = canvas.clientWidth
+      canvas.height = canvas.clientHeight
+    }
+    resize()
+    const ro = new ResizeObserver(resize)
+    ro.observe(canvas)
+
+    // Wiederverwendbares OffscreenCanvas für die interne Niedrig-Auflösung
+    const offscreen = document.createElement('canvas')
+
     function loop(t: number) {
       if (!running) return
+
+      // Sicherheitscheck: falls Canvas noch keine Größe hat, überspringen
+      if (canvas!.width === 0 || canvas!.height === 0) {
+        rafId = requestAnimationFrame(loop)
+        return
+      }
+
       const ts = t * 0.001  // Sekunden
 
-      const img = ctx.createImageData(W, H)
+      // Interne Auflösung: Performance-Cap bei max 200×150.
+      // Demoscene-Plasma sieht bei grober Auflösung besser aus (grobe Pixel-Ästhetik).
+      const W = Math.min(canvas!.width,  200)
+      const H = Math.min(canvas!.height, 150)
+
+      // OffscreenCanvas auf interne Auflösung setzen (nur wenn sich Größe ändert)
+      if (offscreen.width !== W || offscreen.height !== H) {
+        offscreen.width  = W
+        offscreen.height = H
+      }
+      const offCtx = offscreen.getContext('2d')!
+      const img = offCtx.createImageData(W, H)
       const d = img.data
 
       // Alle 8 Sekunden wechselt das Plasma-Motiv (3 Modi)
@@ -72,7 +100,6 @@ export default function PlasmaDemo() {
           }
 
           // Hue aus Plasma-Wert + zeitlich rotierender Basisfarbe
-          // Sättigung 100 %, Helligkeit 50 % → maximale Knallfarben
           const hue = ((v + 4) / 8 * 360 + ts * 40) % 360
           const [ri, gi, bi] = hslToRgb(hue, 1, 0.5)
 
@@ -81,19 +108,27 @@ export default function PlasmaDemo() {
         }
       }
 
-      ctx.putImageData(img, 0, 0)
+      // Interne Pixel in OffscreenCanvas schreiben ...
+      offCtx.putImageData(img, 0, 0)
+      // ... dann auf die volle Canvas-Größe hochskalieren (pixelated via CSS)
+      ctx.drawImage(offscreen, 0, 0, canvas!.width, canvas!.height)
+
       rafId = requestAnimationFrame(loop)
     }
 
     rafId = requestAnimationFrame(loop)
-    return () => { running = false; cancelAnimationFrame(rafId) }
+    return () => {
+      running = false
+      cancelAnimationFrame(rafId)
+      ro.disconnect()
+    }
   }, [])
 
   return (
     <Panel title="PLASMA CORE // RENDERING Ω">
+      {/* Canvas füllt den Panel-Body vollständig */}
       <canvas
         ref={canvasRef}
-        width={W} height={H}
         style={{ width: '100%', height: '100%', imageRendering: 'pixelated', display: 'block' }}
       />
     </Panel>

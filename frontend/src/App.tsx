@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import PanelSlot from './ui/PanelSlot'
-import FractalView from './panels/FractalView'
+import PanelSlot    from './ui/PanelSlot'
+import FractalView  from './panels/FractalView'
 import GlitchOverlay from './ui/GlitchOverlay'
+import AmbientSound  from './ui/AmbientSound'
 
 // ── Text-Panels ───────────────────────────────────────────────────────────────
 import SystemLog         from './panels/SystemLog'
@@ -14,7 +15,14 @@ import PwdCracker        from './panels/PwdCracker'
 import PortScanner       from './panels/PortScanner'
 import PseudoCode        from './panels/PseudoCode'
 
-// ── Demoscene-Panels ──────────────────────────────────────────────────────────
+// ── Neue Text-Panels ──────────────────────────────────────────────────────────
+import ClaudeCodePanel   from './panels/ClaudeCodePanel'
+import VisitorProfilePanel from './panels/VisitorProfilePanel'
+import ICQChatPanel      from './panels/ICQChatPanel'
+import BitcoinMinerPanel from './panels/BitcoinMinerPanel'
+import DiskCleanupPanel  from './panels/DiskCleanupPanel'
+
+// ── Grafik-Panels ─────────────────────────────────────────────────────────────
 import VoxelDemo         from './panels/VoxelDemo'
 import { VoxelThermal, VoxelNeon, VoxelLava, VoxelMatrix } from './panels/VoxelScenes'
 import PlasmaDemo        from './panels/PlasmaDemo'
@@ -28,48 +36,48 @@ import {
   MetaballsScene, DotCloudScene, BoingScene, LissajousScene,
 } from './panels/DemoScenes'
 
+// ── Neue Grafik-Panels ────────────────────────────────────────────────────────
+import ParallaxPanel     from './panels/ParallaxPanel'
+import DaggerfallPanel   from './panels/DaggerfallPanel'
+import ElitePanel        from './panels/ElitePanel'
+
 // ── Fraktal-Mini-Panels ───────────────────────────────────────────────────────
 import {
   FractalSeahorse, FractalSpiral, FractalLightning, FractalElephant,
-  FractalMini, FractalDendrite,
-  FractalSwirl, FractalSatellite, FractalTendril,
+  FractalMini, FractalDendrite, FractalSwirl, FractalSatellite, FractalTendril,
 } from './panels/FractalScenes'
 
 // ── Panel-Pools ───────────────────────────────────────────────────────────────
-// Text-Pools
-const POOL_A = [SystemLog, DataStream, SocialEngineering]
-const POOL_B = [Vitals, TrafficMonitor]
-const POOL_D = [NuclearTargets]
-const POOL_E = [PwdCracker]
-const POOL_F = [PortScanner]
-const POOL_G = [PseudoCode]
+// Ein großer Text-Pool: alle Text-Panels rotieren durch die Text-Slots
+const POOL_TEXT: React.ComponentType[] = [
+  SystemLog, DataStream, SocialEngineering, Vitals, TrafficMonitor,
+  NuclearTargets, PwdCracker, PortScanner, PseudoCode,
+  ClaudeCodePanel, VisitorProfilePanel, ICQChatPanel, BitcoinMinerPanel, DiskCleanupPanel,
+]
 
-// Grafische Pools — rotieren durch visuelle Szenen
-const POOL_V1: React.ComponentType[] = [
-  VoxelDemo, GlobePanel, VoxelThermal, VoxelLava,
+// Ein großer Grafik-Pool: alle visuellen Panels rotieren durch Grafik-Slots
+const POOL_GFX: React.ComponentType[] = [
+  VoxelDemo, GlobePanel, VoxelThermal, VoxelLava, VoxelNeon, VoxelMatrix,
   FireScene, StarfieldScene, BoingScene, LissajousScene,
-  OscilloscopePanel, FractalSeahorse, FractalSpiral, FractalTendril,
-  FractalLightning, TunnelScene, MetaballsScene,
-]
-const POOL_V2: React.ComponentType[] = [
-  VoxelNeon, VoxelMatrix, DNAHelix, PlasmaDemo,
-  RotozoomScene, DotCloudScene,
-  FractalElephant, FractalMini,
-  FractalDendrite, FractalSwirl, FractalSatellite,
+  OscilloscopePanel, TunnelScene, MetaballsScene, RotozoomScene, DotCloudScene,
+  PlasmaDemo, DNAHelix,
+  ParallaxPanel, DaggerfallPanel, ElitePanel,
+  FractalSeahorse, FractalSpiral, FractalTendril, FractalLightning,
+  FractalElephant, FractalMini, FractalDendrite, FractalSwirl, FractalSatellite,
 ]
 
-// Dedizierte Single-Item-Pools: garantiert immer sichtbar, rotieren nie raus
+// Dedizierte Pools — diese Slots zeigen immer nur diesen einen Inhalt
 const POOL_ALLYOURBASE: React.ComponentType[] = [AllYourBase]
 const POOL_ENHANCE:     React.ComponentType[] = [EnhanceView]
 
-// ── Layout-System ─────────────────────────────────────────────────────────────
-// Grafische Panels bekommen immer einen Container mit GFX_H → querformat-sicher.
-const LAYOUT_COUNT = 5
-const GFX_H = '30vh'
+// ── Layout-Konstanten ─────────────────────────────────────────────────────────
+const LAYOUT_COUNT = 3
 
 export default function App() {
-  const [layoutIdx, setLayoutIdx] = useState(() => Math.floor(Math.random() * LAYOUT_COUNT))
-  const [visible,   setVisible]   = useState(true)
+  const [layoutIdx,     setLayoutIdx]     = useState(() => Math.floor(Math.random() * LAYOUT_COUNT))
+  const [visible,       setVisible]       = useState(true)
+  // Ambient Sound: startet stumm, Nutzer kann ihn einschalten
+  const [soundEnabled,  setSoundEnabled]  = useState(false)
 
   const skipLayout = useCallback(() => {
     setVisible(false)
@@ -108,23 +116,33 @@ export default function App() {
       {/* Bildstörungs-Overlay — liegt über allem, reagiert nicht auf Maus */}
       <GlitchOverlay />
 
+      {/* Ambient-Sound-Komponente — rendert nichts, erzeugt nur Töne */}
+      <AmbientSound enabled={soundEnabled} />
+
       {/* Kopfzeile */}
       <header className="border-b border-green-900 px-3 py-1 flex items-center gap-3 shrink-0">
         <span className="text-green-600 text-xs uppercase tracking-widest">
-          ◈ FRAKTALLAB // NEURAL INTRUSION DASHBOARD v0.9.4
-        </span>
-        <span className="text-green-900 text-xs italic">
-          built with claude sonnet — opus would've been too easy
+          ◈ FRAKTALLAB // NEURAL INTRUSION DASHBOARD v0.9.5
         </span>
         <span className="ml-auto text-red-800 text-xs animate-pulse">● LIVE</span>
-        {/* Layout-Button mit Lichtreflexions-Animation */}
+
+        {/* Ambient-Sound-Toggle */}
+        <button
+          onClick={() => setSoundEnabled(e => !e)}
+          title="Ambient Sound umschalten"
+          className="border border-green-800 text-green-600 text-xs px-2 py-0.5
+                     hover:border-green-600 hover:text-green-200 transition-colors"
+        >
+          {soundEnabled ? '[ AUDIO ON ]' : '[ AUDIO OFF ]'}
+        </button>
+
+        {/* Layout-Button mit Shine-Animation */}
         <button
           onClick={skipLayout}
           title="Layout wechseln (Leertaste)"
           className="relative border border-green-800 text-green-600 text-xs px-2 py-0.5
                      hover:border-green-600 hover:text-green-200 transition-colors overflow-hidden"
         >
-          {/* Shine-Strahl über den Button */}
           <span
             aria-hidden="true"
             className="absolute inset-0 pointer-events-none"
@@ -143,118 +161,105 @@ export default function App() {
         className={`flex-1 min-h-0 p-1 overflow-hidden transition-opacity duration-500 ${visible ? 'opacity-100' : 'opacity-0'}`}
       >
 
-        {/* ── Layout 1: 3 Spalten, 4 Grafik-Panels in einer Reihe ──────────── */}
+        {/* ────────────────────────────────────────────────────────────────────
+            Layout 1: Klassisch — 3 Spalten, AllYourBase 16:9 rechts
+            Links: 1 Text-Panel (schmal)
+            Mitte: FractalView oben + 2 GFX-Panels unten
+            Rechts: AllYourBase (16:9) oben + 1 Text-Panel unten
+        ──────────────────────────────────────────────────────────────────── */}
         {layoutIdx === 0 && (
           <div className="flex gap-1 h-full min-h-0">
-            <div className="flex flex-col gap-1 w-[13%] min-w-0 min-h-0">
-              <PanelSlot pool={POOL_A} className="flex-1 min-h-0" />
-              <PanelSlot pool={POOL_B} className="flex-1 min-h-0" />
+
+            {/* Linke Spalte: 1 Text-Panel */}
+            <div className="flex flex-col gap-1 w-[14%] min-w-0 min-h-0">
+              <PanelSlot pool={POOL_TEXT} className="flex-1 min-h-0" />
             </div>
+
+            {/* Mitte: FractalView + 2 GFX-Panels */}
             <div className="flex flex-col gap-1 flex-1 min-w-0 min-h-0">
               <FractalView />
-              <div className="flex gap-1 min-h-0 shrink-0" style={{ height: GFX_H }}>
-                <PanelSlot pool={POOL_V1}         className="flex-1 min-h-0" />
-                <PanelSlot pool={POOL_ALLYOURBASE} className="flex-1 min-h-0" />
-                <PanelSlot pool={POOL_ENHANCE}     className="flex-1 min-h-0" />
-                <PanelSlot pool={POOL_V2}         className="flex-1 min-h-0" />
+              <div className="flex gap-1 min-h-0 shrink-0" style={{ height: '38%' }}>
+                <PanelSlot pool={POOL_GFX}    className="flex-1 min-h-0" />
+                <PanelSlot pool={POOL_ENHANCE} className="flex-1 min-h-0" />
               </div>
             </div>
-            <div className="flex flex-col gap-1 w-[18%] min-w-0 min-h-0">
-              <PanelSlot pool={POOL_D} className="flex-1 min-h-0" />
-              <PanelSlot pool={POOL_E} className="flex-1 min-h-0" />
-              <PanelSlot pool={POOL_F} className="flex-1 min-h-0" />
+
+            {/* Rechte Spalte: AllYourBase 16:9 + Text darunter */}
+            <div className="flex flex-col gap-1 w-[27%] min-w-0 min-h-0">
+              {/* 16:9 Container für AllYourBase */}
+              <div style={{ aspectRatio: '16/9', width: '100%', flexShrink: 0 }}>
+                <PanelSlot pool={POOL_ALLYOURBASE} className="h-full" />
+              </div>
+              <PanelSlot pool={POOL_TEXT} className="flex-1 min-h-0" />
             </div>
+
           </div>
         )}
 
-        {/* ── Layout 2: 3 Spalten, breite Mitte, AllYourBase rechts oben ──── */}
+        {/* ────────────────────────────────────────────────────────────────────
+            Layout 2: Groß — FractalView dominant, AllYourBase in Mitte
+            Links: 2 Text-Panels gestapelt
+            Mitte-Links: FractalView (groß)
+            Mitte-Rechts: AllYourBase 16:9 oben + 1 GFX unten
+            Rechts: 1 GFX-Panel
+        ──────────────────────────────────────────────────────────────────── */}
         {layoutIdx === 1 && (
           <div className="flex gap-1 h-full min-h-0">
-            <div className="flex flex-col gap-1 w-[13%] min-w-0 min-h-0">
-              <PanelSlot pool={POOL_A} className="flex-1 min-h-0" />
-              <PanelSlot pool={POOL_B} className="flex-1 min-h-0" />
+
+            {/* Links: 2 Text-Panels */}
+            <div className="flex flex-col gap-1 w-[15%] min-w-0 min-h-0">
+              <PanelSlot pool={POOL_TEXT} className="flex-1 min-h-0" />
+              <PanelSlot pool={POOL_TEXT} className="flex-1 min-h-0" />
             </div>
-            <div className="flex flex-col gap-1 flex-1 min-w-0 min-h-0">
+
+            {/* Mitte-Links: FractalView groß */}
+            <div className="flex flex-col gap-1 w-[42%] min-w-0 min-h-0">
               <FractalView />
-              <div className="flex gap-1 min-h-0 shrink-0" style={{ height: GFX_H }}>
-                <PanelSlot pool={POOL_V1}         className="flex-1 min-h-0" />
-                <PanelSlot pool={POOL_V2}         className="flex-1 min-h-0" />
-                <PanelSlot pool={POOL_ALLYOURBASE} className="flex-1 min-h-0" />
-                <PanelSlot pool={POOL_ENHANCE}     className="flex-1 min-h-0" />
+            </div>
+
+            {/* Mitte-Rechts: AllYourBase 16:9 + GFX darunter */}
+            <div className="flex flex-col gap-1 w-[27%] min-w-0 min-h-0">
+              <div style={{ aspectRatio: '16/9', width: '100%', flexShrink: 0 }}>
+                <PanelSlot pool={POOL_ALLYOURBASE} className="h-full" />
               </div>
+              <PanelSlot pool={POOL_GFX} className="flex-1 min-h-0" />
             </div>
-            <div className="flex flex-col gap-1 w-[20%] min-w-0 min-h-0">
-              <PanelSlot pool={POOL_D} className="flex-1 min-h-0" />
-              <PanelSlot pool={POOL_G} className="flex-1 min-h-0" />
-              <PanelSlot pool={[...POOL_E, ...POOL_F]} className="flex-1 min-h-0" />
+
+            {/* Rechts: 1 GFX-Panel */}
+            <div className="flex flex-col gap-1 flex-1 min-w-0 min-h-0">
+              <PanelSlot pool={POOL_GFX}  className="flex-1 min-h-0" />
+              <PanelSlot pool={POOL_TEXT} className="flex-1 min-h-0" />
             </div>
+
           </div>
         )}
 
-        {/* ── Layout 3: breite Grafik-Spalte, schmale Textspalten ──────────── */}
+        {/* ────────────────────────────────────────────────────────────────────
+            Layout 3: Panorama — FractalView und AllYourBase nebeneinander
+            oben (Höhe durch AllYourBase 16:9 bei 42% Breite bestimmt),
+            unten 3 breitere Panels
+        ──────────────────────────────────────────────────────────────────── */}
         {layoutIdx === 2 && (
-          <div className="flex gap-1 h-full min-h-0">
-            <div className="flex flex-col gap-1 w-[12%] min-w-0 min-h-0">
-              <PanelSlot pool={POOL_A} className="flex-1 min-h-0" />
-              <PanelSlot pool={POOL_B} className="flex-1 min-h-0" />
-            </div>
-            <div className="flex flex-col gap-1 w-[66%] min-w-0 min-h-0">
-              <FractalView />
-              <div className="flex gap-1 min-h-0 shrink-0" style={{ height: GFX_H }}>
-                <PanelSlot pool={POOL_V1}         className="flex-1 min-h-0" />
-                <PanelSlot pool={POOL_ALLYOURBASE} className="flex-1 min-h-0" />
-                <PanelSlot pool={POOL_ENHANCE}     className="flex-1 min-h-0" />
-                <PanelSlot pool={POOL_V2}         className="flex-1 min-h-0" />
-              </div>
-            </div>
-            <div className="flex flex-col gap-1 flex-1 min-w-0 min-h-0">
-              <PanelSlot pool={POOL_D} className="flex-1 min-h-0" />
-              <PanelSlot pool={POOL_E} className="flex-1 min-h-0" />
-              <PanelSlot pool={[...POOL_F, ...POOL_G]} className="flex-1 min-h-0" />
-            </div>
-          </div>
-        )}
-
-        {/* ── Layout 4: 2 Spalten, Grafik sehr dominant ─────────────────────── */}
-        {layoutIdx === 3 && (
-          <div className="flex gap-1 h-full min-h-0">
-            <div className="flex flex-col gap-1 w-[72%] min-w-0 min-h-0">
-              <FractalView />
-              <div className="flex gap-1 min-h-0 shrink-0" style={{ height: GFX_H }}>
-                <PanelSlot pool={POOL_V1}         className="flex-1 min-h-0" />
-                <PanelSlot pool={POOL_ALLYOURBASE} className="flex-1 min-h-0" />
-                <PanelSlot pool={POOL_ENHANCE}     className="flex-1 min-h-0" />
-                <PanelSlot pool={POOL_V2}         className="flex-1 min-h-0" />
-              </div>
-            </div>
-            <div className="flex flex-col gap-1 flex-1 min-w-0 min-h-0">
-              <PanelSlot pool={POOL_A} className="flex-1 min-h-0" />
-              <PanelSlot pool={POOL_D} className="flex-1 min-h-0" />
-              <PanelSlot pool={[...POOL_B, ...POOL_E, ...POOL_F, ...POOL_G]} className="flex-1 min-h-0" />
-            </div>
-          </div>
-        )}
-
-        {/* ── Layout 5: Panorama — Grafik oben, Text unten ──────────────────── */}
-        {layoutIdx === 4 && (
           <div className="flex flex-col gap-1 h-full min-h-0">
-            {/* Grafik-Reihe oben: Fraktal + 3 Grafik-Panels */}
-            <div className="flex gap-1 min-h-0 shrink-0" style={{ height: '50%' }}>
+
+            {/* Obere Reihe: Höhe ergibt sich aus AllYourBase-Breite × 9/16 */}
+            <div className="flex gap-1 shrink-0">
               <div className="flex-1 min-w-0 min-h-0">
                 <FractalView />
               </div>
-              <PanelSlot pool={POOL_V1}         className="flex-1 min-h-0" />
-              <PanelSlot pool={POOL_ALLYOURBASE} className="flex-1 min-h-0" />
-              <PanelSlot pool={POOL_ENHANCE}     className="flex-1 min-h-0" />
+              {/* 42% Breite → Höhe = 42% × Viewport-Breite × 9/16 ≈ 300px bei 1280px */}
+              <div style={{ width: '42%', aspectRatio: '16/9', flexShrink: 0 }}>
+                <PanelSlot pool={POOL_ALLYOURBASE} className="h-full w-full" />
+              </div>
             </div>
-            {/* Text-Reihe unten */}
+
+            {/* Untere Reihe: füllt verbleibenden Platz */}
             <div className="flex gap-1 flex-1 min-h-0">
-              <PanelSlot pool={POOL_A} className="flex-1 min-h-0" />
-              <PanelSlot pool={POOL_B} className="flex-1 min-h-0" />
-              <PanelSlot pool={POOL_D} className="flex-1 min-h-0" />
-              <PanelSlot pool={POOL_V2}         className="flex-1 min-h-0" />
-              <PanelSlot pool={[...POOL_E, ...POOL_F, ...POOL_G]} className="flex-1 min-h-0" />
+              <PanelSlot pool={POOL_TEXT}    className="flex-1 min-h-0" />
+              <PanelSlot pool={POOL_GFX}     className="flex-1 min-h-0" />
+              <PanelSlot pool={POOL_ENHANCE} className="flex-1 min-h-0" />
             </div>
+
           </div>
         )}
 

@@ -37,11 +37,15 @@ function buildHeightmap(
 }
 
 // ── Voxel-Space-Render-Fabrik ─────────────────────────────────────────────────
-// Jede Szene hat ihre eigene Auflösung, Heightmap und Farbfunktion.
+// Jede Szene hat ihre eigene Heightmap und Farbfunktion.
+// Die interne Render-Auflösung wird durch ResizeObserver dynamisch ermittelt
+// und per Performance-Cap (maxW × maxH) begrenzt.
+// Das Bild wird per drawImage auf die volle Canvas-Größe gestreckt.
+//
 // colorFn(th, fog): th = Terrain-Höhe 0..255, fog = Tiefe 0..1 → [R, G, B]
 function makeVoxelScene(
   title: string,
-  W: number, H: number,
+  maxW: number, maxH: number,   // Performance-Cap für interne Auflösung
   heightmap: Uint8Array,
   colorFn: (th: number, fog: number) => [number, number, number],
   camCfg: {
@@ -55,7 +59,6 @@ function makeVoxelScene(
   } = {}
 ): () => React.JSX.Element {
   const {
-    horizon    = H * 0.42,
     scale      = 120,
     fov        = 1.2,
     far        = 150,
@@ -90,16 +93,51 @@ function makeVoxelScene(
       const speedMax     = camCfg.speedMax     ?? 5
       const impulseScale = camCfg.impulseScale ?? 3
 
-      // ImageData einmal allozieren und pro Frame wiederverwenden → weniger GC-Druck
-      const img = ctx.createImageData(W, H)
-      const buf = img.data
+      // ── ResizeObserver: Canvas-Auflösung == Container-Größe ─────────────
+      const resize = () => {
+        canvas.width  = canvas.clientWidth
+        canvas.height = canvas.clientHeight
+      }
+      resize()
+      const ro = new ResizeObserver(resize)
+      ro.observe(canvas)
+
+      // Wiederverwendbares OffscreenCanvas für die interne Niedrig-Auflösung
+      const offscreen = document.createElement('canvas')
 
       function loop(t: number) {
         if (!running) return
 
+        // Sicherheitscheck: Canvas muss eine Größe haben
+        if (canvas!.width === 0 || canvas!.height === 0) {
+          rafId = requestAnimationFrame(loop)
+          return
+        }
+
         const dt = Math.min(t - lastT, 50)
         lastT = t
         const c = cam.current
+
+        // Interne Auflösung: proportional zur Canvas-Größe, aber max maxW × maxH
+        const scaleW = Math.min(1, maxW / Math.max(canvas!.width,  1))
+        const scaleH = Math.min(1, maxH / Math.max(canvas!.height, 1))
+        const internalScale = Math.min(scaleW, scaleH)
+        const W = Math.max(1, Math.round(canvas!.width  * internalScale))
+        const H = Math.max(1, Math.round(canvas!.height * internalScale))
+
+        // OffscreenCanvas auf interne Auflösung setzen (nur wenn nötig)
+        if (offscreen.width !== W || offscreen.height !== H) {
+          offscreen.width  = W
+          offscreen.height = H
+        }
+        const offCtx = offscreen.getContext('2d')!
+
+        // ImageData pro Frame neu anlegen (Größe kann sich geändert haben)
+        const img = offCtx.createImageData(W, H)
+        const buf = img.data
+
+        // Horizon dynamisch aus H berechnen (opts.horizon ignoriert für dynamischen H)
+        const horizon = H * 0.42
 
         // Zufälliger Geschwindigkeits-Impuls alle 2.5–4.5 Sekunden
         if (t - c.lastImpulse > 2500 + Math.random() * 2000) {
@@ -109,7 +147,7 @@ function makeVoxelScene(
           c.lastImpulse = t
         }
 
-        // Exponentielles Dämpfen (keine abrupten Richtungswechsel)
+        // Exponentielles Dämpfen
         c.vx *= 0.992
         c.vy *= 0.992
         c.va *= 0.995
@@ -119,7 +157,7 @@ function makeVoxelScene(
         if (speed < speedMin) { c.vx += (Math.random()-0.5)*1.5; c.vy += (Math.random()-0.5)*1.5 }
         if (speed > speedMax) { c.vx *= speedMax/speed; c.vy *= speedMax/speed }
 
-        // Position aktualisieren — Terrain wrapp nahtlos durch Bit-Maske (HMAP = 2^n)
+        // Position aktualisieren — Terrain wrapp nahtlos durch Bit-Maske
         c.x = ((c.x + c.vx * dt/16) % HMAP + HMAP) % HMAP
         c.y = ((c.y + c.vy * dt/16) % HMAP + HMAP) % HMAP
         c.angle += c.va * dt/16
@@ -180,30 +218,28 @@ function makeVoxelScene(
           }
         }
 
-        ctx.putImageData(img, 0, 0)
+        // Interne Pixel in OffscreenCanvas schreiben, dann auf volle Größe hochskalieren
+        offCtx.putImageData(img, 0, 0)
+        ctx.drawImage(offscreen, 0, 0, canvas!.width, canvas!.height)
+
         rafId = requestAnimationFrame(loop)
       }
 
       rafId = requestAnimationFrame(loop)
-      return () => { running = false; cancelAnimationFrame(rafId) }
+      return () => {
+        running = false
+        cancelAnimationFrame(rafId)
+        ro.disconnect()
+      }
     }, [])
 
     return (
       <Panel title={title}>
-        <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}>
-          <canvas
-            ref={canvasRef}
-            width={W} height={H}
-            style={{
-              width: '100%',
-              height: 'auto',
-              maxHeight: '100%',
-              aspectRatio: `${W} / ${H}`,
-              imageRendering: 'pixelated',
-              display: 'block',
-            }}
-          />
-        </div>
+        {/* Canvas füllt den Panel-Body vollständig */}
+        <canvas
+          ref={canvasRef}
+          style={{ width: '100%', height: '100%', imageRendering: 'pixelated', display: 'block' }}
+        />
       </Panel>
     )
   }
@@ -227,7 +263,8 @@ const hmJagged = buildHeightmap([
 ])
 
 // ── Variante: THERMAL SCAN ────────────────────────────────────────────────────
-// Infrarot-Ästhetik: tiefe Täler dunkelblau → Gipfel gelb-weiß
+// Infrarot-Ästhetik: tiefe Täler dunkelblau → Gipfel gelb-weiß.
+// Performance-Cap: max 320×200.
 export const VoxelThermal = makeVoxelScene(
   'THERMAL SCAN // TERRAIN ANALYSIS',
   320, 200,
@@ -237,18 +274,14 @@ export const VoxelThermal = makeVoxelScene(
     const f = 1 - fog
     let r: number, g: number, b: number
     if (t < 0.25) {
-      // Schwarz → Dunkelblau in tiefen Tälern
       r = 0; g = 0; b = Math.round(t / 0.25 * 130)
     } else if (t < 0.5) {
-      // Dunkelblau → Rot (Übergang am Hang)
       const p = (t - 0.25) / 0.25
       r = Math.round(p * 220); g = 0; b = Math.round(130 - p * 130)
     } else if (t < 0.75) {
-      // Rot → Orange (mittlere Höhen)
       const p = (t - 0.5) / 0.25
       r = 220; g = Math.round(p * 160); b = 0
     } else {
-      // Orange → Gelb-Weiß (Gipfel)
       const p = (t - 0.75) / 0.25
       r = 255; g = Math.round(160 + p * 95); b = Math.round(p * 200)
     }
@@ -258,7 +291,7 @@ export const VoxelThermal = makeVoxelScene(
   { camHBase: 100, camHAmp: 25, camHFloor: 60 },
 )
 
-// Lava: große flache Flächen mit scharfen Gipfeln (dominante mittlere Frequenz)
+// Lava: große flache Flächen mit scharfen Gipfeln
 const hmLava = buildHeightmap([
   { sx: 0.008, sy: 0.006, amp: 30 },
   { sx: 0.024, sy: 0.018, amp: 58, px: 2.3, py: 1.1 },
@@ -275,16 +308,15 @@ const hmMatrix = buildHeightmap([
 ])
 
 // ── Variante: NEON GRID (Demoscene-Stil) ─────────────────────────────────────
-// Halbe Auflösung → doppelt große Pixel (Retro-Charakter).
 // Farbe: Cyan in tiefen Tälern → Magenta auf Gipfeln.
+// Performance-Cap: max 160×100 für groben Retro-Pixel-Look.
 export const VoxelNeon = makeVoxelScene(
   'NEON GRID // SECTOR Ω',
-  160, 100,     // absichtlich niedrige Auflösung — mehr "Pixel" im Container
+  160, 100,
   hmJagged,
   (th, fog) => {
     const t = th / 255
     const f = Math.max(0, 1 - fog * 0.85)
-    // Hue-Verlauf: 180° (Cyan) bei niedrigem Terrain → 300° (Magenta) bei hohem
     const hue = 180 + t * 120
     const [r, g, b] = hslToRgb(hue, 1.0, 0.3 + t * 0.35)
     return [Math.round(r * f), Math.round(g * f), Math.round(b * f)]
@@ -295,29 +327,25 @@ export const VoxelNeon = makeVoxelScene(
 
 // ── Variante: LAVA FIELD ──────────────────────────────────────────────────────
 // Glühende Lava-Ästhetik: tiefe Täler fast schwarz, Gipfel weißglühend.
-// Terrain mit dominanter mittlerer Frequenz → typische Lavakrater-Landschaft.
+// Performance-Cap: max 320×200.
 export const VoxelLava = makeVoxelScene(
   'LAVA FIELD // SECTOR OMEGA',
   320, 200,
   hmLava,
   (th, fog) => {
     const t = th / 255
-    const f = 1 - fog * 0.65   // wenig Nebel → weite Sicht über Lavafeld
+    const f = 1 - fog * 0.65
     let r: number, g: number, b: number
     if (t < 0.35) {
-      // Tiefe Täler: erkaltet, fast schwarz mit minimalem Rotschimmer
       const p = t / 0.35
       r = Math.round(p * 55); g = 0; b = 0
     } else if (t < 0.6) {
-      // Hänge: dunkelrot → leuchtend rot
       const p = (t - 0.35) / 0.25
       r = Math.round(55 + p * 200); g = Math.round(p * 18); b = 0
     } else if (t < 0.82) {
-      // Gipfel-Schultern: orange
       const p = (t - 0.6) / 0.22
       r = 255; g = Math.round(18 + p * 185); b = Math.round(p * 20)
     } else {
-      // Glühende Spitzen: gelb-weiß
       const p = (t - 0.82) / 0.18
       r = 255; g = Math.round(203 + p * 52); b = Math.round(20 + p * 235)
     }
@@ -329,7 +357,7 @@ export const VoxelLava = makeVoxelScene(
 
 // ── Variante: PHOSPHOR TERRAIN ────────────────────────────────────────────────
 // Grüner Phosphor-Look: Täler dunkelgrün, Gipfel hellgrün.
-// Niedrige Auflösung für groben Demoscene-Pixel-Charakter, hohe Kamerageschwindigkeit.
+// Performance-Cap: max 160×100 für Pixel-Charakter + hohe Kamerageschwindigkeit.
 export const VoxelMatrix = makeVoxelScene(
   'PHOSPHOR TERRAIN // GREEN SECTOR',
   160, 100,
@@ -337,7 +365,6 @@ export const VoxelMatrix = makeVoxelScene(
   (th, fog) => {
     const t = th / 255
     const f = Math.max(0, 1 - fog * 0.72)
-    // Grüner Phosphor: minimales Rot für Wärme-Hauch
     const green = Math.round((0.18 + t * 0.82) * 255 * f)
     return [Math.round(green * 0.04), green, Math.round(green * 0.12)]
   },

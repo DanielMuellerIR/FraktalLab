@@ -33,11 +33,17 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
 }
 
 // ── Render-Funktion ──────────────────────────────────────────────────────────
+// Liest W und H direkt aus canvas.width / canvas.height — kein Hardcoding.
 function renderVoxel(
   ctx: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
   camX: number, camY: number, angle: number, camH: number, t: number,
 ) {
-  const W = 320, H = 200
+  // Interne Render-Auflösung: Performance-Cap bei 400 px Breite.
+  // Voxel-Terrain soll pixelated aussehen, höhere Auflösung bringt keinen Mehrwert.
+  const W = Math.min(canvas.width,  400)
+  const H = Math.min(canvas.height, Math.round(400 * canvas.height / Math.max(canvas.width, 1)))
+
   const img = ctx.createImageData(W, H)
   const buf = img.data
 
@@ -107,7 +113,16 @@ function renderVoxel(
     }
   }
 
-  ctx.putImageData(img, 0, 0)
+  // ImageData in internen Puffer zeichnen, dann auf Canvas-Größe strecken.
+  // Weil das Canvas CSS-Größe == canvas.width/height ist, muss das Zwischenbild
+  // zuerst in ein OffscreenCanvas / putImageData und dann drawImage gestreckt werden.
+  // Einfacher: wir erstellen die ImageData mit der gecappten Auflösung (W×H)
+  // und strecken sie per drawImage auf die volle Canvas-Größe.
+  const tmpCanvas = document.createElement('canvas')
+  tmpCanvas.width  = W
+  tmpCanvas.height = H
+  tmpCanvas.getContext('2d')!.putImageData(img, 0, 0)
+  ctx.drawImage(tmpCanvas, 0, 0, canvas.width, canvas.height)
 }
 
 // ── Komponente ───────────────────────────────────────────────────────────────
@@ -132,6 +147,16 @@ export default function VoxelDemo() {
     let running = true
     let lastT = 0
 
+    // ── ResizeObserver: Canvas-Auflösung == Container-Größe ─────────────────
+    const resize = () => {
+      if (!canvas) return
+      canvas.width  = canvas.clientWidth
+      canvas.height = canvas.clientHeight
+    }
+    resize()
+    const ro = new ResizeObserver(resize)
+    ro.observe(canvas)
+
     function loop(t: number) {
       if (!running) return
 
@@ -139,6 +164,12 @@ export default function VoxelDemo() {
       const dt = Math.min(t - lastT, 50)
       lastT = t
       const c = cam.current
+
+      // Sicherheitscheck: falls Canvas noch keine Größe hat, überspringen
+      if (canvas!.width === 0 || canvas!.height === 0) {
+        rafId = requestAnimationFrame(loop)
+        return
+      }
 
       // Zufälliger Impuls alle 2.5–4.5 Sekunden
       if (t - c.lastImpulse > 2500 + Math.random() * 2000) {
@@ -165,24 +196,29 @@ export default function VoxelDemo() {
       c.angle += c.va * dt/16
 
       // Terrain-Höhe an Kameraposition samplen → Kamera immer mindestens 70 Einheiten darüber.
-      // Verhindert "ganzflächige" Szenen wenn die Kamera fast auf Bodenniveau ist.
       const tx = Math.floor(c.x) & (HMAP - 1)
       const ty = Math.floor(c.y) & (HMAP - 1)
       const terrainAtCam = heightmap[ty * HMAP + tx]
       const camH = Math.max(terrainAtCam + 70, 110 + 30 * Math.sin(t * 0.0004))
-      renderVoxel(ctx, c.x, c.y, c.angle, camH, t)
+
+      // Canvas-Objekt übergeben, damit renderVoxel die aktuelle Größe lesen kann
+      renderVoxel(ctx, canvas!, c.x, c.y, c.angle, camH, t)
       rafId = requestAnimationFrame(loop)
     }
 
     rafId = requestAnimationFrame(loop)
-    return () => { running = false; cancelAnimationFrame(rafId) }
+    return () => {
+      running = false
+      cancelAnimationFrame(rafId)
+      ro.disconnect()
+    }
   }, [])
 
   return (
     <Panel title="VOXEL TERRAIN // SECTOR 7G">
+      {/* Canvas füllt den Panel-Body vollständig */}
       <canvas
         ref={canvasRef}
-        width={320} height={200}
         style={{ width: '100%', height: '100%', imageRendering: 'pixelated', display: 'block' }}
       />
     </Panel>

@@ -18,12 +18,25 @@ function hsl(h: number, s: number, l: number): [number, number, number] {
 
 // ── Factory: erstellt Panel-Komponente aus Render-Callback ───────────────────
 // Zustand wird per Ref gehalten → kein Re-render bei Frame-Updates.
+//
+// Parameter:
+//   title        — Panel-Titelzeile
+//   maxW / maxH  — Performance-Cap für interne Render-Auflösung
+//   mkState      — Funktion, die den initialen Szenen-Zustand erzeugt.
+//                  Erhält (W, H) der ersten tatsächlichen Render-Auflösung.
+//   draw         — Render-Callback: füllt buf (Uint8ClampedArray) mit RGBA-Pixeln.
+//                  Erhält (buf, W, H, t, state).
+//
+// Die interne Auflösung wird durch ResizeObserver aktuell gehalten und liegt
+// maximal bei maxW × maxH (Performance-Cap). Das Bild wird per drawImage auf
+// die volle Canvas-Größe hochskaliert (CSS imageRendering: pixelated).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function makeScene(
   title: string,
-  W: number,
-  H: number,
-  mkState: () => any,
+  maxW: number,
+  maxH: number,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  mkState: (W: number, H: number) => any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   draw: (buf: Uint8ClampedArray, W: number, H: number, t: number, s: any) => void,
 ): () => React.JSX.Element {
@@ -33,60 +46,115 @@ function makeScene(
     const stateRef = useRef<any>(null)
 
     useEffect(() => {
-      stateRef.current = mkState()
       const canvas = canvasRef.current!
       const ctx = canvas.getContext('2d')!
       let raf: number
       let alive = true
 
+      // Internes OffscreenCanvas für die gecappte Niedrig-Auflösung
+      const offscreen = document.createElement('canvas')
+
+      // Berechnet die interne Auflösung basierend auf der aktuellen Canvas-CSS-Größe
+      // und dem Performance-Cap (maxW × maxH).
+      const getInternalSize = () => {
+        const cw = canvas.clientWidth  || maxW
+        const ch = canvas.clientHeight || maxH
+        // Proportional skalieren, sodass weder Breite noch Höhe den Cap überschreiten
+        const scaleW = Math.min(1, maxW / cw)
+        const scaleH = Math.min(1, maxH / ch)
+        const scale  = Math.min(scaleW, scaleH)
+        return {
+          W: Math.max(1, Math.round(cw * scale)),
+          H: Math.max(1, Math.round(ch * scale)),
+        }
+      }
+
+      // ── ResizeObserver: Canvas-Auflösung == Container-Größe ─────────────
+      const resize = () => {
+        canvas.width  = canvas.clientWidth
+        canvas.height = canvas.clientHeight
+      }
+      resize()
+      const ro = new ResizeObserver(resize)
+      ro.observe(canvas)
+
+      // Zustand erst initialisieren, nachdem wir die erste interne Größe kennen
+      const { W: initW, H: initH } = getInternalSize()
+      stateRef.current = mkState(initW, initH)
+
       function loop(t: number) {
         if (!alive) return
-        const img = ctx.createImageData(W, H)
+
+        // Sicherheitscheck: Canvas muss eine Größe haben
+        if (canvas.width === 0 || canvas.height === 0) {
+          raf = requestAnimationFrame(loop)
+          return
+        }
+
+        const { W, H } = getInternalSize()
+
+        // OffscreenCanvas nur dann neu anlegen, wenn sich die interne Größe ändert
+        if (offscreen.width !== W || offscreen.height !== H) {
+          offscreen.width  = W
+          offscreen.height = H
+          // Zustand bei Größenänderung neu initialisieren (z.B. Buffer-Arrays)
+          stateRef.current = mkState(W, H)
+        }
+
+        const offCtx = offscreen.getContext('2d')!
+        const img = offCtx.createImageData(W, H)
+
+        // Render-Callback füllt img.data mit RGBA-Pixeln
         draw(img.data, W, H, t, stateRef.current)
-        ctx.putImageData(img, 0, 0)
+
+        // Interne Pixel in OffscreenCanvas schreiben ...
+        offCtx.putImageData(img, 0, 0)
+        // ... dann auf volle Canvas-Größe hochskalieren
+        ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height)
+
         raf = requestAnimationFrame(loop)
       }
+
       raf = requestAnimationFrame(loop)
-      return () => { alive = false; cancelAnimationFrame(raf) }
+      return () => {
+        alive = false
+        cancelAnimationFrame(raf)
+        ro.disconnect()
+      }
     }, [])
 
     return (
       <Panel title={title}>
-        {/* Zentrierende Wrapper-Box: Canvas skaliert mit korrektem Seitenverhältnis */}
-        <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}>
-          <canvas
-            ref={canvasRef}
-            width={W} height={H}
-            style={{
-              width: '100%',
-              height: 'auto',
-              maxHeight: '100%',
-              aspectRatio: `${W} / ${H}`,
-              imageRendering: 'pixelated',
-              display: 'block',
-            }}
-          />
-        </div>
+        {/* Canvas füllt den Panel-Body vollständig */}
+        <canvas
+          ref={canvasRef}
+          style={{ width: '100%', height: '100%', imageRendering: 'pixelated', display: 'block' }}
+        />
       </Panel>
     )
   }
 }
 
 // ── Effekt 1: Feuer — Doom-Algorithmus ───────────────────────────────────────
-// Hitze von unten nach oben propagieren + leicht abkühlen → typisches Flammen-Muster
+// Hitze von unten nach oben propagieren + leicht abkühlen → typisches Flammen-Muster.
+// Interner Performance-Cap: max 160×100 (pixelated-Look ist gewollt).
 export const FireScene = makeScene(
-  'CORE MELTDOWN // STATUS: CRITICAL', 80, 50,
-  () => new Uint8Array(80 * 50),
+  'CORE MELTDOWN // STATUS: CRITICAL', 160, 100,
+  // mkState erhält die tatsächliche interne Auflösung
+  (W, H) => new Uint8Array(W * H),
   (buf, W, H, _t, heat: Uint8Array) => {
+    // Unterste Reihe: zufälliges "Feuer" entzünden
     for (let x = 0; x < W; x++)
       heat[(H-1)*W+x] = Math.random() > 0.2 ? 255 : 180 + Math.floor(Math.random()*75)
 
+    // Wärme nach oben propagieren + leicht abkühlen
     for (let y = 1; y < H; y++)
       for (let x = 0; x < W; x++) {
         const a = heat[y*W+x], bl = heat[y*W+Math.max(0,x-1)], br = heat[y*W+Math.min(W-1,x+1)]
         heat[(y-1)*W+x] = Math.max(0, Math.floor((a+bl+br)/3) - 4)
       }
 
+    // Temperatur-Farbpalette: Schwarz → Rot → Orange → Gelb → Weiß
     for (let i = 0; i < W*H; i++) {
       const h = heat[i], pi = i*4
       if      (h < 64)  { buf[pi]=h*4;  buf[pi+1]=0;        buf[pi+2]=0 }
@@ -99,9 +167,10 @@ export const FireScene = makeScene(
 )
 
 // ── Effekt 2: Starfield — 3D-Sterne fliegen auf die Kamera zu ────────────────
+// Volle Auflösung OK (nur Punkte, kein Pixel-Buffer-Overhead).
 type Star = { x: number; y: number; z: number }
 export const StarfieldScene = makeScene(
-  'DEEP SPACE // SCANNING SECTOR 9', 80, 50,
+  'DEEP SPACE // SCANNING SECTOR 9', 99999, 99999,
   (): Star[] => Array.from({length:150}, () => ({
     x: (Math.random()-0.5)*2, y: (Math.random()-0.5)*2, z: Math.random(),
   })),
@@ -129,8 +198,9 @@ export const StarfieldScene = makeScene(
 )
 
 // ── Effekt 3: Tunnel — rotierendes Schachbrett-Tunnel (Amiga-Klassiker) ──────
+// Performance-Cap: max 200×150.
 export const TunnelScene = makeScene(
-  'WORMHOLE // TRANSIT ACTIVE', 80, 50,
+  'WORMHOLE // TRANSIT ACTIVE', 200, 150,
   () => null,
   (buf, W, H, t) => {
     const ts = t * 0.001
@@ -148,8 +218,9 @@ export const TunnelScene = makeScene(
 )
 
 // ── Effekt 4: Rotozoom — rotierende + zoomende Kacheln ───────────────────────
+// Performance-Cap: max 200×150.
 export const RotozoomScene = makeScene(
-  'TESSERACT ROTATION // DECRYPTING', 80, 50,
+  'TESSERACT ROTATION // DECRYPTING', 200, 150,
   () => null,
   (buf, W, H, t) => {
     const ts  = t * 0.001
@@ -168,12 +239,13 @@ export const RotozoomScene = makeScene(
 )
 
 // ── Effekt 5: Metaballs — flüssige Blobs mit Farbgewichtung ─────────────────
+// Performance-Cap: max 200×150.
 type Ball = { x:number; y:number; vx:number; vy:number; r:number; hue:number }
 export const MetaballsScene = makeScene(
-  'LIQUID CODE // RENDERING', 80, 50,
-  // Zufällige Startpositionen — jeder Mount sieht andere Blob-Konfiguration
-  (): Ball[] => Array.from({length:5}, (_,i) => ({
-    x:5+Math.random()*70, y:5+Math.random()*40,
+  'LIQUID CODE // RENDERING', 200, 150,
+  // Startpositionen relativ zur tatsächlichen internen Auflösung
+  (W, H): Ball[] => Array.from({length:5}, (_,i) => ({
+    x:5+Math.random()*(W-10), y:5+Math.random()*(H-10),
     vx:(Math.random()-0.5)*0.9, vy:(Math.random()-0.5)*0.9,
     r:7+Math.random()*10, hue:(i*72 + Math.floor(Math.random()*30))%360,
   })),
@@ -201,9 +273,10 @@ export const MetaballsScene = makeScene(
 )
 
 // ── Effekt 6: Dotcloud — rotierende 3D-Punktwolke (Fibonacci-Kugel) ──────────
+// Performance-Cap: max 200×150.
 type Dot = { x:number; y:number; z:number; hue:number }
 export const DotCloudScene = makeScene(
-  'NEURAL NET // 300 NODES ACTIVE', 80, 50,
+  'NEURAL NET // 300 NODES ACTIVE', 200, 150,
   (): Dot[] => Array.from({length:300}, (_,i) => {
     const phi=Math.acos(1-2*(i+0.5)/300), theta=Math.PI*(1+Math.sqrt(5))*i
     return { x:Math.sin(phi)*Math.cos(theta), y:Math.sin(phi)*Math.sin(theta), z:Math.cos(phi), hue:i*1.2%360 }
@@ -226,9 +299,10 @@ export const DotCloudScene = makeScene(
 )
 
 // ── Effekt 7: Boing — klassischer Amiga-Demo-Ball ────────────────────────────
-// Rotierender rot-weißer Karierter Ball hüpft im Panel
+// Rotierender rot-weißer Karierter Ball hüpft im Panel.
+// Performance-Cap: max 200×150.
 export const BoingScene = makeScene(
-  'OBJECT 7 // TRAJECTORY STABLE', 60, 60,
+  'OBJECT 7 // TRAJECTORY STABLE', 200, 150,
   () => null,
   (buf, W, H, t) => {
     buf.fill(0); for (let i=3;i<buf.length;i+=4) buf[i]=255
@@ -258,11 +332,14 @@ export const BoingScene = makeScene(
 )
 
 // ── Effekt 8: Lissajous — animierte Kurve mit Nachleucht-Spur ────────────────
+// Performance-Cap: max 200×150.
 export const LissajousScene = makeScene(
-  'SIGNAL TRACE // LISSAJOUS Ω', 80, 50,
-  () => new Uint8Array(80*50),
+  'SIGNAL TRACE // LISSAJOUS Ω', 200, 150,
+  // Trail-Buffer hat genau die interne Auflösung W×H
+  (W, H) => new Uint8Array(W * H),
   (buf, W, H, t, trail: Uint8Array) => {
     const ts=t*0.001
+    // Trail langsam ausblenden
     for (let i=0;i<trail.length;i++) trail[i]=Math.max(0,trail[i]-5)
     // Parametrisch 30 Punkte pro Frame einzeichnen
     for (let i=0;i<30;i++) {
@@ -271,6 +348,7 @@ export const LissajousScene = makeScene(
       const py=Math.round((Math.sin(4*ft)*0.45+0.5)*(H-1))
       if (px>=0&&px<W&&py>=0&&py<H) trail[py*W+px]=255
     }
+    // Trail-Buffer als Farbe rendern
     for (let i=0;i<W*H;i++) {
       const pi=i*4, v=trail[i]
       if (v===0) { buf[pi]=buf[pi+1]=buf[pi+2]=0 }

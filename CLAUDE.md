@@ -14,7 +14,7 @@ Thematischer Rahmen: Ein fiktives „Neural Intrusion Dashboard", das Hacker-Kli
 
 **Speed-first-Regel:** Jedes Feature muss in einer einzigen Session vollständig lauffähig implementiert werden können. Features, die das nicht schaffen, werden auf kleineres Scope reduziert oder verschoben. Keine halbfertigen Implementierungen.
 
-Aktueller Stand: **v0.9.5**. Deployment auf Netcup-Webspace (Apache).
+Aktueller Stand: **v0.9.6**. Deployment auf Netcup-Webspace (Apache).
 
 ---
 
@@ -101,6 +101,9 @@ cd frontend && npm run test:panels
 
 `SystemLog`, `DataStream`, `SocialEngineering`, `Vitals`, `TrafficMonitor`, `NuclearTargets`, `PwdCracker`, `PortScanner`, `PseudoCode`
 
+**Neue Text-Panels (v0.9.6):**
+`ClaudeCodePanel` (Claude Code CLI-Simulation), `VisitorProfilePanel` (Browser-Fingerprint-Terminal), `ICQChatPanel` (AI-Agenten-Chat über Weltherrschaft), `BitcoinMinerPanel` (Fake-Hashrate-Dashboard), `DiskCleanupPanel` (Fake-Disk-Cleanup-Terminal)
+
 ### Grafik-Panels (Canvas-Animationen)
 
 | Datei | Inhalt |
@@ -112,6 +115,9 @@ cd frontend && npm run test:panels
 | `DNAHelix.tsx` | Animierte DNA-Doppelhelix |
 | `OscilloscopePanel.tsx` | 6 Signalmodi: EKG, Seismik, FM, Interferenz, Rauschen, Sonar |
 | `DemoScenes.tsx` | 8 Demoscene-Klassiker: `FireScene`, `StarfieldScene`, `TunnelScene`, `RotozoomScene`, `MetaballsScene`, `DotCloudScene`, `BoingScene`, `LissajousScene` |
+| `ParallaxPanel.tsx` | 5-Layer-Parallax-Scrolling einer futuristischen Raumstadt |
+| `DaggerfallPanel.tsx` | Raycasting-Dungeon-Engine (DDA-Algorithmus), KI-Spieler, DOS-HUD |
+| `ElitePanel.tsx` | Wireframe-Raumschiff (Cobra Mk III), Radar, HUD — Elite-1984-Stil |
 
 ### Spezial-Panels
 
@@ -120,21 +126,31 @@ cd frontend && npm run test:panels
 | `AllYourBase.tsx` | Video von archive.org — **aktuell defekt (BUG-01, CORS)** |
 | `EnhanceView.tsx` | „ENHANCE PHOTO"-Slideshow mit Straßenfotos |
 
+### Layout-Änderungen (v0.9.6)
+
+- **3 statt 5 Layouts** — ~50% weniger Slots pro Layout, deutlich größere Panels
+- **POOL_TEXT**: alle Text-Panels in einem gemeinsamen Pool (inkl. 5 neue)
+- **POOL_GFX**: alle Grafik-Panels in einem gemeinsamen Pool (inkl. 3 neue)
+- **AllYourBase**: immer in 16:9-Container (`aspect-ratio: 16/9` per CSS)
+- **GlitchOverlay**: deutlich intensiver (Intervall 5–15s statt 20–60s, mehr Effekte)
+- **Ambient Sound**: `AmbientSound.tsx` mit Tipp-Clicks, Pings, CRT-Hum; Toggle in der Kopfzeile
+
 ### Pool-Zuordnung (`App.tsx`)
 
 ```
-POOL_A          SystemLog, DataStream, SocialEngineering
-POOL_B          Vitals, TrafficMonitor
-POOL_D          NuclearTargets
-POOL_E          PwdCracker
-POOL_F          PortScanner
-POOL_G          PseudoCode
-POOL_V1         VoxelDemo, GlobePanel, VoxelThermal, VoxelLava, FireScene, StarfieldScene,
-                BoingScene, LissajousScene, OscilloscopePanel, FractalSeahorse, FractalSpiral,
-                FractalTendril, FractalLightning, TunnelScene, MetaballsScene
-POOL_V2         VoxelNeon, VoxelMatrix, DNAHelix, PlasmaDemo, RotozoomScene, DotCloudScene,
+POOL_TEXT       SystemLog, DataStream, SocialEngineering, Vitals, TrafficMonitor,
+                NuclearTargets, PwdCracker, PortScanner, PseudoCode,
+                ClaudeCodePanel, VisitorProfilePanel, ICQChatPanel,
+                BitcoinMinerPanel, DiskCleanupPanel
+
+POOL_GFX        VoxelDemo, GlobePanel, VoxelThermal, VoxelLava, VoxelNeon, VoxelMatrix,
+                FireScene, StarfieldScene, BoingScene, LissajousScene,
+                OscilloscopePanel, TunnelScene, MetaballsScene, RotozoomScene, DotCloudScene,
+                PlasmaDemo, DNAHelix, ParallaxPanel, DaggerfallPanel, ElitePanel,
+                FractalSeahorse, FractalSpiral, FractalTendril, FractalLightning,
                 FractalElephant, FractalMini, FractalDendrite, FractalSwirl, FractalSatellite
-POOL_ALLYOURBASE  AllYourBase (dediziert)
+
+POOL_ALLYOURBASE  AllYourBase (dediziert, immer in 16:9-Container)
 POOL_ENHANCE      EnhanceView (dediziert)
 ```
 

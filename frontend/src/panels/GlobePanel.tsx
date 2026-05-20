@@ -1,10 +1,6 @@
 import { useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
-// Canvas-Auflösung (intern, wird per CSS auf 100% gestreckt)
-const W = 320
-const H = 200
-
 // ── Kapitalen-Daten ──────────────────────────────────────────────────────────
 // Jeder Eintrag: geografische Koordinaten + CIA-style Metadaten
 const CAPITALS = [
@@ -54,13 +50,13 @@ function lerp(a: number, b: number, t: number): number {
  * Wird genutzt, damit die Rotation beim Targeting nicht den langen Weg nimmt.
  */
 function angleDiff(from: number, to: number): number {
-  let d = ((to - from) % (Math.PI * 2) + Math.PI * 3) % (Math.PI * 2) - Math.PI
+  const d = ((to - from) % (Math.PI * 2) + Math.PI * 3) % (Math.PI * 2) - Math.PI
   return d
 }
 
 /**
  * Projiziert einen Punkt auf der Einheitskugel auf Canvas-Koordinaten.
- * Gibt { sx, sy, visible } zurück (visible = Punkt liegt auf der Vorderseite).
+ * Gibt { sx, sy, z2 } zurück (z2 > 0 = Punkt liegt auf der Vorderseite).
  */
 function project(
   lat: number, lon: number,
@@ -127,6 +123,24 @@ export default function GlobePanel() {
     let rafId: number
     let running = true
 
+    // ── ResizeObserver: Canvas-Auflösung == Container-Größe ─────────────────
+    const resize = () => {
+      if (!canvas) return
+      canvas.width  = canvas.clientWidth
+      canvas.height = canvas.clientHeight
+    }
+    resize()
+    const ro = new ResizeObserver(resize)
+    ro.observe(canvas)
+
+    // ── Hilfsfunktion: Hex-Farbe in RGB-String für rgba() umwandeln ─────────
+    function hexToRgba(hex: string): string {
+      const r = parseInt(hex.slice(1, 3), 16)
+      const g = parseInt(hex.slice(3, 5), 16)
+      const b = parseInt(hex.slice(5, 7), 16)
+      return `${r},${g},${b}`
+    }
+
     // ── Hilfsfunktion: Globus-Gitterlinien zeichnen ──────────────────────────
     // Pro Großkreis werden Punkte alle 5° abgetastet. Wenn ein Punkt von der
     // Vorderseite zur Rückseite wechselt (z2 ≤ 0), wird der Pfad unterbrochen.
@@ -134,6 +148,8 @@ export default function GlobePanel() {
       // Breitengrade alle 30°, von -90 bis +90
       for (let lat = -90; lat <= 90; lat += 30) {
         const isEquator = lat === 0
+        ctx.strokeStyle = isEquator ? '#2d6030' : '#1a4020'
+        ctx.lineWidth = 0.8
         ctx.beginPath()
         let pathOpen = false
         for (let lon = -180; lon <= 180; lon += 5) {
@@ -148,9 +164,6 @@ export default function GlobePanel() {
           }
         }
         if (pathOpen) ctx.stroke()
-        // Äquator etwas heller
-        ctx.strokeStyle = isEquator ? '#2d6030' : '#1a4020'
-        ctx.lineWidth = 0.8
       }
 
       // Längengrade alle 30°, von -180 bis +150
@@ -175,7 +188,13 @@ export default function GlobePanel() {
 
     // ── Hilfsfunktion: Daten-Overlay zeichnen ───────────────────────────────
     // Zeigt CIA-style Metadaten zur aktuellen Ziel-Kapitale.
-    function drawDataOverlay(alpha: number, cap: typeof CAPITALS[0], t: number) {
+    // W und H werden als Parameter übergeben (aktuelle Canvas-Größe).
+    function drawDataOverlay(
+      alpha: number,
+      cap: typeof CAPITALS[0],
+      t: number,
+      W: number,
+    ) {
       if (alpha <= 0) return
 
       // Formatierung der Koordinaten (N/S, E/W)
@@ -226,17 +245,19 @@ export default function GlobePanel() {
       })
     }
 
-    // Hilfsfunktion: Hex-Farbe in RGB-String für rgba() umwandeln
-    function hexToRgba(hex: string): string {
-      const r = parseInt(hex.slice(1, 3), 16)
-      const g = parseInt(hex.slice(3, 5), 16)
-      const b = parseInt(hex.slice(5, 7), 16)
-      return `${r},${g},${b}`
-    }
-
     // ── RAF-Haupt-Loop ───────────────────────────────────────────────────────
     function loop(t: number) {
       if (!running) return
+
+      // Aktuelle Canvas-Dimensionen dynamisch lesen
+      const W = canvas!.width
+      const H = canvas!.height
+
+      // Sicherheitscheck: falls Canvas noch keine Größe hat, überspringen
+      if (W === 0 || H === 0) {
+        rafId = requestAnimationFrame(loop)
+        return
+      }
 
       const s = stateRef.current
       const elapsed = t - s.phaseStart  // ms seit Phasen-Start
@@ -250,9 +271,7 @@ export default function GlobePanel() {
           s.targetIdx = Math.floor(Math.random() * CAPITALS.length)
           const cap = CAPITALS[s.targetIdx]
           // Ziel-Rotation: der Lon-Grad des Ziels soll nach vorne zeigen.
-          // In unserer Projektion ist lon=0 vorne wenn rotY=0 → Ziel-rotY = -lonR
           const lonR = cap.lon * (Math.PI / 180)
-          // Ziel-rotY so wählen, dass die Differenz minimal ist (kürzester Weg)
           const rawTarget = -lonR
           const diff = angleDiff(s.rotY, rawTarget)
           s.targetRotY = s.rotY + diff
@@ -302,7 +321,9 @@ export default function GlobePanel() {
       }
 
       // ── Rendering ────────────────────────────────────────────────────────
-      const R  = 75 * s.zoom   // Globus-Radius in Pixeln
+      // Globus-Radius proportional zur kleineren Canvas-Dimension
+      const baseR = Math.min(W, H) * 0.38
+      const R  = baseR * s.zoom   // Globus-Radius in Pixeln (inkl. Zoom)
       const cx = W / 2
       const cy = H / 2
 
@@ -371,7 +392,8 @@ export default function GlobePanel() {
 
       // ── Daten-Overlay (locked + releasing) ──────────────────────────────
       if (s.dataAlpha > 0) {
-        drawDataOverlay(s.dataAlpha, CAPITALS[s.targetIdx], t)
+        // Aktuelle Canvas-Breite als Parameter übergeben
+        drawDataOverlay(s.dataAlpha, CAPITALS[s.targetIdx], t, W)
       }
 
       // ── Phasen-Status-Indikator (oben links) ────────────────────────────
@@ -398,26 +420,17 @@ export default function GlobePanel() {
     return () => {
       running = false
       cancelAnimationFrame(rafId)
+      ro.disconnect()
     }
   }, [])
 
   return (
     <Panel title="GLOBAL SURVEILLANCE // SECTOR 7">
-      <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}>
-        <canvas
-          ref={canvasRef}
-          width={W}
-          height={H}
-          style={{
-            width: '100%',
-            height: 'auto',
-            maxHeight: '100%',
-            aspectRatio: `${W} / ${H}`,
-            imageRendering: 'pixelated',
-            display: 'block',
-          }}
-        />
-      </div>
+      {/* Canvas füllt den Panel-Body vollständig */}
+      <canvas
+        ref={canvasRef}
+        style={{ width: '100%', height: '100%', display: 'block' }}
+      />
     </Panel>
   )
 }

@@ -7,12 +7,22 @@ const VIDEO_SRC = 'https://archive.org/download/youtube-dIQ53t0gv_4/dIQ53t0gv_4.
 
 export default function AllYourBase() {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const [muted, setMuted] = useState(true)
+  // Ton ist standardmäßig AN — "All your base" verdient Ton
+  const [muted, setMuted] = useState(false)
 
   // React's `muted`-Prop hat einen bekannten Bug (wird nach erstem Render nicht aktualisiert).
   // Daher direkt über das DOM-Element steuern.
+  // Browser blockieren oft autoplay mit Ton bis zur ersten User-Interaktion.
+  // Wir versuchen es mit Ton, fallen aber bei Fehler auf stumm zurück.
   useEffect(() => {
-    if (videoRef.current) videoRef.current.muted = true
+    const v = videoRef.current
+    if (!v) return
+    v.muted = false
+    v.play().catch(() => {
+      // Autoplay mit Ton wurde vom Browser blockiert → stumm abspielen
+      v.muted = true
+      setMuted(true)
+    })
   }, [])
 
   const toggleMute = () => {
@@ -24,15 +34,15 @@ export default function AllYourBase() {
 
   return (
     <Panel title="ALL YOUR BASE // INCOMING TRANSMISSION">
+      {/* objectFit: cover füllt den Container vollständig, beschneidet wenn nötig */}
       <div className="relative w-full h-full">
         <video
           ref={videoRef}
           src={VIDEO_SRC}
           autoPlay
           loop
-          muted
           playsInline
-          style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
         />
         {/* Ton-Toggle — dezent in der Ecke */}
         <button
@@ -41,7 +51,7 @@ export default function AllYourBase() {
                      text-green-500 font-mono text-xs px-1.5 py-0.5
                      hover:bg-green-900 hover:text-green-200 transition-colors"
         >
-          {muted ? '[ MUTE ]' : '[ LIVE ]'}
+          {muted ? '[ MUTED ]' : '[ SOUND ON ]'}
         </button>
       </div>
     </Panel>
