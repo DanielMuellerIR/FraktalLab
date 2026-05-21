@@ -787,10 +787,12 @@ type ThreeBodyBall = {
 type ThreeBodyState = {
   balls: ThreeBodyBall[]
   lastT: number
+  W: number
+  H: number
 }
 
 export const ThreeBodyScene = makeScene(
-  'THREE BODY PROBLEM // CHAOTIC RESONANCE', 200, 150,
+  'THREE BODY PROBLEM // CHAOTIC RESONANCE', 640, 480,
   (W, H): ThreeBodyState => {
     const balls: ThreeBodyBall[] = []
     for (let i = 0; i < 3; i++) {
@@ -801,7 +803,8 @@ export const ThreeBodyScene = makeScene(
       const omegaY = 0.0005 + Math.random() * 0.001
       const omegaZ = 0.0005 + Math.random() * 0.001
       const angle = Math.random() * Math.PI * 2
-      const speed = 0.04 + Math.random() * 0.06
+      // Speed scales proportionally with the grid size to keep visual velocity consistent
+      const speed = (0.04 + Math.random() * 0.06) * (Math.min(W, H) / 150)
       balls.push({
         bx: W * 0.2 + Math.random() * W * 0.6,
         by: H * 0.2 + Math.random() * H * 0.6,
@@ -818,6 +821,8 @@ export const ThreeBodyScene = makeScene(
     return {
       balls,
       lastT: -1,
+      W,
+      H,
     }
   },
   (buf, W, H, t, state: ThreeBodyState) => {
@@ -926,16 +931,23 @@ export const ThreeBodyScene = makeScene(
       const yMax = Math.min(H - 1, Math.ceil(ball.by + rad))
 
       for (let y = yMin; y <= yMax; y++) {
+        const dy = y - ball.by
+        const dy2 = dy * dy
+        const dy_m01 = dy * m01
+        const dy_m11 = dy * m11
+        const dy_m21 = dy * m21
+        const dy_03 = 0.3 * dy
+
         for (let x = xMin; x <= xMax; x++) {
-          const dx = x - ball.bx, dy = y - ball.by
-          const d2 = dx * dx + dy * dy
+          const dx = x - ball.bx
+          const d2 = dx * dx + dy2
           if (d2 > rad2) continue
 
           const nz_sqrt = Math.sqrt(rad2 - d2)
 
-          const nx3 = dx * m00 + dy * m01 + nz_sqrt * m02
-          const ny3 = dx * m10 + dy * m11 + nz_sqrt * m12
-          const nz2 = (dx * m20 + dy * m21 + nz_sqrt * m22) * invRad
+          const nx3 = dx * m00 + dy_m01 + nz_sqrt * m02
+          const ny3 = dx * m10 + dy_m11 + nz_sqrt * m12
+          const nz2 = (dx * m20 + dy_m21 + nz_sqrt * m22) * invRad
 
           // Checkerboard pattern: Math.asin and Math.atan2 replacements
           let floorUb = 0
@@ -963,7 +975,7 @@ export const ThreeBodyScene = makeScene(
           const checker = (floorUa + floorUb) & 1
 
           // Light intensity
-          const light = Math.max(0.15, (0.4 * dx - 0.3 * dy + 0.85 * nz_sqrt) * invRad)
+          const light = Math.max(0.15, (0.4 * dx - dy_03 + 0.85 * nz_sqrt) * invRad)
           const c = Math.round(light * 255)
 
           const pi = (y * W + x) * 4
@@ -987,7 +999,7 @@ export const ThreeBodyScene = makeScene(
 
     // Draw gravity connection vectors
     offCtx.strokeStyle = 'rgba(74, 222, 128, 0.45)'
-    offCtx.lineWidth = 1.0
+    offCtx.lineWidth = Math.max(1, Math.round(Math.min(_W, _H) * 0.008))
     offCtx.beginPath()
     offCtx.moveTo(balls[0].bx, balls[0].by)
     offCtx.lineTo(balls[1].bx, balls[1].by)
@@ -997,10 +1009,11 @@ export const ThreeBodyScene = makeScene(
 
     // Draw dynamic labels showing center gravity index
     offCtx.fillStyle = 'rgba(74, 222, 128, 0.85)'
-    offCtx.font = 'bold 7px monospace'
+    const fontSize = Math.max(8, Math.round(Math.min(_W, _H) * 0.045))
+    offCtx.font = `bold ${fontSize}px monospace`
     for (let i = 0; i < 3; i++) {
       const b = balls[i]
-      offCtx.fillText(`M-${i+1}`, b.bx + 10, b.by - 10)
+      offCtx.fillText(`M-${i+1}`, b.bx + fontSize * 1.2, b.by - fontSize * 1.2)
     }
   }
 )
