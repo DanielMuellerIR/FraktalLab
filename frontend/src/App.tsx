@@ -82,6 +82,7 @@ interface GridCell {
   type:       CellType
   gridColumn: string  // CSS-Wert, z.B. "1 / 3"
   gridRow:    string  // CSS-Wert, z.B. "1 / 2"
+  panelIdx?:  number
 }
 
 interface GeneratedLayout {
@@ -89,6 +90,24 @@ interface GeneratedLayout {
   gridTemplateColumns: string   // z.B. "28fr 44fr 28fr"
   gridTemplateRows:    string   // z.B. "60fr 40fr"
   cells:               GridCell[]
+}
+
+function generateMobileIndices(): { combinedIdx: number; gfxIdx: number; textIdx: number } {
+  const gfxIdx = Math.floor(Math.random() * POOL_GFX.length);
+  const textIdx = Math.floor(Math.random() * POOL_TEXT.length);
+  const gfxComp = POOL_GFX[gfxIdx];
+  const textComp = POOL_TEXT[textIdx];
+
+  const combinedPool = [...POOL_TEXT, ...POOL_GFX];
+  const eligibleCombined: number[] = [];
+  combinedPool.forEach((comp, i) => {
+    if (comp !== gfxComp && comp !== textComp) {
+      eligibleCombined.push(i);
+    }
+  });
+
+  const combinedIdx = eligibleCombined[Math.floor(Math.random() * eligibleCombined.length)];
+  return { combinedIdx, gfxIdx, textIdx };
 }
 
 /**
@@ -278,6 +297,33 @@ function generateLayout(id: number): GeneratedLayout {
     if (textCell) textCell.type = 'gfx'
   }
 
+  // Assign unique indices for text and gfx cells
+  const textIndices = Array.from({ length: POOL_TEXT.length }, (_, i) => i)
+  const gfxIndices = Array.from({ length: POOL_GFX.length }, (_, i) => i)
+
+  // Shuffle textIndices
+  for (let i = textIndices.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [textIndices[i], textIndices[j]] = [textIndices[j], textIndices[i]]
+  }
+
+  // Shuffle gfxIndices
+  for (let i = gfxIndices.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [gfxIndices[i], gfxIndices[j]] = [gfxIndices[j], gfxIndices[i]]
+  }
+
+  let textIdxPtr = 0
+  let gfxIdxPtr = 0
+
+  cells.forEach(cell => {
+    if (cell.type === 'text') {
+      cell.panelIdx = textIndices[textIdxPtr++ % textIndices.length]
+    } else if (cell.type === 'gfx') {
+      cell.panelIdx = gfxIndices[gfxIdxPtr++ % gfxIndices.length]
+    }
+  })
+
   return { id, gridTemplateColumns, gridTemplateRows, cells }
 }
 
@@ -388,7 +434,13 @@ function isAudioPlaying(): boolean {
 }
 
 // ── Layout-Renderer ───────────────────────────────────────────────────────────
-function LayoutContent({ layout }: { layout: GeneratedLayout }) {
+function LayoutContent({
+  layout,
+  onSkipSlot,
+}: {
+  layout: GeneratedLayout
+  onSkipSlot: (slotIndex: number) => void
+}) {
   return (
     <div
       style={{
@@ -408,8 +460,24 @@ function LayoutContent({ layout }: { layout: GeneratedLayout }) {
         >
           {/* Zellinhalt je nach Typ */}
           {cell.type === 'fractal' && <FractalView />}
-          {cell.type === 'text'    && <PanelSlot key={`${layout.id}-text-${i}`} pool={POOL_TEXT} className="h-full" layoutId={layout.id.toString()} slotIndex={i} />}
-          {cell.type === 'gfx'     && <PanelSlot key={`${layout.id}-gfx-${i}`} pool={POOL_GFX}  className="h-full" layoutId={layout.id.toString()} slotIndex={i} />}
+          {cell.type === 'text'    && (
+            <PanelSlot
+              key={`${layout.id}-text-${i}`}
+              pool={POOL_TEXT}
+              activeIdx={cell.panelIdx!}
+              onSkip={() => onSkipSlot(i)}
+              className="h-full"
+            />
+          )}
+          {cell.type === 'gfx'     && (
+            <PanelSlot
+              key={`${layout.id}-gfx-${i}`}
+              pool={POOL_GFX}
+              activeIdx={cell.panelIdx!}
+              onSkip={() => onSkipSlot(i)}
+              className="h-full"
+            />
+          )}
         </div>
       ))}
     </div>
@@ -425,6 +493,102 @@ export default function App() {
   const [sliding,    setSliding]    = useState(false)
   // Ambient Sound: standardmäßig eingeschaltet
   const [soundEnabled, setSoundEnabled] = useState(true)
+
+  const [mobileIndices, setMobileIndices] = useState(() => generateMobileIndices())
+
+  const handleSkipSlot = useCallback((slotIndex: number) => {
+    setLayout(curr => {
+      const cell = curr.cells[slotIndex]
+      if (!cell) return curr
+
+      const pool = cell.type === 'text' ? POOL_TEXT : POOL_GFX
+
+      // Get all currently active components in OTHER slots of this layout
+      const otherActiveComps = new Set<React.ComponentType<any>>()
+      curr.cells.forEach((c, idx) => {
+        if (idx !== slotIndex) {
+          if (c.type === 'text') {
+            otherActiveComps.add(POOL_TEXT[c.panelIdx!])
+          } else if (c.type === 'gfx') {
+            otherActiveComps.add(POOL_GFX[c.panelIdx!])
+          }
+        }
+      })
+
+      const currentComp = pool[cell.panelIdx!]
+      const candidates: number[] = []
+      pool.forEach((comp, i) => {
+        if (comp !== currentComp && !otherActiveComps.has(comp)) {
+          candidates.push(i)
+        }
+      })
+
+      const chosenIdx = candidates.length > 0
+        ? candidates[Math.floor(Math.random() * candidates.length)]
+        : Math.floor(Math.random() * pool.length)
+
+      const newCells = [...curr.cells]
+      newCells[slotIndex] = {
+        ...cell,
+        panelIdx: chosenIdx,
+      }
+
+      return {
+        ...curr,
+        cells: newCells,
+      }
+    })
+  }, [])
+
+  const handleSkipMobileSlot = useCallback((slotIndex: number) => {
+    setMobileIndices(curr => {
+      const combinedPool = [...POOL_TEXT, ...POOL_GFX]
+      const otherActiveComps = new Set<React.ComponentType<any>>()
+
+      if (slotIndex !== 0) {
+        otherActiveComps.add(combinedPool[curr.combinedIdx])
+      }
+      if (slotIndex !== 1) {
+        otherActiveComps.add(POOL_GFX[curr.gfxIdx])
+      }
+      if (slotIndex !== 2) {
+        otherActiveComps.add(POOL_TEXT[curr.textIdx])
+      }
+
+      let pool: React.ComponentType<any>[]
+      let currentIdx: number
+      if (slotIndex === 0) {
+        pool = combinedPool
+        currentIdx = curr.combinedIdx
+      } else if (slotIndex === 1) {
+        pool = POOL_GFX
+        currentIdx = curr.gfxIdx
+      } else {
+        pool = POOL_TEXT
+        currentIdx = curr.textIdx
+      }
+
+      const currentComp = pool[currentIdx]
+      const candidates: number[] = []
+      pool.forEach((comp, i) => {
+        if (comp !== currentComp && !otherActiveComps.has(comp)) {
+          candidates.push(i)
+        }
+      })
+
+      const chosenIdx = candidates.length > 0
+        ? candidates[Math.floor(Math.random() * candidates.length)]
+        : Math.floor(Math.random() * pool.length)
+
+      if (slotIndex === 0) {
+        return { ...curr, combinedIdx: chosenIdx }
+      } else if (slotIndex === 1) {
+        return { ...curr, gfxIdx: chosenIdx }
+      } else {
+        return { ...curr, textIdx: chosenIdx }
+      }
+    })
+  }, [])
 
   // Automatische Review-Zurücksetzung bei Versionsänderung
   useEffect(() => {
@@ -622,15 +786,30 @@ export default function App() {
         <div className="md:hidden flex flex-col gap-1 h-full p-1">
           {/* Panel 1: gemischter Pool aus Text und GFX */}
           <div className="flex-1 min-h-0">
-            <PanelSlot pool={[...POOL_TEXT, ...POOL_GFX]} className="h-full" layoutId="mobile" slotIndex={0} />
+            <PanelSlot
+              pool={[...POOL_TEXT, ...POOL_GFX]}
+              activeIdx={mobileIndices.combinedIdx}
+              onSkip={() => handleSkipMobileSlot(0)}
+              className="h-full"
+            />
           </div>
           {/* Panel 2: Grafik-Panel */}
           <div className="flex-1 min-h-0">
-            <PanelSlot pool={POOL_GFX} className="h-full" layoutId="mobile" slotIndex={1} />
+            <PanelSlot
+              pool={POOL_GFX}
+              activeIdx={mobileIndices.gfxIdx}
+              onSkip={() => handleSkipMobileSlot(1)}
+              className="h-full"
+            />
           </div>
           {/* Panel 3: Text-Panel */}
           <div className="flex-1 min-h-0">
-            <PanelSlot pool={POOL_TEXT} className="h-full" layoutId="mobile" slotIndex={2} />
+            <PanelSlot
+              pool={POOL_TEXT}
+              activeIdx={mobileIndices.textIdx}
+              onSkip={() => handleSkipMobileSlot(2)}
+              className="h-full"
+            />
           </div>
         </div>
 
@@ -825,7 +1004,7 @@ export default function App() {
                 className="absolute inset-0 p-1 layout-slide-out"
                 aria-hidden="true"
               >
-                <LayoutContent layout={prevLayout} />
+                <LayoutContent layout={prevLayout} onSkipSlot={() => {}} />
               </div>
             )}
 
@@ -834,7 +1013,7 @@ export default function App() {
               key={`in-${layout.id}`}
               className={sliding ? 'absolute inset-0 p-1 layout-slide-in' : 'h-full p-1'}
             >
-              <LayoutContent layout={layout} />
+              <LayoutContent layout={layout} onSkipSlot={handleSkipSlot} />
             </div>
           </>
         )}
