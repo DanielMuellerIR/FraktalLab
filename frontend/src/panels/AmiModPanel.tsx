@@ -13,10 +13,12 @@ interface Track {
   year: string;
 }
 
+const BASE = import.meta.env.BASE_URL;
+
 const TRACKS: Track[] = [
-  { id: '58072', name: 'Speedball 2', url: 'audio/track_58072.dat?v=1.0.3', composer: 'Simon Rogers', arranger: 'Richard Joseph', year: '1990' },
-  { id: '142827', name: 'Stardust Memories', url: 'audio/track_142827.dat?v=1.0.3', composer: 'Volker Tripp (Jester)', arranger: 'Volker Tripp (Jester)', year: '1992' },
-  { id: '87180', name: 'Bootup', url: 'audio/track_87180.dat?v=1.0.3', composer: 'Barry Leitch', arranger: 'Barry Leitch', year: '1991' }
+  { id: '58072', name: 'Speedball 2', url: `${BASE}audio/track_58072.dat?v=1.0.3`, composer: 'Simon Rogers', arranger: 'Richard Joseph', year: '1990' },
+  { id: '142827', name: 'Stardust Memories', url: `${BASE}audio/track_142827.dat?v=1.0.3`, composer: 'Volker Tripp (Jester)', arranger: 'Volker Tripp (Jester)', year: '1992' },
+  { id: '87180', name: 'Bootup', url: `${BASE}audio/track_87180.dat?v=1.0.3`, composer: 'Barry Leitch', arranger: 'Barry Leitch', year: '1991' }
 ];
 
 // Amiga-Frequenz-Perioden und Notennamen-Mapping
@@ -102,7 +104,7 @@ export default function AmiModPanel() {
     setCurrentPosition(0);
     setVuLevels([0, 0, 0, 0]);
 
-    player.load(TRACKS[trackIdx].url, 'audio/mod-player-worklet.js').then(() => {
+    player.load(TRACKS[trackIdx].url, `${BASE}audio/mod-player-worklet.js`).then(() => {
       if (!active) {
         return;
       }
