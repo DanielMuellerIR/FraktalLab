@@ -14,9 +14,9 @@ interface Track {
 }
 
 const TRACKS: Track[] = [
-  { id: '58072', name: 'Speedball 2', url: '/audio/track_58072.mod?v=0.9.9', composer: 'Simon Rogers', arranger: 'Richard Joseph', year: '1990' },
-  { id: '142827', name: 'Stardust Memories', url: '/audio/track_142827.mod?v=0.9.9', composer: 'Volker Tripp (Jester)', arranger: 'Volker Tripp (Jester)', year: '1992' },
-  { id: '87180', name: 'Bootup', url: '/audio/track_87180.mod?v=0.9.9', composer: 'Barry Leitch', arranger: 'Barry Leitch', year: '1991' }
+  { id: '58072', name: 'Speedball 2', url: '/audio/track_58072.mod.bin?v=1.0.3', composer: 'Simon Rogers', arranger: 'Richard Joseph', year: '1990' },
+  { id: '142827', name: 'Stardust Memories', url: '/audio/track_142827.mod.bin?v=1.0.3', composer: 'Volker Tripp (Jester)', arranger: 'Volker Tripp (Jester)', year: '1992' },
+  { id: '87180', name: 'Bootup', url: '/audio/track_87180.mod.bin?v=1.0.3', composer: 'Barry Leitch', arranger: 'Barry Leitch', year: '1991' }
 ];
 
 // Amiga-Frequenz-Perioden und Notennamen-Mapping
@@ -70,6 +70,7 @@ type VuLevels = [number, number, number, number];
 export default function AmiModPanel() {
   const [trackIdx, setTrackIdx] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [mod, setMod] = useState<Mod | null>(null);
 
@@ -95,6 +96,7 @@ export default function AmiModPanel() {
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setLoadError(null);
     setPlaying(false);
     setCurrentRow(0);
     setCurrentPosition(0);
@@ -145,6 +147,7 @@ export default function AmiModPanel() {
       console.error("Error loading mod file:", err);
       if (active) {
         setLoading(false);
+        setLoadError(err instanceof Error ? err.message : String(err));
       }
     });
 
@@ -384,6 +387,10 @@ export default function AmiModPanel() {
                     </div>
                   );
                 })
+              ) : loadError ? (
+                <div className="h-full flex items-center justify-center text-red-500 text-xs p-2 text-center">
+                  LOAD ERROR: {loadError}
+                </div>
               ) : (
                 <div className="h-full flex items-center justify-center text-neutral-600 text-xs">
                   NO SEQUENCE DATA AVAILABLE

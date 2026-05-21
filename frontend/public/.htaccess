@@ -5,6 +5,16 @@
     Header set Cross-Origin-Embedder-Policy "credentialless"
 </IfModule>
 
+# .mod.bin Tracker-Dateien als Binär ausliefern
+<IfModule mod_mime.c>
+    AddType application/octet-stream .bin
+</IfModule>
+# Keine Encoding-Manipulation für Binärdateien
+<FilesMatch "\.bin$">
+    SetEnv no-gzip 1
+    Header unset Content-Encoding
+</FilesMatch>
+
 <IfModule mod_rewrite.c>
     # Falls du React/React-Router nutzt (SPA), leitet dies alle Anfragen auf die index.html um
     RewriteEngine On
