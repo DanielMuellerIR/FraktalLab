@@ -14,6 +14,7 @@ const LOCATIONS = [
 ]
 
 export default function FractalCanvas() {
+  const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // Zoom-State im Ref statt im React-State — kein Re-render-Overhead pro Frame.
   // Zufälliger Einstieg: andere Location und Zoom-Stufe bei jedem Laden.
@@ -32,18 +33,32 @@ export default function FractalCanvas() {
   const rafRef = useRef<number>(0)
 
   useEffect(() => {
+    const container = containerRef.current
     const canvas = canvasRef.current
-    if (!canvas) return
+    if (!container || !canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
     let cancelled = false
 
-    const RENDER_W = 600
-    const RENDER_H = 400
-    const setSize = () => { canvas.width = RENDER_W; canvas.height = RENDER_H }
-    setSize()
-    window.addEventListener('resize', setSize)
+    // Dynamisch an Container anpassen (max 800×600 für Performance)
+    const MAX_W = 800
+    const MAX_H = 600
+
+    const syncSize = () => {
+      const cw = container.clientWidth  || 300
+      const ch = container.clientHeight || 200
+      const w = Math.min(MAX_W, cw)
+      const h = Math.min(MAX_H, ch)
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width  = w
+        canvas.height = h
+      }
+    }
+    syncSize()
+
+    const ro = new ResizeObserver(syncSize)
+    ro.observe(container)
 
     import('@wasm/fraktallab_wasm.js')
       .then(async (wasm) => {
@@ -56,8 +71,8 @@ export default function FractalCanvas() {
         const frame = () => {
           if (cancelled) return
 
+          syncSize()
           if (canvas.width === 0 || canvas.height === 0) {
-            setSize()
             rafRef.current = requestAnimationFrame(frame)
             return
           }
@@ -68,8 +83,8 @@ export default function FractalCanvas() {
 
             const prev   = s.prevImageData.data
             const next   = s.nextImageData.data
-            const W      = canvas.width
-            const H      = canvas.height
+            const W      = s.prevImageData.width
+            const H      = s.prevImageData.height
             const blended = new ImageData(W, H)
             const out    = blended.data
             const a      = s.fadeAlpha
@@ -152,15 +167,18 @@ export default function FractalCanvas() {
     return () => {
       cancelled = true
       cancelAnimationFrame(rafRef.current)
-      window.removeEventListener('resize', setSize)
+      ro.disconnect()
     }
   }, [])
 
   return (
-    <canvas
-      ref={canvasRef}
-      data-testid="fractal-canvas"
-      style={{ display: 'block', width: '100%', height: '100%', imageRendering: 'pixelated' }}
-    />
+    <div ref={containerRef} style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
+      <canvas
+        ref={canvasRef}
+        data-testid="fractal-canvas"
+        style={{ display: 'block', width: '100%', height: '100%', imageRendering: 'pixelated' }}
+      />
+    </div>
   )
 }
+
