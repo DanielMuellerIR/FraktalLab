@@ -85,8 +85,9 @@ export default function RadarSweepPanel() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
+    const _canvas = canvasRef.current
+    if (!_canvas) return
+    const canvas: HTMLCanvasElement = _canvas
 
     // TypeScript-Closure-Narrowing: Assertion trägt in Closures nicht weiter.
     const _ctx = canvas.getContext('2d')

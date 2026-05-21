@@ -3,11 +3,11 @@ import Panel from '../ui/Panel'
 
 // Farbzuordnung für die vier DNA-Basen
 // A = Adenin (grün), T = Thymin (cyan), C = Cytosin (magenta), G = Guanin (gelb)
-const BASE_COLORS: Record<string, string> = {
-  A: '#00ff66',
-  T: '#00ccff',
-  C: '#ff44cc',
-  G: '#ffdd00',
+const BASE_COLORS: Record<string, [number, number, number]> = {
+  A: [0, 255, 102],
+  T: [0, 204, 255],
+  C: [255, 68, 204],
+  G: [255, 221, 0],
 }
 
 // Feste Basensequenz für den scrollenden Ticker unten
@@ -86,8 +86,8 @@ export default function DNAHelix() {
         z:       number   // Tiefenwert für Painter's Algorithm + Helligkeit
         baseA:   string   // Basen-Buchstabe Strang A
         baseB:   string   // Basen-Buchstabe Strang B (komplementär)
-        colorA:  string   // Farbe Strang A
-        colorB:  string   // Farbe Strang B
+        colorA:  [number, number, number]   // Farbe Strang A
+        colorB:  [number, number, number]   // Farbe Strang B
       }
       const segs: Seg[] = []
 
@@ -120,54 +120,102 @@ export default function DNAHelix() {
         })
       }
 
-      // Painter's Algorithm: hintere Elemente (kleines z) zuerst zeichnen
-      segs.sort((a, b) => a.z - b.z)
+      // ── Alle Zeichnungs-Elemente (Drawables) erstellen und sortieren ───────────
+      type Drawable =
+        | {
+            type: 'rung'
+            y: number
+            x1: number
+            x2: number
+            z: number
+            bright: number
+          }
+        | {
+            type: 'sphere'
+            y: number
+            x: number
+            z: number
+            bright: number
+            color: [number, number, number]
+          }
 
-      // ── Segmente zeichnen ────────────────────────────────────────────────────
+      const drawables: Drawable[] = []
+
       for (const s of segs) {
-        // Helligkeit anhand Tiefe: vordere Elemente (z~1) heller, hintere dunkler
-        const bright = 0.25 + (s.z + 1) * 0.38   // 0.25 (hinten) bis 1.01 (vorne)
+        // Helligkeit für Strang A (Tiefenwert s.z) und Strang B (Tiefenwert -s.z) berechnen
+        const brightA = Math.min(1.0, 0.25 + (s.z + 1) * 0.38)
+        const brightB = Math.min(1.0, 0.25 + (-s.z + 1) * 0.38)
+        const brightRung = 0.63 // Durchschnittliche Helligkeit für das Verbindungsstäbchen
 
-        // Radius der Basenpaar-Kreise proportional zur Helix-Größe + Tiefenwirkung
-        const dotR = Math.max(1, radius * 0.18 * bright)
+        // Verbindungsstäbchen (Rung)
+        drawables.push({
+          type: 'rung',
+          y: s.y,
+          x1: s.x1,
+          x2: s.x2,
+          z: 0,
+          bright: brightRung,
+        })
 
-        // Verbindungsstäbchen zwischen den Strängen (die "Rungs" der Leiter)
-        // Alpha schwächer als die Punkte, damit die Stränge dominieren
-        const rungAlpha = bright * 0.55
-        ctx!.strokeStyle = `rgba(60,160,80,${rungAlpha})`
-        ctx!.lineWidth   = Math.max(0.5, radius * 0.04)
-        ctx!.beginPath()
-        ctx!.moveTo(s.x1, s.y)
-        ctx!.lineTo(s.x2, s.y)
-        ctx!.stroke()
+        // Kugel für Strang A
+        drawables.push({
+          type: 'sphere',
+          y: s.y,
+          x: s.x1,
+          z: s.z,
+          bright: brightA,
+          color: s.colorA,
+        })
 
-        // ── Strang A: kleiner Kreis ──────────────────────────────────────────
-        // Farbe mit Helligkeits-Suffix im Hex-Alpha
-        const alphaHex = Math.round(bright * 255).toString(16).padStart(2, '0')
-        ctx!.fillStyle = s.colorA + alphaHex
-        ctx!.beginPath()
-        ctx!.arc(s.x1, s.y, dotR, 0, Math.PI * 2)
-        ctx!.fill()
+        // Kugel für Strang B
+        drawables.push({
+          type: 'sphere',
+          y: s.y,
+          x: s.x2,
+          z: -s.z,
+          bright: brightB,
+          color: s.colorB,
+        })
+      }
 
-        // Kleiner heller Glanzpunkt oben links auf dem Kreis
-        if (bright > 0.7) {
-          ctx!.fillStyle = `rgba(255,255,255,${(bright - 0.7) * 0.6})`
-          ctx!.beginPath()
-          ctx!.arc(s.x1 - dotR * 0.3, s.y - dotR * 0.3, dotR * 0.3, 0, Math.PI * 2)
-          ctx!.fill()
+      // Depth Sorting (Painter's Algorithm): hintere Elemente (kleines z) zuerst zeichnen.
+      // Wenn z identisch ist (z.B. bei z = 0), zeichnen wir Verbindungsstäbchen zuerst.
+      drawables.sort((a, b) => {
+        if (a.z !== b.z) {
+          return a.z - b.z
         }
+        if (a.type === 'rung' && b.type === 'sphere') return -1
+        if (a.type === 'sphere' && b.type === 'rung') return 1
+        return 0
+      })
 
-        // ── Strang B: kleiner Kreis ──────────────────────────────────────────
-        ctx!.fillStyle = s.colorB + alphaHex
-        ctx!.beginPath()
-        ctx!.arc(s.x2, s.y, dotR, 0, Math.PI * 2)
-        ctx!.fill()
-
-        if (bright > 0.7) {
-          ctx!.fillStyle = `rgba(255,255,255,${(bright - 0.7) * 0.6})`
+      // ── Drawables zeichnen ───────────────────────────────────────────────────
+      for (const d of drawables) {
+        if (d.type === 'rung') {
+          // Verbindungsstäbchen zwischen den Strängen
+          const rungAlpha = d.bright * 0.55
+          ctx!.strokeStyle = `rgba(60,160,80,${rungAlpha})`
+          ctx!.lineWidth   = Math.max(0.5, radius * 0.04)
           ctx!.beginPath()
-          ctx!.arc(s.x2 - dotR * 0.3, s.y - dotR * 0.3, dotR * 0.3, 0, Math.PI * 2)
+          ctx!.moveTo(d.x1, d.y)
+          ctx!.lineTo(d.x2, d.y)
+          ctx!.stroke()
+        } else {
+          // Kugel (opaque Sphären mit depth-blended Farben)
+          const dotR = Math.max(1, radius * 0.18 * d.bright)
+          const [r, g, b] = d.color
+          ctx!.fillStyle = `rgb(${Math.round(r * d.bright)}, ${Math.round(g * d.bright)}, ${Math.round(b * d.bright)})`
+          ctx!.beginPath()
+          ctx!.arc(d.x, d.y, dotR, 0, Math.PI * 2)
           ctx!.fill()
+
+          // Kleiner heller Glanzpunkt oben links auf dem Kreis
+          if (d.bright > 0.7) {
+            ctx!.fillStyle = `rgba(255,255,255,${(d.bright - 0.7) * 0.6})`
+            ctx!.beginPath()
+            ctx!.arc(d.x - dotR * 0.3, d.y - dotR * 0.3, dotR * 0.3, 0, Math.PI * 2)
+            ctx!.fill()
+          }
         }
       }
 
@@ -199,8 +247,9 @@ export default function DNAHelix() {
 
       for (let i = 0; i < maxChars; i++) {
         const base = BASE_SEQ[(scrollOffset + i) % BASE_SEQ.length]
-        ctx!.fillStyle = BASE_COLORS[base] ?? '#00ff66'
-        // Leichte Abschwächung für alternierenden Effekt
+        const colorTuple = BASE_COLORS[base] ?? [0, 255, 102]
+        ctx!.fillStyle = `rgb(${colorTuple[0]}, ${colorTuple[1]}, ${colorTuple[2]})`
+        // Leichte Abschwächung für alternierenden effekt
         ctx!.globalAlpha = i % 2 === 0 ? 0.9 : 0.55
         ctx!.fillText(base, 2 + labelW + i * charW, tickerY)
       }

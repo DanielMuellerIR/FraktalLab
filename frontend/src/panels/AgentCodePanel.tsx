@@ -4,133 +4,94 @@ import Panel from '../ui/Panel'
 // ── Typen ──────────────────────────────────────────────────────────────────────
 
 // Ein "Schritt" im simulierten Chat-Ablauf.
-// role: wer tippt (user = Eingabezeile, claude = Antwort, system = Statusmeldung)
+// role: wer tippt (user = Eingabezeile, agent = Antwort, system = Statusmeldung)
 // text: der vollständige Text, der Zeichen für Zeichen erscheint
 type Step = {
-  role: 'user' | 'claude' | 'system'
+  role: 'user' | 'agent' | 'system'
   text: string
   // optionale Verzögerung in ms, bevor der Schritt beginnt
   pauseBefore?: number
 }
 
-// ── Skript: simulierter Claude-Code-Dialog ─────────────────────────────────────
+// ── Skript: simulierter Agenten-Code-Dialog ─────────────────────────────────────
 // Das hier ist das "Drehbuch", das immer wieder abgespielt wird.
-// Es sieht aus wie eine echte Claude-Code-Session im Terminal.
+// Es sieht aus wie eine echte AI-Agent-Session im Terminal.
 const SCRIPT: Step[] = [
-  // 1. Nutzer öffnet die Claude CLI
-  { role: 'user',   text: 'claude', pauseBefore: 800 },
+  // 1. Nutzer öffnet die CLI
+  { role: 'user',   text: 'agent-dev-cli', pauseBefore: 800 },
   // 2. System-Banner (erscheint sofort, ohne Tipp-Animation)
   {
     role: 'system',
     text: [
       '╔════════════════════════════════════════╗',
-      '║  Claude Code  v1.0  ·  Anthropic       ║',
+      '║  Agent Dev Console  v1.5  ·  AI Agent  ║',
       '║  Type /help for commands               ║',
       '╚════════════════════════════════════════╝',
     ].join('\n'),
     pauseBefore: 300,
   },
-  // 3. Erster User-Prompt
+  // 3. Erster User-Prompt: Layout-Anpassung
   {
     role: 'user',
-    text: 'Ich möchte ein Hacker-Dashboard bauen, React mit Canvas-Animationen, WASM für Fraktale. Was ist dein Plan?',
+    text: 'Passe das FraktalLab Dashboard-Layout an: Zeige auf großen Bildschirmen mehr Panels und auf kleinen weniger, aber nie weniger als 3 und keine sehr schmalen Bereiche erzeugen.',
     pauseBefore: 600,
   },
-  // 4. Claude erklärt den Plan
+  // 4. Agent erklärt den Plan
   {
-    role: 'claude',
+    role: 'agent',
     text: [
-      'Guter Plan. Hier mein Vorschlag:',
+      'Analysiere frontend/src/App.tsx …',
+      'Passe Spalten- und Layout-Berechnung von FraktalLab an. Verwende:',
+      '  • Ultra-wide (width >= 2560): bis zu 24 Panels (5x4, 6x3, 6x4 Grid)',
+      '  • Large screens (width >= 2000): bis zu 20 Panels (4x4, 5x3, 5x4 Grid)',
+      '  • minPct erhöht (2 cols: 40%, 3 cols: 28%, 4 cols: 20%, 5 cols: 16%, >=6 cols: 12%)',
+      '  • Sicherheitscheck: Immer >= 3 Panels auf Desktop.',
       '',
-      '  Tech-Stack:',
-      '    • React 19 + Vite + TypeScript + Tailwind v4',
-      '    • Rust → wasm-pack → WebAssembly für Fraktale',
-      '    • Canvas 2D für Demoscene-Effekte (kein WebGL nötig)',
-      '',
-      '  Architektur:',
-      '    1. Grid-Layout mit austauschbaren Panel-Slots',
-      '    2. Pool-System: Panels rotieren automatisch',
-      '    3. WASM-Modul rendert Mandelbrot in Pixel-Buffer',
-      '    4. rAF-Loop überträgt Buffer via ImageData',
-      '',
-      '  Start mit: npm create vite@latest + wasm-pack init',
+      '✓ FraktalLab Layout in App.tsx erfolgreich angepasst.',
     ].join('\n'),
     pauseBefore: 400,
   },
-  // 5. Nächste Aufgabe
+  // 5. Nächste Aufgabe: Review-Grid
   {
     role: 'user',
-    text: 'Gut. Baue jetzt den VoxelDemo-Panel.',
+    text: 'Passe die FraktalLab Eval-Seite (Review-Modus) an: Immer vier gleich große Panels im 2x2 Grid anzeigen (mit Platzhaltern falls die Seite nicht voll ist). Sortiere die kürzlich geänderten Panels an den Anfang.',
     pauseBefore: 700,
   },
-  // 6. Claude liefert Code-Snippet
+  // 6. Agent liefert Code-Snippet
   {
-    role: 'claude',
+    role: 'agent',
     text: [
-      'Erstelle frontend/src/panels/VoxelDemo.tsx …',
+      'Bearbeite reviewMode-Rendering in App.tsx …',
+      '  • Setze Grid-Layout fest auf 2x2 (grid-cols-2 grid-rows-2).',
+      '  • Fülle unvollständige Seiten mit [ NO SYSTEM INTEL ] Platzhaltern auf.',
+      '  • Sortiere geänderte Panels (AmiModPanel, FractalJulia, EnhanceView, AgentCodePanel) nach vorn.',
+      '  • Klickbarer Exit-Review und Kopier-Button für localStorage JSON.',
       '',
-      '  const W = 120, H = 80',
-      '  const buf = new Uint8ClampedArray(W * H * 4)',
-      '',
-      '  function project(x,y,z) {',
-      '    const fov = 120',
-      '    const px = x / (z + fov) * fov + W/2',
-      '    const py = y / (z + fov) * fov + H/2',
-      '    return [px, py]',
-      '  }',
-      '',
-      '  // Voxel-Grid: 16×16, jede Zelle eine Farbe',
-      '  // Painter\'s Algorithm: hinten → vorne rendern',
-      '',
-      '✓  VoxelDemo.tsx — 187 lines written.',
+      '✓ FraktalLab 2x2 Review-System mit Platzhaltern einsatzbereit.',
     ].join('\n'),
     pauseBefore: 300,
   },
-  // 7. Nächste Aufgabe: GlobePanel
+  // 7. Nächste Aufgabe: Amiga Mod Player
   {
     role: 'user',
-    text: 'Jetzt einen rotierenden Wireframe-Globus.',
+    text: 'Baue jetzt den echten Amiga Mod Player! Die synthetischen Beeps im AmiModPanel.tsx sind Müll.',
     pauseBefore: 600,
   },
   {
-    role: 'claude',
+    role: 'agent',
     text: [
-      'Erstelle frontend/src/panels/GlobePanel.tsx …',
+      'Implementiere WebAudio ProTracker Parser und Driver …',
+      '  • Erstelle loader.ts, mod.ts und player.ts.',
+      '  • Lade AudioWorklet mod-player-worklet.js auf Port-Ebene.',
+      '  • Downloade echte .mod-Tracks in public/audio/.',
+      '  • Verbinde watchNotes mit VU-Meter-Animation in AmiModPanel.tsx.',
+      '  • Verhindere Layout-Autoswitch (window.fraktallab_mod_playing).',
       '',
-      '  // Icosphere aus lat/lon-Gitter (36 × 18 Punkte)',
-      '  // Rotation um Y-Achse mit Quaternion-freiem Trick:',
-      '  //   x\' = x·cos(t) + z·sin(t)',
-      '  //   z\' = -x·sin(t) + z·cos(t)',
-      '  // Hauptstädte als beschriftete Punkte eingebaut.',
-      '',
-      '✓  GlobePanel.tsx — 312 lines written.',
+      '✓ Amiga Mod Player läuft einwandfrei mit echten Tracker-Files.',
     ].join('\n'),
     pauseBefore: 300,
   },
-  // 8. Kurze Frage
-  {
-    role: 'user',
-    text: 'Wie speichere ich WASM-State über Re-renders?',
-    pauseBefore: 500,
-  },
-  {
-    role: 'claude',
-    text: [
-      'Mit useRef — der Wert bleibt über Re-renders erhalten,',
-      'löst aber KEINEN erneuten Render aus (anders als useState).',
-      '',
-      '  const wasmRef = useRef<WasmModule | null>(null)',
-      '',
-      '  useEffect(() => {',
-      '    init().then(m => { wasmRef.current = m })',
-      '  }, [])   // leeres Array → nur beim Mount',
-      '',
-      '  // Im rAF-Callback:',
-      '  wasmRef.current?.render(buf, zoom, cx, cy)',
-    ].join('\n'),
-    pauseBefore: 400,
-  },
-  // 9. Letzter Schritt vor Neustart
+  // 8. Letzter Schritt vor Neustart
   {
     role: 'user',
     text: '/cost',
@@ -139,8 +100,8 @@ const SCRIPT: Step[] = [
   {
     role: 'system',
     text: [
-      'Session cost: $0.23  |  Tokens in: 14 820  |  out: 4 103',
-      'Cache read: 81%  |  Cache write: 19%',
+      'Session cost: $0.18  |  Tokens in: 24,192  |  out: 6,432',
+      'Cache read: 92%  |  Cache write: 8%',
     ].join('\n'),
     pauseBefore: 200,
   },
@@ -154,7 +115,7 @@ function randInt(min: number, max: number): number {
 }
 
 // ── Komponente ─────────────────────────────────────────────────────────────────
-export default function ClaudeCodePanel() {
+export default function AgentCodePanel() {
   // Ref auf das scrollbare Terminal-Ausgabe-Div
   const outputRef = useRef<HTMLDivElement>(null)
   // Ref auf die aktuelle Eingabezeile (unten, mit blinkendem Cursor)
@@ -217,14 +178,14 @@ export default function ClaudeCodePanel() {
           return
         }
 
-        if (step.role === 'claude') {
-          // Claude-Antwort: Zeile für Zeile mit Tipp-Verzögerung
+        if (step.role === 'agent') {
+          // Agent-Antwort: Zeile für Zeile mit Tipp-Verzögerung
           setPrompt('')
-          // Zuerst eine leere "Claude:"-Zeile einblenden
-          appendLine(`<span style="color:#c084fc;font-weight:bold">◆ Claude</span>`)
+          // Zuerst eine leere "Agent:"-Zeile einblenden
+          appendLine(`<span style="color:#c084fc;font-weight:bold">◆ Agent</span>`)
           const lines = step.text.split('\n')
           typeLines(lines, 0, onDone)
-          return
+          return;
         }
       }, delay)
       timers.push(t)
@@ -248,7 +209,7 @@ export default function ClaudeCodePanel() {
       nextChar()
     }
 
-    // Tippt mehrere Zeilen nacheinander (für Claude-Antworten)
+    // Tippt mehrere Zeilen nacheinander (für Agenten-Antworten)
     function typeLines(lines: string[], idx: number, onDone: () => void) {
       if (idx >= lines.length) { onDone(); return }
       const line = lines[idx]
@@ -276,7 +237,7 @@ export default function ClaudeCodePanel() {
           timers.push(t)
           return
         }
-        const charDelay = randInt(15, 45)   // Claude tippt schneller als der User
+        const charDelay = randInt(15, 45)   // Agent tippt schneller als der User
         const t = setTimeout(() => {
           lineEl.textContent = escHtmlText(line.slice(0, i + 1))
           outputRef.current!.scrollTop = outputRef.current!.scrollHeight
@@ -312,7 +273,7 @@ export default function ClaudeCodePanel() {
   }, [])
 
   return (
-    <Panel title="CLAUDE CODE // NEURAL ARCHITECT">
+    <Panel title="AGENTIC DEV TERMINAL // SYSTEM ARCHITECT">
       {/* Äußeres Wrapper-Div: füllt den Panel-Inhalt komplett */}
       <div className="flex flex-col h-full w-full overflow-hidden p-1 gap-0.5">
 

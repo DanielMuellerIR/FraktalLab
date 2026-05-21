@@ -75,23 +75,24 @@ function easeInOut(t: number): number {
 function drawInfoBox(
   ctx: CanvasRenderingContext2D,
   planet: PlanetData,
-  x: number,
-  y: number,
+  W: number,
+  H: number,
   alpha: number,   // 0..1, für Fade-in/out
 ) {
-  const fontSize = 10
-  const lineH    = fontSize + 4
-  const padX     = 10
-  const padY     = 8
+  const fontSize = 14
+  const lineH    = fontSize + 8
+  const padX     = 16
+  const padY     = 12
 
   // Zeilen der Info-Box
   const lines = [
-    `► ${planet.name}`,
-    `DIST:    ${planet.au.toFixed(3)} AU`,
-    `PERIOD:  ${(planet.period / 365.25).toFixed(2)} EARTH YEARS`,
-    `MASS:    ${planet.mass} EARTH MASSES`,
-    `MOONS:   ${planet.moons}`,
-    `TYPE:    ${planet.type}`,
+    `► ${planet.name} ◄`,
+    `---------------------------------`,
+    `DISTANCE:  ${planet.au.toFixed(3)} AU`,
+    `ORBIT:     ${(planet.period / 365.25).toFixed(2)} EARTH YEARS`,
+    `MASS:      ${planet.mass} EARTH MASSES`,
+    `MOONS:     ${planet.moons}`,
+    `TYPE:      ${planet.type}`,
   ]
 
   // Box-Breite: längste Zeile + Padding
@@ -100,26 +101,25 @@ function drawInfoBox(
   const boxW = maxWidth + padX * 2
   const boxH = lines.length * lineH + padY * 2
 
-  const bx = x - boxW - 8   // rechts bündig mit etwas Abstand zum Rand
-  const by = y - boxH - 8   // über dem Ankerpunkt
+  const bx = W * 0.52
+  const by = (H - boxH) / 2
 
   // Hintergrund-Rechteck
-  ctx.globalAlpha = alpha * 0.75
+  ctx.globalAlpha = alpha * 0.8
   ctx.fillStyle = '#000000'
   ctx.fillRect(bx, by, boxW, boxH)
 
   // Grüner Border
-  ctx.globalAlpha = alpha * 0.9
+  ctx.globalAlpha = alpha * 0.95
   ctx.strokeStyle = '#22c55e'
-  ctx.lineWidth = 1
+  ctx.lineWidth = 1.5
   ctx.strokeRect(bx, by, boxW, boxH)
 
   // Textzeilen
   ctx.textBaseline = 'top'
   ctx.textAlign    = 'left'
   lines.forEach((line, i) => {
-    // Erste Zeile (Planetname) heller hervorheben
-    ctx.globalAlpha = alpha * (i === 0 ? 1.0 : 0.8)
+    ctx.globalAlpha = alpha * (i === 0 ? 1.0 : 0.85)
     ctx.fillStyle   = i === 0 ? '#4ade80' : '#86efac'
     ctx.font        = i === 0
       ? `bold ${fontSize}px monospace`
@@ -208,9 +208,10 @@ export default function SolarSystemPanel() {
       const maxOrbit = minDim * 0.46
 
       // ── Planetenpositionen berechnen (Weltkoord, relativ zu Canvas-Mitte) ──
-      const planetPositions = PLANET_DATA.map(p => {
+      const START_ANGLES = [4.4, 2.1, 0.0, 5.5, 0.8, 2.3, 4.0, 5.0]
+      const planetPositions = PLANET_DATA.map((p, i) => {
         const orbitR = orbitRadius(p.au, minOrbit, maxOrbit)
-        const angle  = (simDays / p.period) * Math.PI * 2
+        const angle  = START_ANGLES[i] + (simDays / p.period) * Math.PI * 2
         return {
           wx: Math.cos(angle) * orbitR,   // Weltkoordinate X
           wy: Math.sin(angle) * orbitR,   // Weltkoordinate Y
@@ -241,15 +242,18 @@ export default function SolarSystemPanel() {
           zoom.phase     = 'watching'
         }
         // Kamera interpolieren: Übersicht → Planet
+        // Shift camera focus center slightly to the right to place the planet on the left side of the canvas
+        const shiftX = (W * 0.22) / ZOOM_TARGET
         const t = easeInOut(zoom.progress)
         viewZoom    = ZOOM_OVERVIEW + (ZOOM_TARGET - ZOOM_OVERVIEW) * t
-        viewCenterX = overviewCenterX + (targetPos.wx - overviewCenterX) * t
+        viewCenterX = overviewCenterX + (targetPos.wx + shiftX - overviewCenterX) * t
         viewCenterY = overviewCenterY + (targetPos.wy - overviewCenterY) * t
       } else if (zoom.phase === 'watching') {
         zoom.watchTimer += dt
-        // Kamera folgt dem Planeten in Echtzeit
+        // Kamera folgt dem Planeten in Echtzeit (mit Shift nach links verschoben)
+        const shiftX = (W * 0.22) / ZOOM_TARGET
         viewZoom    = ZOOM_TARGET
-        viewCenterX = targetPos.wx
+        viewCenterX = targetPos.wx + shiftX
         viewCenterY = targetPos.wy
         if (zoom.watchTimer >= ZOOM_WATCH_MS) {
           zoom.progress = 0
@@ -334,16 +338,13 @@ export default function SolarSystemPanel() {
         const { wx, wy, orbitR } = planetPositions[i]
         const scaledOrbitR = orbitR * viewZoom
 
-        // Orbit-Kreis um die (skalierte) Sonnenposition
+        // Orbit-Kreis um die (skalierte) Sonnenposition (durchgezogen, grünlich für Telemetrie-Look)
         ctx.save()
-        ctx.strokeStyle = 'rgba(255,255,255,0.12)'
-        ctx.lineWidth = 0.7
-        ctx.setLineDash([3, 6])
+        ctx.strokeStyle = 'rgba(74,222,128,0.32)'
+        ctx.lineWidth = 1.0
         ctx.beginPath()
-        // Orbit um die Sonne zeichnen: Zentrum = toScreen(0,0), Radius skaliert
         ctx.arc(sunSx, sunSy, scaledOrbitR, 0, Math.PI * 2)
         ctx.stroke()
-        ctx.setLineDash([])
         ctx.restore()
 
         // Planetenposition auf Screen
@@ -383,11 +384,11 @@ export default function SolarSystemPanel() {
         // Im Watching-Modus: nur fokussierten Planeten beschriften (weniger Clutter)
         const showLabel = !isWatching || i === zoom.targetPlanetIdx
         if (showLabel) {
-          ctx.font         = '8px monospace'
-          ctx.fillStyle    = planet.color
+          ctx.font         = 'bold 13px monospace'
+          ctx.fillStyle    = '#ffffff'
           ctx.textBaseline = 'middle'
           ctx.textAlign    = 'left'
-          ctx.fillText(planet.name, px + scaledRadius + 3, py - scaledRadius * 0.4)
+          ctx.fillText(planet.name, px + scaledRadius + 6, py - scaledRadius * 0.4)
         }
 
         // ── Mond der Erde ──────────────────────────────────────────────────────
@@ -431,7 +432,7 @@ export default function SolarSystemPanel() {
 
       if (infoAlpha > 0.01) {
         const focusedPlanet = PLANET_DATA[zoom.targetPlanetIdx]
-        drawInfoBox(ctx, focusedPlanet, W - 8, H - 8, infoAlpha)
+        drawInfoBox(ctx, focusedPlanet, W, H, infoAlpha)
       }
 
       // ── Info-Overlay (unten links) ─────────────────────────────────────────

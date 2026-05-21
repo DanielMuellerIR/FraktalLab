@@ -1,12 +1,20 @@
 import { useEffect, useState } from 'react'
 
-// Modul-globales Set: welche Komponenten-Referenzen gerade in irgendeinem Slot
-// angezeigt werden. Verhindert, dass dasselbe Panel in mehreren Slots gleichzeitig
-// auftaucht. Speichert die Komponenten-Referenz selbst (nicht den Namen), weil
-// Factory-generierte Komponenten (makeScene, makeVoxelScene …) innen alle denselben
-// Funktionsnamen tragen ('Scene', 'VoxelScene' usw.) und per .name nicht unterscheidbar
-// wären.
-const activePanels = new Set<React.ComponentType>()
+// Modul-globales Map: ordnet layoutId -> (slotId -> Komponente)
+const activePanelsMap = new Map<string, Map<string, React.ComponentType<any>>>()
+
+function getActivePanelsInOtherSlots(myLayoutId: string, mySlotId: string): Set<React.ComponentType<any>> {
+  const active = new Set<React.ComponentType<any>>()
+  const layoutMap = activePanelsMap.get(myLayoutId)
+  if (layoutMap) {
+    for (const [slotId, component] of layoutMap.entries()) {
+      if (slotId !== mySlotId) {
+        active.add(component)
+      }
+    }
+  }
+  return active
+}
 
 // PanelSlot: wechselt zufällig zwischen Panel-Komponenten aus einem Pool.
 // Fade-Out → Komponente tauschen → Fade-In mit CSS-Transition.
@@ -14,27 +22,38 @@ const activePanels = new Set<React.ComponentType>()
 export default function PanelSlot({
   pool,
   className = '',
+  layoutId = 'default',
 }: {
-  pool: React.ComponentType[]
+  pool: React.ComponentType<any>[]
   className?: string
+  layoutId?: string
 }) {
+  // Eindeutige ID für diesen Slot generieren (bleibt über die Lebensdauer des Slots stabil)
+  const [slotId] = useState(() => 'slot_' + Math.random().toString(36).substring(2, 11))
+
   // Initiale Auswahl: bevorzugt eine Komponente, die noch nicht aktiv ist.
-  const [idx, setIdx]         = useState(() => pickInitial(pool))
+  const [idx, setIdx]         = useState(() => pickInitial(pool, layoutId, slotId))
   const [visible, setVisible] = useState(true)
 
-  // Beim ersten Render die gewählte Komponente als aktiv markieren.
-  // useEffect läuft nach dem Commit → zu diesem Zeitpunkt ist der Slot "sichtbar".
+  // Beim Render und bei Änderungen die gewählte Komponente für diesen Slot registrieren.
   useEffect(() => {
     const component = pool[idx]
-    activePanels.add(component)
-
-    // Cleanup: beim Unmount (Layout-Wechsel) aus dem globalen Set entfernen.
-    return () => {
-      activePanels.delete(component)
+    if (!activePanelsMap.has(layoutId)) {
+      activePanelsMap.set(layoutId, new Map())
     }
-  // pool und idx als Abhängigkeiten: falls sich der Pool ändert, erneut tracken.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pool, idx])
+    activePanelsMap.get(layoutId)!.set(slotId, component)
+
+    // Cleanup: beim Unmount (Layout-Wechsel) aus dem globalen Map entfernen.
+    return () => {
+      const layoutMap = activePanelsMap.get(layoutId)
+      if (layoutMap && layoutMap.get(slotId) === component) {
+        layoutMap.delete(slotId)
+        if (layoutMap.size === 0) {
+          activePanelsMap.delete(layoutId)
+        }
+      }
+    }
+  }, [pool, idx, slotId, layoutId])
 
   // Zum nächsten Panel wechseln (nie dasselbe zweimal hintereinander, und
   // bevorzugt eine Komponente, die in keinem anderen Slot gerade sichtbar ist).
@@ -43,7 +62,13 @@ export default function PanelSlot({
     setTimeout(() => {
       setIdx(currentIdx => {
         // Wenn ein konkreter Ziel-Index übergeben wird, direkt dorthin.
-        if (next !== undefined) return next
+        if (next !== undefined) {
+          if (!activePanelsMap.has(layoutId)) {
+            activePanelsMap.set(layoutId, new Map())
+          }
+          activePanelsMap.get(layoutId)!.set(slotId, pool[next])
+          return next
+        }
 
         // Kandidaten: alle Indizes außer dem aktuellen
         const candidates = pool
@@ -51,11 +76,18 @@ export default function PanelSlot({
           .filter(i => i !== currentIdx)
 
         // Bevorzuge Panels, die gerade nicht in einem anderen Slot laufen.
-        const free = candidates.filter(i => !activePanels.has(pool[i]))
+        const otherActive = getActivePanelsInOtherSlots(layoutId, slotId)
+        const free = candidates.filter(i => !otherActive.has(pool[i]))
 
         // Aus der besten verfügbaren Menge zufällig wählen.
         const pool2 = free.length > 0 ? free : candidates
-        return pool2[Math.floor(Math.random() * pool2.length)]
+        const chosen = pool2[Math.floor(Math.random() * pool2.length)]
+        
+        if (!activePanelsMap.has(layoutId)) {
+          activePanelsMap.set(layoutId, new Map())
+        }
+        activePanelsMap.get(layoutId)!.set(slotId, pool[chosen])
+        return chosen
       })
       setVisible(true)
     }, 300)
@@ -76,7 +108,7 @@ export default function PanelSlot({
     <div
       className={`relative transition-opacity duration-[300ms] min-h-0 h-full ${visible ? 'opacity-100' : 'opacity-0'} ${className}`}
     >
-      <Component />
+      <Component onComplete={() => skipTo()} />
       {/* Skip-Button: nur sichtbar wenn mehrere Panels im Pool */}
       {pool.length > 1 && (
         <button
@@ -94,19 +126,25 @@ export default function PanelSlot({
 }
 
 // ── Hilfsfunktion: initiale Panel-Auswahl ─────────────────────────────────────
-// Wählt einen zufälligen Index aus dem Pool, der noch nicht in activePanels ist.
+// Wählt einen zufälligen Index aus dem Pool, der noch nicht in activePanelsMap ist.
 // Falls alle belegt sind (unwahrscheinlich bei großen Pools), vollständig zufällig.
-function pickInitial(pool: React.ComponentType[]): number {
+function pickInitial(pool: React.ComponentType<any>[], layoutId: string, slotId: string): number {
+  const otherActive = getActivePanelsInOtherSlots(layoutId, slotId)
   // Indizes, deren Komponenten noch nicht aktiv sind
   const free = pool
     .map((comp, i) => ({ comp, i }))
-    .filter(({ comp }) => !activePanels.has(comp))
+    .filter(({ comp }) => !otherActive.has(comp))
     .map(({ i }) => i)
 
   const candidates = free.length > 0 ? free : pool.map((_, i) => i)
   const chosen = candidates[Math.floor(Math.random() * candidates.length)]
+  
   // Sofort eintragen (nicht erst nach useEffect), damit parallel initialisierende
   // Slots diese Auswahl schon sehen und keine Duplikate wählen.
-  activePanels.add(pool[chosen])
+  if (!activePanelsMap.has(layoutId)) {
+    activePanelsMap.set(layoutId, new Map())
+  }
+  activePanelsMap.get(layoutId)!.set(slotId, pool[chosen])
   return chosen
 }
+

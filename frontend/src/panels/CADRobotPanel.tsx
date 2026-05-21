@@ -764,39 +764,10 @@ export default function CADRobotPanel() {
       ctx.fillText('Z', projZ.sx + 4, projZ.sy)
     }
 
-    // ── Hilfsfunktion: Wireframe-Modell zeichnen ─────────────────────────────
-    // Rotiert alle Vertices, projiziert sie perspektivisch und zeichnet alle Kanten.
-    function drawModelWire(
-      model: ModelDef,
-      cx: number, cy: number,
-      scale: number,
-      rx: number, ry: number,
-      alpha: number   // Transparenz 0..1 (für Überblende)
-    ) {
-      const focalLen = 6.0  // erhöhte Brennweite = weniger Perspektivverzerrung, näher am Objekt
-
-      // Alle Vertices rotieren und projizieren
-      const projected = model.vertices.map(v => {
-        const rotated = rotateVec3(v, rx, ry, 0)
-        return project(rotated, cx, cy, scale, focalLen)
-      })
-
-      // Alle Kanten als Linien zeichnen
-      ctx.strokeStyle = `rgba(0, 255, 128, ${alpha})`
-      ctx.lineWidth   = 1.0
-      ctx.beginPath()
-      for (const e of model.edges) {
-        ctx.moveTo(projected[e.a].sx, projected[e.a].sy)
-        ctx.lineTo(projected[e.b].sx, projected[e.b].sy)
-      }
-      ctx.stroke()
-    }
-
-    // ── Hilfsfunktion: Solid-Modell zeichnen (Painter's Algorithm) ────────────
-    // Zeichnet alle Flächen von hinten nach vorne (Tiefensortierung), füllt sie
-    // mit diffusen grünen Farbtönen (CAD-Shading). Back-Face Culling überspringt
-    // Flächen, die von der Kamera abgewandt sind.
-    function drawModelSolid(
+    // ── Hilfsfunktion: CAD-Mesh (Solid + Wireframe) zeichnen ─────────────────
+    // Zeichnet zuerst alle Flächen (Painter's Algorithm) gefüllt und schattiert,
+    // und zeichnet direkt danach ihre Außenlinien sowie freie Kanten (z. B. Antennen).
+    function drawModelCADMesh(
       model: ModelDef,
       cx: number, cy: number,
       scale: number,
@@ -814,63 +785,84 @@ export default function CADRobotPanel() {
       const rotated3D = model.vertices.map(v => rotateVec3(v, rx, ry, 0))
       const projected = rotated3D.map(v => project(v, cx, cy, scale, focalLen))
 
-      // Für jede Fläche: Tiefe, Normale und Sichtbarkeit berechnen
-      type FaceDrawData = {
-        face:      Face
-        avgZ:      number   // Durchschnitts-Z der rotierten Punkte (für Painter-Sort)
-        intensity: number   // diffuse Beleuchtungsstärke 0..1
-        visible:   boolean  // back-face culling
-      }
-
-      const faceData: FaceDrawData[] = model.faces.map(face => {
-        // 3D-Positionen der Eckpunkte nach Rotation
-        const pts3D = face.verts.map(i => rotated3D[i])
-
-        // Durchschnittliche Z-Tiefe (für Painter's Algorithm)
-        const avgZ = pts3D.reduce((s, p) => s + p.z, 0) / pts3D.length
-
-        // Flächennormale berechnen und normieren
-        const n = normalize(faceNormal(pts3D))
-
-        // Back-Face Culling: Fläche cullen, wenn Normale vom Betrachter wegzeigt
-        // (dot(Normale, Kamerarichtung) > 0 heißt: Fläche zeigt zur Kamera)
-        const visible = dot(n, camDir) < 0  // Normale zeigt in -Z = zur Kamera
-
-        // Diffuse Beleuchtung: Lambert-Modell (maximiere mit 0, damit Rückseiten schwarz)
-        const intensity = Math.max(0, dot(n, light))
-
-        return { face, avgZ, intensity, visible }
+      // Kanten ermitteln, die zu Flächen gehören, um freie Kanten (z. B. Antennen) separat zu zeichnen
+      const edgeInFace = new Set<string>()
+      model.faces.forEach(face => {
+        for (let i = 0; i < face.verts.length; i++) {
+          const u = face.verts[i]
+          const v = face.verts[(i + 1) % face.verts.length]
+          const key = u < v ? `${u}_${v}` : `${v}_${u}`
+          edgeInFace.add(key)
+        }
       })
 
-      // Painter's Algorithm: Flächen nach Z-Tiefe sortieren (hinten zuerst)
-      faceData.sort((a, b) => b.avgZ - a.avgZ)
+      // Flächen und freie Kanten in ein gemeinsames Tiefensortierungs-Array packen
+      type RenderItem = 
+        | { type: 'face'; face: Face; avgZ: number; intensity: number; visible: boolean }
+        | { type: 'edge'; edge: Edge; avgZ: number }
 
-      // Flächen zeichnen (nur sichtbare)
-      for (const fd of faceData) {
-        if (!fd.visible) continue
+      const items: RenderItem[] = []
 
-        // Farbe berechnen: grünliches CAD-Shading
-        // intensity 0..1 → Grüntöne mit leichtem Kontrast
-        const r = Math.round(fd.intensity * 30)           // kaum Rot
-        const g = Math.round(fd.intensity * 180 + 30)     // viel Grün (30–210)
-        const b = Math.round(fd.intensity * 60 + 20)      // wenig Blau (20–80)
+      // 1. Flächen hinzufügen
+      model.faces.forEach(face => {
+        const pts3D = face.verts.map(i => rotated3D[i])
+        const avgZ = pts3D.reduce((s, p) => s + p.z, 0) / pts3D.length
+        const n = normalize(faceNormal(pts3D))
+        const visible = dot(n, camDir) < 0
+        const intensity = Math.max(0, dot(n, light))
+        items.push({ type: 'face', face, avgZ, intensity, visible })
+      })
 
-        // Fläche füllen
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`
-        ctx.beginPath()
-        const firstPt = projected[fd.face.verts[0]]
-        ctx.moveTo(firstPt.sx, firstPt.sy)
-        for (let k = 1; k < fd.face.verts.length; k++) {
-          const pt = projected[fd.face.verts[k]]
-          ctx.lineTo(pt.sx, pt.sy)
+      // 2. Freie Kanten hinzufügen
+      model.edges.forEach(edge => {
+        const key = edge.a < edge.b ? `${edge.a}_${edge.b}` : `${edge.b}_${edge.a}`
+        if (!edgeInFace.has(key)) {
+          const avgZ = (rotated3D[edge.a].z + rotated3D[edge.b].z) / 2
+          items.push({ type: 'edge', edge, avgZ })
         }
-        ctx.closePath()
-        ctx.fill()
+      })
 
-        // Dünner dunkler Rand (wie CAD-Software Flächen trennt)
-        ctx.strokeStyle = `rgba(0, 60, 20, ${alpha * 0.6})`
-        ctx.lineWidth   = 0.5
-        ctx.stroke()
+      // Sortierung nach Tiefe (hinten zuerst, absteigend)
+      items.sort((a, b) => b.avgZ - a.avgZ)
+
+      // Alle Elemente zeichnen
+      for (const item of items) {
+        if (item.type === 'face') {
+          if (!item.visible) continue
+
+          const { face, intensity } = item
+          
+          // Diffuses Shading: grüne Farbtöne mit Beleuchtungskontrast
+          const r = Math.round(intensity * 25)
+          const g = Math.round(intensity * 90 + 15) // gedecktes Grün
+          const b = Math.round(intensity * 30 + 5)
+
+          // Fläche füllen
+          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.85})`
+          ctx.beginPath()
+          const firstPt = projected[face.verts[0]]
+          ctx.moveTo(firstPt.sx, firstPt.sy)
+          for (let k = 1; k < face.verts.length; k++) {
+            const pt = projected[face.verts[k]]
+            ctx.lineTo(pt.sx, pt.sy)
+          }
+          ctx.closePath()
+          ctx.fill()
+
+          // Dünner, hell leuchtender Drahtgitter-Rand
+          ctx.strokeStyle = `rgba(0, 255, 100, ${alpha * 0.9})`
+          ctx.lineWidth   = 0.8
+          ctx.stroke()
+        } else {
+          // Freie Kanten (z. B. Antennenstäbe, Klauen, freie Armsegmente)
+          const { edge } = item
+          ctx.strokeStyle = `rgba(0, 255, 100, ${alpha * 0.9})`
+          ctx.lineWidth   = 0.8
+          ctx.beginPath()
+          ctx.moveTo(projected[edge.a].sx, projected[edge.a].sy)
+          ctx.lineTo(projected[edge.b].sx, projected[edge.b].sy)
+          ctx.stroke()
+        }
       }
     }
 
@@ -894,12 +886,12 @@ export default function CADRobotPanel() {
 
     // ── Hilfsfunktion: Render-Modus-Label (SOLID / WIRE) ─────────────────────
     // Wird in der oberen rechten Ecke angezeigt.
-    function drawModeLabel(W: number, solidMode: boolean, alpha: number) {
+    function drawModeLabel(W: number, alpha: number) {
       const fSize = Math.max(8, Math.min(11, W * 0.028))
       ctx.font        = `bold ${fSize}px monospace`
       ctx.textBaseline = 'top'
 
-      const label = solidMode ? 'SOLID' : 'WIRE'
+      const label = 'CAD MESH SHADED'
       const measured = ctx.measureText(label)
       const boxPad = 4
       const boxX = W - measured.width - boxPad * 2 - 8
@@ -909,11 +901,142 @@ export default function CADRobotPanel() {
       ctx.fillStyle = `rgba(0, 0, 0, ${0.75 * alpha})`
       ctx.fillRect(boxX, boxY, measured.width + boxPad * 2, fSize + boxPad * 2)
 
-      // Label-Text: SOLID = helleres Grün, WIRE = dimmer
-      ctx.fillStyle = solidMode
-        ? `rgba(0, 255, 128, ${alpha})`
-        : `rgba(0, 180, 80, ${alpha})`
+      ctx.fillStyle = `rgba(0, 255, 128, ${alpha})`
       ctx.fillText(label, boxX + boxPad, boxY + boxPad)
+    }
+
+    // ── Hilfsfunktion: Technisches Blueprint HUD zeichnen ────────────────────
+    function drawBlueprintHUD(
+      W: number,
+      H: number,
+      rx: number,
+      ry: number,
+      _model: ModelDef,
+      alpha: number
+    ) {
+      ctx.save()
+
+      // 1. Orthogonales technisches Gitter (Blueprint-Stil)
+      ctx.strokeStyle = `rgba(0, 255, 128, ${0.03 * alpha})`
+      ctx.lineWidth = 0.5
+      const gridSize = 40
+      ctx.beginPath()
+      for (let x = 0; x < W; x += gridSize) {
+        ctx.moveTo(x, 0)
+        ctx.lineTo(x, H)
+      }
+      for (let y = 0; y < H; y += gridSize) {
+        ctx.moveTo(0, y)
+        ctx.lineTo(W, y)
+      }
+      ctx.stroke()
+
+      // Viewport-Mitte
+      const viewH  = H * 0.88
+      const cx = W * 0.5
+      const cy = viewH * 0.48
+
+      // 2. Fadenkreuz in der Mitte
+      ctx.strokeStyle = `rgba(0, 255, 128, ${0.15 * alpha})`
+      ctx.lineWidth = 0.8
+      
+      // Kleiner Innenkreis
+      ctx.beginPath()
+      ctx.arc(cx, cy, 10, 0, Math.PI * 2)
+      ctx.stroke()
+
+      // Fadenkreuzstriche mit Lücke
+      ctx.beginPath()
+      // Links
+      ctx.moveTo(cx - 55, cy)
+      ctx.lineTo(cx - 15, cy)
+      // Rechts
+      ctx.moveTo(cx + 15, cy)
+      ctx.lineTo(cx + 55, cy)
+      // Oben
+      ctx.moveTo(cx, cy - 55)
+      ctx.lineTo(cx, cy - 15)
+      // Unten
+      ctx.moveTo(cx, cy + 15)
+      ctx.lineTo(cx, cy + 55)
+      ctx.stroke()
+
+      // Dünne Hauptachsen durch das Zentrum
+      ctx.strokeStyle = `rgba(0, 255, 128, ${0.06 * alpha})`
+      ctx.beginPath()
+      ctx.moveTo(0, cy)
+      ctx.lineTo(W, cy)
+      ctx.moveTo(cx, 0)
+      ctx.lineTo(cx, H - 25)
+      ctx.stroke()
+
+      // Skalenstriche (Ticks) auf den Hauptachsen
+      ctx.strokeStyle = `rgba(0, 255, 128, ${0.20 * alpha})`
+      ctx.beginPath()
+      // Horizontale Ticks
+      for (let offset = 20; offset < W / 2; offset += 20) {
+        ctx.moveTo(cx + offset, cy - 3)
+        ctx.lineTo(cx + offset, cy + 3)
+        ctx.moveTo(cx - offset, cy - 3)
+        ctx.lineTo(cx - offset, cy + 3)
+      }
+      // Vertikale Ticks
+      for (let offset = 20; offset < H / 2; offset += 20) {
+        ctx.moveTo(cx - 3, cy + offset)
+        ctx.lineTo(cx + 3, cy + offset)
+        ctx.moveTo(cx - 3, cy - offset)
+        ctx.lineTo(cx + 3, cy - offset)
+      }
+      ctx.stroke()
+
+      // 3. Technische Eckwinkel
+      const pad = 12
+      const len = 15
+      ctx.strokeStyle = `rgba(0, 255, 128, ${0.35 * alpha})`
+      ctx.lineWidth = 1.0
+      ctx.beginPath()
+      // Oben-Links
+      ctx.moveTo(pad + len, pad)
+      ctx.lineTo(pad, pad)
+      ctx.lineTo(pad, pad + len)
+      // Oben-Rechts
+      ctx.moveTo(W - pad - len, pad)
+      ctx.lineTo(W - pad, pad)
+      ctx.lineTo(W - pad, pad + len)
+      // Unten-Links (über Statuszeile)
+      const bottomY = H - 24
+      ctx.moveTo(pad + len, bottomY)
+      ctx.lineTo(pad, bottomY)
+      ctx.lineTo(pad, bottomY - len)
+      // Unten-Rechts
+      ctx.moveTo(W - pad - len, bottomY)
+      ctx.lineTo(W - pad, bottomY)
+      ctx.lineTo(W - pad, bottomY - len)
+      ctx.stroke()
+
+      // 4. Technische HUD-Texte & Winkelanzeige
+      ctx.fillStyle = `rgba(0, 255, 128, ${0.7 * alpha})`
+      ctx.font = '9px monospace'
+      
+      const degX = ((rx * 180 / Math.PI) % 360).toFixed(1)
+      const degY = ((ry * 180 / Math.PI) % 360).toFixed(1)
+
+      // Rechtsbündige Labels
+      ctx.textAlign = 'right'
+      ctx.fillText(`PROJ: ISO-A (3D CAD)`, W - 20, 24)
+      ctx.fillText(`ROT-X: ${degX}°`, W - 20, 36)
+      ctx.fillText(`ROT-Y: ${degY}°`, W - 20, 48)
+      ctx.fillText(`SCALE: 0.70x`, W - 20, 60)
+
+      // Linksbündige Diagnostics (unter dem Haupt-Overlay)
+      ctx.textAlign = 'left'
+      const diagY = 90
+      ctx.fillText(`SYS.STATUS : NOMINAL`, 10, diagY)
+      ctx.fillText(`MESH_TYPE  : SHADED_WIREFRAME`, 10, diagY + 12)
+      ctx.fillText(`DRAW_CALLS : 1`, 10, diagY + 24)
+      ctx.fillText(`BUFFERS    : DOUBLE`, 10, diagY + 36)
+
+      ctx.restore()
     }
 
     // ── Hilfsfunktion: Statuszeile unten ─────────────────────────────────────
@@ -979,7 +1102,7 @@ export default function CADRobotPanel() {
           fadingOut = false
           // Modell wechseln + neue Startrotation
           modelIdx   = (modelIdx + 1) % MODELS.length
-          slotCount  = slotCount + 1   // Slot-Zähler: bestimmt WIRE vs. SOLID
+          slotCount  = slotCount + 1   // Slot-Zähler
           ry         = Math.random() * Math.PI * 2
           rxPhase    = Math.random() * Math.PI * 2
           switchTimer = 12000
@@ -998,8 +1121,6 @@ export default function CADRobotPanel() {
 
       // Wenn weder ein Fade läuft: volles Alpha
       const modelAlpha = fadingOut || fadingIn ? fadeAlpha : 1.0
-      // Render-Modus: gerade Slots = WIRE, ungerade Slots = SOLID
-      const solidMode = (slotCount % 2) === 1
 
       // ── Rendering ─────────────────────────────────────────────────────────
 
@@ -1007,34 +1128,32 @@ export default function CADRobotPanel() {
       ctx.fillStyle = '#000000'
       ctx.fillRect(0, 0, W, H)
 
-      // Schritt 2: Perspektivgitter im Hintergrund
+      // Schritt 2: Technisches Blueprint-Gitter & Fadenkreuz im Hintergrund
+      drawBlueprintHUD(W, H, rx, ry, MODELS[modelIdx], modelAlpha)
+
+      // Schritt 3: Perspektivgitter im Hintergrund (Bodenraster)
       drawGrid(W, H)
 
-      // Schritt 3: Modell zentriert im oberen 85% des Canvas
-      // (15% unten sind für die Statuszeile und die Achsenbeschriftungen reserviert)
+      // Schritt 4: Modell zentriert im oberen 85% des Canvas
       const viewH  = H * 0.88
       const centerX = W * 0.5
       const centerY = viewH * 0.48
-      // Skalierung: erhöht auf 0.55 damit Modell 60–70% des Panels füllt (vorher 0.30)
-      const scale  = Math.min(W, viewH) * 0.55
+      // Skalierung: 0.70x für größere 3D-Modelle (füllt 65-75% des Panels)
+      const scale  = Math.min(W, viewH) * 0.70
 
-      // Schritt 4: Koordinatenachsen zeichnen (hinter dem Modell, gleiche Rotation)
+      // Schritt 5: Koordinatenachsen zeichnen (hinter dem Modell, gleiche Rotation)
       drawAxes(centerX, centerY, scale, rx, ry)
 
-      // Schritt 5: Modell zeichnen — Modus je nach slotCount
-      if (solidMode) {
-        drawModelSolid(MODELS[modelIdx], centerX, centerY, scale, rx, ry, modelAlpha)
-      } else {
-        drawModelWire(MODELS[modelIdx], centerX, centerY, scale, rx, ry, modelAlpha)
-      }
+      // Schritt 6: Modell zeichnen (Immer Shaded CAD Mesh: gefüllte Flächen + leuchtende Kanten)
+      drawModelCADMesh(MODELS[modelIdx], centerX, centerY, scale, rx, ry, modelAlpha)
 
-      // Schritt 6: Info-Overlay oben links
+      // Schritt 7: Info-Overlay oben links
       drawInfoOverlay(W, H, MODELS[modelIdx], modelAlpha)
 
-      // Schritt 7: Render-Modus-Label (SOLID / WIRE) oben rechts
-      drawModeLabel(W, solidMode, modelAlpha)
+      // Schritt 8: Render-Modus-Label oben rechts
+      drawModeLabel(W, modelAlpha)
 
-      // Schritt 8: Statuszeile unten
+      // Schritt 9: Statuszeile unten
       drawStatusBar(W, H, MODELS[modelIdx])
 
       rafId = requestAnimationFrame(loop)

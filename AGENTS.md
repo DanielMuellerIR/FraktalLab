@@ -1,7 +1,7 @@
-# CLAUDE.md
+# FraktalLab — Projektdokumentation
 
-This file is the primary reference for Claude Code when working in this repository.
-It replaces the former `PRD_FraktalViewer.md` and the separate `AGENTS.md`.
+Universelle Referenz für alle Coding-Agents und KI-Modelle.
+Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 
 ---
 
@@ -14,7 +14,7 @@ Thematischer Rahmen: Ein fiktives „Neural Intrusion Dashboard", das Hacker-Kli
 
 **Speed-first-Regel:** Jedes Feature muss in einer einzigen Session vollständig lauffähig implementiert werden können. Features, die das nicht schaffen, werden auf kleineres Scope reduziert oder verschoben. Keine halbfertigen Implementierungen.
 
-Aktueller Stand: **v0.9.9**. Deployment auf Netcup-Webspace (Apache).
+Aktueller Stand: **v1.0.0**. Deployment auf Netcup-Webspace (Apache).
 
 ---
 
@@ -56,29 +56,6 @@ server/                     Express Prod-Server (wird auf Netcup nicht genutzt)
 
 ---
 
-## Befehle
-
-```bash
-# WASM bauen (nach Änderungen an wasm/src/lib.rs)
-source "$HOME/.cargo/env"
-cd /Users/dm0/local/Arbeit/Viben/p_fraktal
-wasm-pack build wasm --target web --out-dir pkg
-
-# Frontend Dev-Server (COOP/COEP via vite.config.ts)
-cd frontend && npm run dev
-
-# Production Build  →  frontend/dist/
-cd frontend && npm run build
-
-# Lint
-cd frontend && npm run lint
-
-# Visueller Panel-Check (Dev-Server muss laufen)
-cd frontend && npm run test:panels
-```
-
----
-
 ## Architektur-Kernpunkte
 
 **WASM ↔ React-Grenze:** `wasm/src/lib.rs` rendert Fraktale in `Vec<u8>`-Pixel-Buffer (RGBA, row-major). Exportiert: `render()` (Mandelbrot) und `render_julia()` (Julia-Menge). JS überträgt den Buffer via `ImageData` auf `<canvas>`.
@@ -93,7 +70,7 @@ cd frontend && npm run test:panels
 
 **TypeScript Closure-Narrowing:** Canvas-Panels müssen nach dem Null-Check `const canvas: HTMLCanvasElement = _canvas` und `const ctx: CanvasRenderingContext2D = _ctx` verwenden, da TypeScript Assertions (`!`) in Closures nicht durchträgt.
 
-**IntersectionObserver (BUG-02):** Die meisten Canvas-Panels beobachten ihren Container und pausieren den rAF-Loop (`if (!isVisible) { rafId = rAF(loop); return }`), wenn sie unsichtbar sind (z.B. während Layout-Übergängen).
+**IntersectionObserver:** Die meisten Canvas-Panels beobachten ihren Container und pausieren den rAF-Loop (`if (!isVisible) { rafId = rAF(loop); return }`), wenn sie unsichtbar sind (z.B. während Layout-Übergängen).
 
 ---
 
@@ -109,7 +86,7 @@ cd frontend && npm run test:panels
 
 ### Text-Panels (Hacker-Themen)
 
-`SystemLog`, `DataStream`, `SocialEngineering`, `Vitals`, `TrafficMonitor`, `NuclearTargets`, `PwdCracker`, `PortScanner`, `PseudoCode`, `ClaudeCodePanel`, `VisitorProfilePanel`, `ICQChatPanel`, `BitcoinMinerPanel`, `DiskCleanupPanel`, `StockTickerPanel`, `SatellitePanel`, `ClassifiedPanel`
+`SystemLog`, `DataStream`, `SocialEngineering`, `Vitals`, `TrafficMonitor`, `NuclearTargets`, `PwdCracker`, `PortScanner`, `PseudoCode`, `AgentCodePanel`, `VisitorProfilePanel`, `ICQChatPanel`, `BitcoinMinerPanel`, `DiskCleanupPanel`, `StockTickerPanel`, `SatellitePanel`, `ClassifiedPanel`
 
 ### Grafik-Panels (Canvas-Animationen)
 
@@ -136,7 +113,7 @@ cd frontend && npm run test:panels
 
 | Datei | Inhalt |
 |---|---|
-| `AllYourBase.tsx` | Video von archive.org (BUG-01 behoben) |
+| `AllYourBase.tsx` | Video von archive.org |
 | `EnhanceView.tsx` | „ENHANCE PHOTO"-Slideshow, 12 Stufen, 4s, nur urbane Stadtfotos |
 
 ### Pool-Zuordnung (`App.tsx`)
@@ -144,7 +121,7 @@ cd frontend && npm run test:panels
 ```
 POOL_TEXT       SystemLog, DataStream, SocialEngineering, Vitals, TrafficMonitor,
                 NuclearTargets, PwdCracker, PortScanner, PseudoCode,
-                ClaudeCodePanel, VisitorProfilePanel, ICQChatPanel,
+                AgentCodePanel, VisitorProfilePanel, ICQChatPanel,
                 BitcoinMinerPanel, DiskCleanupPanel,
                 StockTickerPanel, SatellitePanel, ClassifiedPanel
 
@@ -179,9 +156,64 @@ Desktop: `[LAYOUT x/3]`-Button + Leertaste. Mobile: ausgeblendet.
 
 ---
 
-## Roadmap (offen)
+## Roadmap
 
-1. **AmiModPanel** — echte .mod-Dateien von modarchive.org abspielen (benötigt MOD-Parser oder libopenmpt-WASM)
+1. **AmiModPanel** — echte .mod-Dateien abspielen (benötigt MOD-Parser oder libopenmpt-WASM).
+   Kuratierte Tracks auf modarchive.org:
+   - `modarchive.org/index.php?request=view_player&query=142827`
+   - `modarchive.org/index.php?request=view_player&query=58072`
+   - `modarchive.org/index.php?request=view_player&query=164194`
+   - `modarchive.org/index.php?request=view_player&query=138950`
+   - `modarchive.org/index.php?request=view_player&query=87180`
 2. **Fraktal-Endloszoom** — statt Fade+Reset nahtlosen Endloszoom implementieren (kein schwarzes Bild je)
 3. **Grid-Überarbeitung (GRID-01)** — vollständig zufälliger Grid-Generator statt fixer Layouts
 4. **Archivierte Panels** — DaggerfallPanel, FractalDendrite, FractalSwirl bei Gelegenheit überarbeiten
+
+---
+
+## Offene Todos (Eval v0.9.9)
+
+Basis: manueller Durchlauf aller Panels am 2026-05-21. Daumen rauf/runter = erster Eindruck, kein Löschauftrag.
+**Löschen nur wenn Kommentar es explizit anordnet.**
+
+### Schnell (kleine Änderungen)
+
+- [x] **AgentCodePanel** — Text anpassen: jemand schreibt genau diese Seite (FraktalLab), nicht irgendein Projekt
+- [ ] **ICQChatPanel** — Erste 3 Nachrichten beschleunigen, danach normales Tempo
+- [ ] **PlasmaDemo** — Szenen auf 10s; kontinuierlicher Farbwechsel
+- [ ] **VisitorProfilePanel** — 10s warten nach Durchlauf, dann Panel-Wechsel
+- [ ] **SatellitePanel** — Mehr Bewegung ODER 10s Timeout dann Panel-Wechsel
+- [ ] **FractalJulia** — Flimmern reduzieren
+- [ ] **EnhanceView** — „Apollo"-Text fixen; anstößige/politische Bilder entfernen → nur neutrale Stadtszenen
+
+### Mittel
+
+- [ ] **SolarSystemPanel** — Infotafel größer + mittig; realistische Startpositionen; Umlaufbahnen einzeichnen; Planetenbeschriftung größer + weiß (nicht eingefärbt)
+- [ ] **DNAHelix** — Grau-Kugel-Artefakt an der Vorderseite (wo Kreise groß sind) fixen
+- [ ] **TunnelScene** — Grobpixeligkeit reduzieren, besonders in der Mitte
+- [ ] **RotozoomScene** — Kantenglättung; generell bei pixeligen Panels anwenden
+- [ ] **BitcoinMinerPanel** — Hashing-Animation auf Textbasis hinzufügen
+- [ ] **FireScene** — Echte Feuersimulation statt blaue vertikale Linien
+- [ ] **LissajousScene** — Komplett neu: Spirale zeichnet sich auf und rückwärts, schnell, wechselnde Farben
+- [ ] **BoingScene** — Langsamer; variable Geschwindigkeit (zufällig ändernd); +1 Ball alle 10s bis max. 5; Kollision mit korrektem Abstoßen
+- [ ] **VoxelThermal** — Weniger grob, weniger Schwarz
+- [ ] **VoxelNeon** — Mehr Formvielfalt: Häuser-Silhouetten, verschiedene Breiten und Höhen
+
+### Hoch (komplex)
+
+- [ ] **StarfieldScene** — Hyperspace nach 8s: Sterne → Linien → Hyperspace 10s → Verlangsamung → Sterne; HUD mit Geschwindigkeit + Hyperspace-Modus
+- [ ] **GlobePanel** — Korrekte Landmassen-Polygone mit deutlich mehr Punkten; aktuell fehlen Vektorpunkte → falsche Formen
+- [ ] **VoxelDemo** — Zwei separate Panels: Farb-Linien-Variante + S/W-Gelände-Variante
+- [ ] **VoxelLava** — Weniger erratisch; eher statische Szene mit blubbernder Lava
+- [ ] **VoxelMatrix** — Komplett neu entwerfen — eigene Identität, nicht nur „grüne Voxel"
+- [ ] **OscilloscopePanel** — Neuer Versuch oder löschen (Nutzer: „Müll")
+- [ ] **C64Panel** — Startbildschirm-Proportionen fixen (Referenz: `https://c64os.com/c64os/afterlifeguide/part_ii`); Sprite FX als eigenes Panel auslagern
+- [ ] **ParallaxPanel** — Szenen in separate Panels aufteilen; Raumschiff-Szene verbessern; grüne-Balken-Szene rechten Bereich fixen; Metro-Tunnel überarbeiten oder löschen
+- [ ] **ElitePanel** — Radar nur echte Objekte zeigen; Cash-Counter entfernen; ODER Cockpit-Ansicht; ODER anderweitig aufwerten ohne offensichtlich falsche Details
+- [ ] **CADRobotPanel** — Komplexere 3D-Modelle, kein Wireframe; CAD-Stil mit gefüllten Flächen + HUD
+- [ ] **Fraktal-Panels (alle)** — Höhere Auflösung, längere Zooms ohne Reset, mehr Varianz. Priorität: FractalLightning > FractalSatellite > FractalElephant > FractalMini > FractalSpiral > FractalTendril > FractalSeahorse
+
+### Zurückgestellt
+
+- → **AmiModPanel** echte .mod-Dateien: Aufwand hoch (MOD-Parser oder libopenmpt-WASM benötigt) — Tracks siehe Roadmap oben
+- → **EnhanceView** Live-Webcams: CORS/CSP-Problem mit externen Streams; unklar ob ohne Backend realisierbar

@@ -28,15 +28,29 @@ const HOLD_MS = 2000
 // Lokale Dateien (6 Fotos) + loremflickr ausschließlich mit Großstadt-Menschen-Keywords.
 // Kein Natur/Wald — nur urbane Settings mit Menschen in der Öffentlichkeit.
 const LOCAL = [0, 1, 2, 3, 4, 5].map(i => `/enhance/street-${i}.jpg`)
-const FLICKR_TAGS = [
-  'crowd,city', 'subway,people', 'street,people', 'market,city',
-  'commuters', 'pedestrians,downtown', 'urban,crowd', 'city,people',
+const UNSPLASH_IDS = [
+  '1477959858617-67f85cf4f1df', // Chicago skyline night
+  '1480714378408-67cf0d13bc1b', // Detroit skyline
+  '1519501025264-65ba15a82390', // Tokyo street night
+  '1486406146926-c627a92ad1ab', // Skyscraper architecture
+  '1502899576159-f224dc23efb7', // Los Angeles skyline night
+  '1518391846015-55a9cc003b25', // New York street crossing
+  '1449034446853-66c86144b0ad', // San Francisco bridge/city
+  '1505761671935-60b3a7427bad', // London Big Ben skyline
+  '1513635269975-59663e0ac1ad', // London street red bus
+  '1503899036084-c55cdd92da26', // Tokyo Shibuya crossing
+  '1496442226666-8d4d0e62e6e9', // NYC street taxi
+  '1511527844068-006b95d162c2', // Paris street cafe/Eiffel Tower
+  '1512453979798-5ea266f8880c', // Dubai skyline
+  '1506973035872-a4ec16b8e8d9', // Sydney Opera house skyline
+  '1520121401995-928cd50d4e27', // City street traffic
+  '1475855581690-80accde3ae2b', // San Francisco city street
+  '1514565131-fce0801e5785', // City skyscrapers
+  '1494522855154-9297ac14b55f', // Tokyo street
+  '1522083165195-342750297f4e', // City walk
 ]
-const FLICKR = Array.from({ length: 32 }, (_, i) => {
-  const tag = FLICKR_TAGS[i % FLICKR_TAGS.length]
-  return `https://loremflickr.com/320/213/${tag}?lock=${i + 1}`
-})
-const PHOTOS = [...LOCAL, ...FLICKR]
+const CURATED = UNSPLASH_IDS.map(id => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=480&h=320&q=80`)
+const PHOTOS = [...LOCAL, ...CURATED]
 
 // Zeichnet das Bild pixeliert (blockSize > 1) oder scharf (blockSize <= 1)
 function drawPixelated(
@@ -213,7 +227,7 @@ export default function EnhancePhoto() {
       />
       {/* Statisches Kamera-Label oben links */}
       <div className="absolute top-1 left-1 font-mono text-xs text-green-500 bg-black/70 px-1 pointer-events-none select-none">
-        CAM-07 ● APOLLO SECTOR ● {new Date().toLocaleDateString('en-GB')}
+        CCTV FEED ● DOWNTOWN SECTOR ● {new Date().toLocaleDateString('en-GB')}
       </div>
     </div>
   )

@@ -180,7 +180,7 @@ function buildScanLines(): ScanLine[] {
 }
 
 // ── Komponente ─────────────────────────────────────────────────────────────────
-export default function VisitorProfilePanel() {
+export default function VisitorProfilePanel({ onComplete }: { onComplete?: () => void }) {
   // Ref auf den scrollbaren Ausgabe-Bereich
   const outputRef = useRef<HTMLDivElement>(null)
 
@@ -231,6 +231,12 @@ export default function VisitorProfilePanel() {
       // Gesamte Scan-Dauer: Summe aller Delays (ca. 7–9 Sekunden)
       playScan(lines, 0, () => {
         startMonitoring()
+        if (onComplete) {
+          const t = setTimeout(() => {
+            onComplete()
+          }, 10000)
+          timers.push(t)
+        }
       })
     }
 
@@ -241,7 +247,7 @@ export default function VisitorProfilePanel() {
       for (const t of timers) clearTimeout(t)
       if (monitorInterval) clearInterval(monitorInterval)
     }
-  }, [])
+  }, [onComplete])
 
   return (
     <Panel title="VISITOR PROFILE // BIOMETRIC SCAN ACTIVE">

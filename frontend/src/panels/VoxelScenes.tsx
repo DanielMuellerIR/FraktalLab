@@ -8,9 +8,14 @@ import Panel from '../ui/Panel'
 
 // Struktur eines Turms (Welt-Koordinaten)
 interface Tower {
-  gx: number   // Grid-Spalte (ganzzahlig)
-  gz: number   // Grid-Reihe (ganzzahlig)
-  height: number // Höhe in Welt-Einheiten
+  gx: number       // Grid-Spalte (ganzzahlig)
+  gz: number       // Grid-Reihe (ganzzahlig)
+  height: number   // Höhe in Welt-Einheiten
+  width: number    // Breite in Welt-Einheiten
+  type: number     // 0: regular, 1: stepped, 2: antenna
+  windowDensity: number
+  windowOffset: number
+  antennaHeight: number
 }
 
 export function VoxelNeonGrid() {
@@ -51,12 +56,23 @@ export function VoxelNeonGrid() {
     const VIEW_DEPTH   = 600    // Welt-Tiefe, die gerendert wird
     const TOWER_SPREAD = 10     // Türme verteilen sich über ±TOWER_SPREAD Grid-Spalten
 
+    const createTower = (gx: number, gz: number): Tower => ({
+      gx,
+      gz,
+      height: 35 + Math.random() * 105,
+      width: 10 + Math.random() * 14,
+      type: Math.floor(Math.random() * 3), // 0: regular, 1: stepped, 2: antenna
+      windowDensity: 2 + Math.floor(Math.random() * 3), // 2..4
+      windowOffset: Math.floor(Math.random() * 6),
+      antennaHeight: 15 + Math.random() * 25,
+    })
+
     // Alle Türme zufällig initialisieren (verteilt über die Tiefe)
-    const towers: Tower[] = Array.from({ length: NUM_TOWERS }, () => ({
-      gx:     Math.round((Math.random() * 2 - 1) * TOWER_SPREAD),
-      gz:     Math.floor(Math.random() * (VIEW_DEPTH / GRID_SPACING)),
-      height: 20 + Math.random() * 120,
-    }))
+    const towers: Tower[] = Array.from({ length: NUM_TOWERS }, () => {
+      const gx = Math.round((Math.random() * 2 - 1) * TOWER_SPREAD)
+      const gz = Math.floor(Math.random() * (VIEW_DEPTH / GRID_SPACING))
+      return createTower(gx, gz)
+    })
 
     // Perspektiv-Hilfsfunktion: Welt-Koordinate → Screen-X
     // Kamera ist bei X=0, Y=camEye (über dem Grid), fährt in Z-Richtung.
@@ -92,9 +108,11 @@ export function VoxelNeonGrid() {
       const frontZ = Math.floor((cameraZ + VIEW_DEPTH) / GRID_SPACING)
       for (const tower of towers) {
         if (tower.gz < Math.floor(cameraZ / GRID_SPACING) - 1) {
-          tower.gz     = frontZ + Math.floor(Math.random() * 4)
-          tower.gx     = Math.round((Math.random() * 2 - 1) * TOWER_SPREAD)
-          tower.height = 20 + Math.random() * 120
+          const nt = createTower(
+            Math.round((Math.random() * 2 - 1) * TOWER_SPREAD),
+            frontZ + Math.floor(Math.random() * 4)
+          )
+          Object.assign(tower, nt)
         }
       }
 
@@ -165,8 +183,6 @@ export function VoxelNeonGrid() {
       }
 
       // ── Türme zeichnen ───────────────────────────────────────────────────
-      // Türme sind einfache Rechtecke, von der Basis (Grid) nach oben.
-      // Türme weiter hinten werden zuerst gezeichnet (Maler-Algorithmus).
       const sortedTowers = [...towers].sort((a, b) => b.gz * GRID_SPACING - a.gz * GRID_SPACING)
       for (const tower of sortedTowers) {
         const wx = tower.gx * GRID_SPACING
@@ -176,29 +192,108 @@ export function VoxelNeonGrid() {
         const base = project(wx, wz, W, H)
         if (!base) continue
 
-        // Wir simulieren Turm-Breite und -Höhe im Perspektiv-Raum
-        const towerWorldWidth = GRID_SPACING * 0.4
-        const leftBase  = project(wx - towerWorldWidth / 2, wz, W, H)
-        const rightBase = project(wx + towerWorldWidth / 2, wz, W, H)
-        if (!leftBase || !rightBase) continue
-
-        const screenWidth  = Math.max(2, rightBase.sx - leftBase.sx)
-        const screenHeight = Math.max(2, tower.height * base.scale)
-        const screenX      = leftBase.sx
-        const screenY      = base.sy - screenHeight
-
         // Fog-Transparenz für den Turm
         const fog = Math.max(0, 1 - (wz - cameraZ) / VIEW_DEPTH)
         if (fog <= 0) continue
-
-        // Magenta-Farbe mit Fog
         const alpha = fog * 0.85
-        ctx.fillStyle = `rgba(255,0,255,${alpha.toFixed(3)})`
-        ctx.fillRect(screenX, screenY, screenWidth, screenHeight)
 
-        // Leuchtende Kante oben (hellerer Streifen)
-        ctx.fillStyle = `rgba(255,128,255,${(fog * 0.7).toFixed(3)})`
-        ctx.fillRect(screenX, screenY, screenWidth, Math.max(1, screenHeight * 0.06))
+        // Definieren der Blöcke für diesen Turm basierend auf dem Typ
+        interface TowerBlock {
+          w: number  // Welt-Breite
+          y0: number // Welt-Y Start
+          y1: number // Welt-Y Ende
+        }
+        const blocks: TowerBlock[] = []
+
+        if (tower.type === 1) {
+          // Stepped Tower (3 Stufen)
+          blocks.push({ w: tower.width, y0: 0, y1: tower.height * 0.4 })
+          blocks.push({ w: tower.width * 0.7, y0: tower.height * 0.4, y1: tower.height * 0.75 })
+          blocks.push({ w: tower.width * 0.45, y0: tower.height * 0.75, y1: tower.height })
+        } else {
+          // Regular or Antenna Tower (1 Block)
+          blocks.push({ w: tower.width, y0: 0, y1: tower.height })
+        }
+
+        // Blöcke zeichnen
+        for (const block of blocks) {
+          const leftBase = project(wx - block.w / 2, wz, W, H)
+          const rightBase = project(wx + block.w / 2, wz, W, H)
+          if (!leftBase || !rightBase) continue
+
+          const screenWidth = Math.max(2, rightBase.sx - leftBase.sx)
+          const screenHeight = Math.max(2, (block.y1 - block.y0) * base.scale)
+          const screenX = leftBase.sx
+          const screenY = base.sy - block.y1 * base.scale
+
+          // Magenta-Körper
+          ctx.fillStyle = `rgba(255, 0, 255, ${alpha.toFixed(3)})`
+          ctx.fillRect(screenX, screenY, screenWidth, screenHeight)
+
+          // Leuchtende Kante oben (hellerer Streifen)
+          ctx.fillStyle = `rgba(255, 128, 255, ${(fog * 0.7).toFixed(3)})`
+          ctx.fillRect(screenX, screenY, screenWidth, Math.max(1.5, screenHeight * 0.05))
+
+          // Fenster zeichnen
+          // Bestimmen der Spalten und Zeilen für diesen Block
+          const cols = Math.max(1, Math.floor(block.w / (tower.windowDensity * 1.5)))
+          const rows = Math.max(1, Math.floor((block.y1 - block.y0) / (tower.windowDensity * 2)))
+
+          const padX = screenWidth * 0.15
+          const padY = screenHeight * 0.15
+          const useWidth = screenWidth - padX * 2
+          const useHeight = screenHeight - padY * 2
+
+          const winColor = (tower.gx + tower.gz) % 2 === 0 ? 'rgba(0, 255, 255, ' : 'rgba(255, 230, 0, '
+
+          for (let c = 0; c < cols; c++) {
+            for (let r = 0; r < rows; r++) {
+              // Pseudozufälliges Aus-Ausschalten von Fenstern
+              const winSeed = Math.sin((c + tower.windowOffset) * 12.3 + (r + tower.windowOffset) * 37.7 + wz)
+              if (winSeed > 0.3) continue // 30% dunkel
+
+              const winX = screenX + padX + (cols > 1 ? (c / (cols - 1)) * useWidth : useWidth / 2)
+              const winY = screenY + padY + (rows > 1 ? (r / (rows - 1)) * useHeight : useHeight / 2)
+
+              const winW = Math.max(1, 1.2 * base.scale)
+              const winH = Math.max(1.5, 2.0 * base.scale)
+
+              ctx.fillStyle = `${winColor}${alpha.toFixed(3)})`
+              ctx.fillRect(winX - winW / 2, winY - winH / 2, winW, winH)
+            }
+          }
+        }
+
+        // Antenne zeichnen
+        const topY = base.sy - tower.height * base.scale
+        const centerX = base.sx
+        const antennaWorldHeight = tower.antennaHeight
+        const antennaTopY = topY - antennaWorldHeight * base.scale
+
+        ctx.beginPath()
+        ctx.moveTo(centerX, topY)
+        ctx.lineTo(centerX, antennaTopY)
+        ctx.strokeStyle = `rgba(255, 128, 255, ${alpha.toFixed(3)})`
+        ctx.lineWidth = Math.max(0.5, 0.4 * base.scale)
+        ctx.stroke()
+
+        // Roter blinkender Signalpunkt (Beacon) bei Typ 2 oder sehr hohen Türmen
+        if (tower.type === 2 || tower.height > 90) {
+          const blink = Math.floor(Date.now() / 300) % 2 === 0
+          if (blink) {
+            const beaconRadius = Math.max(2, 2.5 * base.scale)
+            ctx.beginPath()
+            ctx.arc(centerX, antennaTopY, beaconRadius, 0, Math.PI * 2)
+            ctx.fillStyle = `rgba(255, 30, 30, ${alpha.toFixed(3)})`
+            ctx.fill()
+
+            // Corona/Glow
+            ctx.beginPath()
+            ctx.arc(centerX, antennaTopY, beaconRadius * 2, 0, Math.PI * 2)
+            ctx.fillStyle = `rgba(255, 30, 30, ${(alpha * 0.4).toFixed(3)})`
+            ctx.fill()
+          }
+        }
       }
 
       rafId = requestAnimationFrame(loop)
@@ -243,6 +338,14 @@ function buildHeightmap(
   return hm
 }
 
+const MATRIX_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ$#@%&+-=<>*[]"
+function getMatrixChar(col: number, row: number, timeMs: number): string {
+  const mutationCycle = Math.floor(timeMs / 120)
+  const seed = Math.sin(col * 29.7 + row * 19.3 + mutationCycle * 7.1)
+  const idx = Math.floor(Math.abs(seed) * MATRIX_CHARS.length)
+  return MATRIX_CHARS[idx]
+}
+
 // ── Voxel-Space-Render-Fabrik ─────────────────────────────────────────────────
 // Jede Szene hat ihre eigene Heightmap und Farbfunktion.
 // Die interne Render-Auflösung wird durch ResizeObserver dynamisch ermittelt
@@ -278,6 +381,8 @@ function makeVoxelScene(
     // (simuliert glühende Lava-Kanäle). brightThreshold: 0..255, Default 178 (≈70%).
     brightBoost?: number
     brightThreshold?: number
+    matrixMode?: boolean
+    waveFn?: (x: number, y: number, t: number) => number
   } = {}
 ): () => React.JSX.Element {
   const {
@@ -291,6 +396,8 @@ function makeVoxelScene(
     postFn,
     brightBoost,
     brightThreshold = 178,
+    matrixMode,
+    waveFn,
   } = opts
 
   return function VoxelScene() {
@@ -410,8 +517,126 @@ function makeVoxelScene(
         // Terrain-Höhe unter der Kamera samplen → Kamera mindestens camHFloor Einheiten über Boden
         const tx = Math.floor(c.x) & (HMAP - 1)
         const ty = Math.floor(c.y) & (HMAP - 1)
-        const terrainAtCam = heightmap[ty * HMAP + tx]
+        let terrainAtCam = heightmap[ty * HMAP + tx]
+        if (waveFn) {
+          terrainAtCam += waveFn(tx, ty, t)
+        }
         const camH = Math.max(terrainAtCam + camHFloor, camHBase + camHAmp * Math.sin(t * 0.0004))
+
+        // Matrix Mode direct rendering bypass
+        if (matrixMode) {
+          const mainW = canvas!.width
+          const mainH = canvas!.height
+          const mainHorizon = mainH * 0.42
+
+          // Black background
+          ctx.fillStyle = '#000000'
+          ctx.fillRect(0, 0, mainW, mainH)
+
+          // Columns
+          const fontSizeBase = 14
+          const colWidth = fontSizeBase * 0.8
+          const numCols = Math.ceil(mainW / colWidth)
+
+          ctx.textAlign = 'center'
+
+          for (let col = 0; col < numCols; col++) {
+            const rayAngle = c.angle - fov/2 + (col / numCols) * fov
+            const rdx = Math.cos(rayAngle)
+            const rdy = Math.sin(rayAngle)
+            
+            let terrainZ = far
+            let terrainProjY = mainH
+
+            for (let z = 1; z <= far; z++) {
+              const wx = (c.x + rdx * z) & (HMAP - 1)
+              const wy = (c.y + rdy * z) & (HMAP - 1)
+              let th = heightmap[Math.floor(wy) * HMAP + Math.floor(wx)]
+              if (waveFn) {
+                th += waveFn(wx, wy, t)
+              }
+              const projY = (camH - th) / z * scale + mainHorizon
+              if (projY < mainH) {
+                terrainZ = z
+                terrainProjY = projY
+                break
+              }
+            }
+
+            // Perspective scaling for this column
+            const zScale = Math.min(1.5, Math.max(0.3, 40 / terrainZ))
+            const fontSize = Math.max(5, Math.round(fontSizeBase * zScale))
+            ctx.font = `bold ${fontSize}px monospace`
+
+            const colX = col * colWidth + colWidth / 2
+            const alpha = Math.max(0.08, 1 - terrainZ / far)
+            
+            // Falling speed based on depth
+            const speed = 0.05 + 0.1 * zScale
+            const offset = (t * speed) % fontSize
+
+            // Draw terrain columns from terrainProjY down to mainH
+            let row = 0
+            for (let y = terrainProjY - offset; y < mainH + fontSize; y += fontSize) {
+              if (y < terrainProjY) continue
+              
+              const char = getMatrixChar(col, row, t)
+              
+              // Brightness modulation pulse
+              const pulsePeriod = 1500 / zScale
+              const pulsePhase = (t / pulsePeriod + col * 0.15) % 1.0
+              const rowNormalized = (row * fontSize) / (mainH - terrainProjY + 1)
+              const dist = Math.abs((rowNormalized - pulsePhase + 1) % 1.0)
+              
+              let color = `rgba(0, 180, 50, ${alpha.toFixed(3)})`
+              if (dist < 0.05) {
+                color = `rgba(180, 255, 200, ${alpha.toFixed(3)})`
+              } else if (dist < 0.15) {
+                color = `rgba(0, 255, 100, ${alpha.toFixed(3)})`
+              }
+              
+              ctx.fillStyle = color
+              ctx.fillText(char, colX, y)
+              row++
+            }
+
+            // Draw sky rain drops falling from top of screen down to terrainProjY
+            const skyRainSpeed = 0.15
+            const skyRainPeriod = mainH + 200
+            const skyRainHeadY = (t * skyRainSpeed + col * 83) % skyRainPeriod - 50
+            
+            for (let y = skyRainHeadY - 80; y <= skyRainHeadY; y += fontSize) {
+              if (y < 0 || y >= terrainProjY) continue
+              const distToHead = skyRainHeadY - y
+              const fade = Math.max(0, 1 - distToHead / 80)
+              if (fade <= 0) continue
+              
+              const char = getMatrixChar(col, Math.floor(y / fontSize), t)
+              const isHead = distToHead < fontSize
+              const skyAlpha = alpha * fade * 0.25
+              ctx.fillStyle = isHead 
+                ? `rgba(200, 255, 200, ${skyAlpha.toFixed(3)})`
+                : `rgba(0, 200, 50, ${skyAlpha.toFixed(3)})`
+              
+              ctx.fillText(char, colX, y)
+            }
+          }
+
+          // CRT scanlines
+          if (scanlines === 'phosphor') {
+            ctx.fillStyle = 'rgba(0,0,0,0.12)'
+            for (let sy = 0; sy < mainH; sy += 3) {
+              ctx.fillRect(0, sy, mainW, 1)
+            }
+          }
+
+          if (postFn) {
+            postFn(ctx, mainW, mainH)
+          }
+
+          rafId = requestAnimationFrame(loop)
+          return
+        }
 
         // Himmel: fast schwarz mit leichtem Gradient nach oben
         for (let y = 0; y < H; y++) {
@@ -432,7 +657,10 @@ function makeVoxelScene(
           for (let z = 1; z <= far; z++) {
             const wx = (c.x + rdx * z) & (HMAP - 1)
             const wy = (c.y + rdy * z) & (HMAP - 1)
-            const th = heightmap[Math.floor(wy) * HMAP + Math.floor(wx)]
+            let th = heightmap[Math.floor(wy) * HMAP + Math.floor(wx)]
+            if (waveFn) {
+              th += waveFn(wx, wy, t)
+            }
 
             const projY = Math.floor((camH - th) / z * scale + horizon)
             if (projY >= maxY) continue
@@ -555,7 +783,7 @@ const hmSmooth = buildHeightmap([
 // Performance-Cap: max 320×200.
 export const VoxelThermal = makeVoxelScene(
   'THERMAL SCAN // IR SPECTRUM',
-  320, 200,
+  480, 300,
   hmSmooth,
   (th, fog) => {
     // 8-stufige Rampe: bildet th (0..255) auf die klassische Wärmebild-Palette ab.
@@ -565,9 +793,9 @@ export const VoxelThermal = makeVoxelScene(
     let r: number, g: number, b: number
 
     if (t < 0.125) {
-      // Stufe 0: schwarz → dunkel-lila
+      // Stufe 0: dunkel violet/indigo -> dunkel-lila
       const p = t / 0.125
-      r = Math.round(p * 60); g = 0; b = Math.round(p * 80)
+      r = Math.round(25 + p * (60 - 25)); g = 0; b = Math.round(50 + p * (80 - 50))
     } else if (t < 0.25) {
       // Stufe 1: dunkel-lila → blau
       const p = (t - 0.125) / 0.125
@@ -609,7 +837,7 @@ export const VoxelThermal = makeVoxelScene(
       // Kleines HUD-Panel oben rechts
       const pad = 6
       const lineH = 13
-      const lines = ['IR: 8-14μm BAND', 'TEMP: -20..+60°C', 'RES: 320×200 px']
+      const lines = ['IR: 8-14μm BAND', 'TEMP: -20..+60°C', 'RES: 480×300 px']
       ctx.font = `bold ${lineH - 1}px monospace`
       // Hintergrund-Box
       const boxW = 148
@@ -701,13 +929,14 @@ export const VoxelLava = makeVoxelScene(
 
     return [Math.round(r * f), Math.round(g * f), Math.round(b * f)]
   },
-  { vx: 1.4, vy: 1.0, va: 0.0018, speedMin: 0.9, speedMax: 4 },
+  { vx: 0.1, vy: 0.08, va: 0.0001, speedMin: 0.05, speedMax: 0.25 },
   {
     camHBase: 95, camHAmp: 18, camHFloor: 52,
     // Lava-Kanal-Glühen: Pixel oberhalb 70% Luminanz werden um 40% aufgehellt.
     // Das simuliert den leuchtenden Kern aktiver Lava-Kanäle.
     brightBoost:     1.4,
     brightThreshold: 178,   // ≈ 70% von 255
+    waveFn: (x, _y, t) => Math.sin(x * 0.15 + t * 0.003) * 6,
   },
 )
 
@@ -718,30 +947,25 @@ export const VoxelLava = makeVoxelScene(
 //                 + CRT-Scanlines alle 3px bei 12% Opazität schwarz.
 // Performance-Cap: max 200×120.
 export const VoxelMatrix = makeVoxelScene(
-  'PHOSPHOR TERRAIN // GREEN SECTOR',
+  'MATRIX DIGITAL RAIN // 3D CODESPACE',
   200, 120,
   hmMatrix,
   (th, fog) => {
-    // Vier Phosphor-Grün-Stufen (entsprechen #005511, #009922, #00cc33, #00ff41)
-    // aufsteigend nach Terrain-Höhe, dann mit Fog abdimmen.
+    // Fallback color scheme in case matrixMode is toggled off
     const t = th / 255
     const f = Math.max(0, 1 - fog * 0.68)
     let r: number, g: number, b: number
     if (t < 0.25) {
-      // #005511 — sehr dunkles Grün (tiefste Täler)
       r = 0x00; g = 0x55; b = 0x11
     } else if (t < 0.5) {
-      // #009922 — mitteldunkles Grün
       r = 0x00; g = 0x99; b = 0x22
     } else if (t < 0.75) {
-      // #00cc33 — mittelhelles Grün
       r = 0x00; g = 0xcc; b = 0x33
     } else {
-      // #00ff41 — volles Phosphor-Grün (Gipfel)
       r = 0x00; g = 0xff; b = 0x41
     }
     return [Math.round(r * f), Math.round(g * f), Math.round(b * f)]
   },
-  { vx: 3.0, vy: 2.0, va: 0.004, speedMin: 2.0, speedMax: 9, impulseScale: 5 },
-  { far: 120, camHBase: 82, camHAmp: 14, camHFloor: 38, scanlines: 'phosphor' },
+  { vx: 1.5, vy: 1.0, va: 0.001, speedMin: 1.0, speedMax: 4.0 },
+  { far: 120, camHBase: 82, camHAmp: 14, camHFloor: 38, scanlines: 'phosphor', matrixMode: false },
 )

@@ -15,7 +15,7 @@ import NuclearTargets    from './panels/NuclearTargets'
 import PwdCracker        from './panels/PwdCracker'
 import PortScanner       from './panels/PortScanner'
 import PseudoCode        from './panels/PseudoCode'
-import ClaudeCodePanel   from './panels/ClaudeCodePanel'
+import AgentCodePanel    from './panels/AgentCodePanel'
 import VisitorProfilePanel from './panels/VisitorProfilePanel'
 import ICQChatPanel      from './panels/ICQChatPanel'
 import BitcoinMinerPanel from './panels/BitcoinMinerPanel'
@@ -25,8 +25,9 @@ import SatellitePanel    from './panels/SatellitePanel'
 import ClassifiedPanel   from './panels/ClassifiedPanel'
 
 // ── Grafik-Panels ─────────────────────────────────────────────────────────────
-import VoxelDemo         from './panels/VoxelDemo'
+import { VoxelDemoColor, VoxelDemoBW } from './panels/VoxelDemo'
 import { VoxelThermal, VoxelNeon, VoxelLava, VoxelMatrix } from './panels/VoxelScenes'
+
 import PlasmaDemo        from './panels/PlasmaDemo'
 import EnhanceView       from './panels/EnhanceView'
 import AllYourBase       from './panels/AllYourBase'
@@ -55,13 +56,14 @@ import FractalJulia from './panels/FractalJulia'
 const POOL_TEXT: React.ComponentType[] = [
   SystemLog, DataStream, SocialEngineering, Vitals, TrafficMonitor,
   NuclearTargets, PwdCracker, PortScanner, PseudoCode,
-  ClaudeCodePanel, VisitorProfilePanel, ICQChatPanel, BitcoinMinerPanel, DiskCleanupPanel,
+  AgentCodePanel, VisitorProfilePanel, ICQChatPanel, BitcoinMinerPanel, DiskCleanupPanel,
   StockTickerPanel, SatellitePanel, ClassifiedPanel,
 ]
 
 // Alle visuellen Panels in einem Pool — AllYourBase und EnhanceView sind normale Einträge
 const POOL_GFX: React.ComponentType[] = [
-  VoxelDemo, GlobePanel, VoxelThermal, VoxelLava, VoxelNeon, VoxelMatrix,
+  VoxelDemoColor, VoxelDemoBW, GlobePanel, VoxelThermal, VoxelLava, VoxelNeon, VoxelMatrix,
+
   FireScene, StarfieldScene, BoingScene, LissajousScene,
   OscilloscopePanel, TunnelScene, MetaballsScene, RotozoomScene, DotCloudScene,
   PlasmaDemo, DNAHelix, EnhanceView, AllYourBase,
@@ -89,17 +91,56 @@ interface GeneratedLayout {
 }
 
 /**
- * Teilt 100 in n positive Ganzzahlen auf, jede mindestens 12.
+ * Teilt 100 in n positive Ganzzahlen auf, jede mindestens minPct.
  * Balanciert durch leicht verrauschte Gleichverteilung.
  */
 function randomPartition(n: number): number[] {
-  // Jeder Anteil bekommt einen zufälligen Wert nahe 1, dann normiert auf 100
-  const raw = Array.from({ length: n }, () => 0.5 + Math.random())
+  // Balanced weights
+  const raw = Array.from({ length: n }, () => 0.8 + Math.random() * 0.4)
   const sum  = raw.reduce((a, b) => a + b, 0)
-  const result = raw.map(v => Math.max(12, Math.round(v * 100 / sum)))
-  // Rundungsfehler im letzten Element korrigieren
-  const diff = 100 - result.reduce((a, b) => a + b, 0)
-  result[result.length - 1] = Math.max(12, result[result.length - 1] + diff)
+  
+  // Mindestgröße je nach Anzahl der Partitionen, um extrem schmale Spalten/Zeilen zu verhindern
+  let minPct = 15
+  if (n === 2) minPct = 45
+  else if (n === 3) minPct = 30
+  else if (n === 4) minPct = 22
+  else if (n === 5) minPct = 18
+  else if (n === 6) minPct = 15
+  else if (n === 7) minPct = 13
+  else if (n >= 8) minPct = 11
+
+  // Start with normalized values capped at minPct
+  const result = raw.map(v => Math.max(minPct, Math.round(v * 100 / sum)))
+  
+  // Adjust sum to exactly 100 without violating minPct
+  let currentSum = result.reduce((a, b) => a + b, 0)
+  let attempts = 0
+  while (currentSum !== 100 && attempts < 100) {
+    attempts++
+    const diff = 100 - currentSum
+    if (diff > 0) {
+      // Add 1 to the smallest element
+      let minIdx = 0
+      for (let i = 1; i < n; i++) {
+        if (result[i] < result[minIdx]) minIdx = i
+      }
+      result[minIdx]++
+      currentSum++
+    } else {
+      // Subtract 1 from the largest element, as long as it stays >= minPct
+      let maxIdx = 0
+      for (let i = 1; i < n; i++) {
+        if (result[i] > result[maxIdx]) maxIdx = i
+      }
+      if (result[maxIdx] - 1 >= minPct) {
+        result[maxIdx]--
+        currentSum--
+      } else {
+        // Can't subtract without violating minPct, break to avoid infinite loop
+        break
+      }
+    }
+  }
   return result
 }
 
@@ -108,8 +149,29 @@ function randomPartition(n: number): number[] {
  * @param id Eindeutiger Zähler — wird als React-Key verwendet
  */
 function generateLayout(id: number): GeneratedLayout {
-  // 1. Zufällige Gittergröße: cols × rows aus vier Optionen
-  const sizes: [number, number][] = [[2, 2], [3, 2], [2, 3], [3, 3]]
+  // 1. Gittergröße: cols × rows basierend auf der Bildschirmbreite
+  const width = typeof window !== 'undefined' ? window.innerWidth : 1200
+  let sizes: [number, number][]
+
+  if (width >= 3440) {
+    // Ultra-wide / massive developer screens: noch mehr Panels zeigen!
+    sizes = [[6, 4], [7, 4], [8, 4]]
+  } else if (width >= 2560) {
+    // QHD / 4K Bildschirme
+    sizes = [[5, 4], [6, 3], [6, 4]]
+  } else if (width >= 1920) {
+    // Full HD / größere Monitore
+    sizes = [[4, 3], [4, 4], [5, 3]]
+  } else if (width >= 1440) {
+    // QHD Laptop / mittlere Monitore
+    sizes = [[3, 3], [4, 3]]
+  } else if (width >= 1024) {
+    // Standard Desktop / Tablet im Querformat
+    sizes = [[3, 2], [3, 3]]
+  } else {
+    // Kleine Desktops / Tablet im Hochformat (ab 768px)
+    sizes = [[2, 2], [3, 2]]
+  }
   const [cols, rows] = sizes[Math.floor(Math.random() * sizes.length)]
 
   // 2. Spalten- und Zeilenbreiten als fr-Einheiten
@@ -141,10 +203,23 @@ function generateLayout(id: number): GeneratedLayout {
   }
 
   // Sicherstellen, dass der Span nicht über den Rand geht
-  const endCol = Math.min(startCol + colSpan, cols + 1)
-  const endRow = Math.min(startRow + rowSpan, rows + 1)
-  const actualColSpan = endCol - startCol
-  const actualRowSpan = endRow - startRow
+  let endCol = Math.min(startCol + colSpan, cols + 1)
+  let endRow = Math.min(startRow + rowSpan, rows + 1)
+  let actualColSpan = endCol - startCol
+  let actualRowSpan = endRow - startRow
+
+  // Sicherheitscheck: nie weniger als 3 Panels (d.h. freie Zellen >= 2)
+  while (cols * rows - (actualColSpan * actualRowSpan) < 2) {
+    if (actualColSpan > 1) {
+      actualColSpan--
+      endCol--
+    } else if (actualRowSpan > 1) {
+      actualRowSpan--
+      endRow--
+    } else {
+      break
+    }
+  }
 
   // 4. Belegte Zellen markieren (1-basierte col/row-Koordinaten)
   const occupied = new Set<string>()
@@ -208,7 +283,29 @@ function generateLayout(id: number): GeneratedLayout {
 // ── Review-Modus: alle Panels als geordnete Liste ─────────────────────────────
 // Jeder Eintrag hat einen stabilen Namen (Funktionsname) als ID für localStorage.
 const ALL_PANELS: { name: string; Component: React.ComponentType }[] = [
-  // --- Text-Panels ---
+  // --- Recently Modified/Improved Panels (Page 1) ---
+  { name: 'AmiModPanel',        Component: AmiModPanel },
+  { name: 'BoingScene',         Component: BoingScene },
+  { name: 'FireScene',          Component: FireScene },
+  { name: 'LissajousScene',     Component: LissajousScene },
+
+  // --- Next Recently Modified/Improved Panels (Page 2) ---
+  { name: 'SolarSystemPanel',   Component: SolarSystemPanel },
+  { name: 'DNAHelix',           Component: DNAHelix },
+  { name: 'FractalJulia',       Component: FractalJulia },
+  { name: 'TunnelScene',        Component: TunnelScene },
+
+  // --- Other Recently Modified/Improved Panels (Page 3) ---
+  { name: 'RotozoomScene',      Component: RotozoomScene },
+  { name: 'PlasmaDemo',         Component: PlasmaDemo },
+  { name: 'EnhanceView',        Component: EnhanceView },
+  { name: 'AgentCodePanel',     Component: AgentCodePanel },
+
+  // --- Other Text Panels ---
+  { name: 'ICQChatPanel',       Component: ICQChatPanel },
+  { name: 'VisitorProfilePanel',Component: VisitorProfilePanel },
+  { name: 'SatellitePanel',     Component: SatellitePanel },
+  { name: 'BitcoinMinerPanel',  Component: BitcoinMinerPanel },
   { name: 'SystemLog',          Component: SystemLog },
   { name: 'DataStream',         Component: DataStream },
   { name: 'SocialEngineering',  Component: SocialEngineering },
@@ -218,37 +315,26 @@ const ALL_PANELS: { name: string; Component: React.ComponentType }[] = [
   { name: 'PwdCracker',         Component: PwdCracker },
   { name: 'PortScanner',        Component: PortScanner },
   { name: 'PseudoCode',         Component: PseudoCode },
-  { name: 'ClaudeCodePanel',    Component: ClaudeCodePanel },
-  { name: 'VisitorProfilePanel',Component: VisitorProfilePanel },
-  { name: 'ICQChatPanel',       Component: ICQChatPanel },
-  { name: 'BitcoinMinerPanel',  Component: BitcoinMinerPanel },
   { name: 'DiskCleanupPanel',   Component: DiskCleanupPanel },
   { name: 'StockTickerPanel',   Component: StockTickerPanel },
-  { name: 'SatellitePanel',     Component: SatellitePanel },
   { name: 'ClassifiedPanel',    Component: ClassifiedPanel },
-  // --- Grafik-Panels ---
-  { name: 'VoxelDemo',          Component: VoxelDemo },
+
+  // --- Other Graphics Panels ---
+  { name: 'VoxelDemoColor',     Component: VoxelDemoColor },
+  { name: 'VoxelDemoBW',        Component: VoxelDemoBW },
   { name: 'GlobePanel',         Component: GlobePanel },
+
   { name: 'VoxelThermal',       Component: VoxelThermal },
   { name: 'VoxelLava',          Component: VoxelLava },
   { name: 'VoxelNeon',          Component: VoxelNeon },
   { name: 'VoxelMatrix',        Component: VoxelMatrix },
-  { name: 'FireScene',          Component: FireScene },
   { name: 'StarfieldScene',     Component: StarfieldScene },
-  { name: 'BoingScene',         Component: BoingScene },
-  { name: 'LissajousScene',     Component: LissajousScene },
   { name: 'OscilloscopePanel',  Component: OscilloscopePanel },
-  { name: 'TunnelScene',        Component: TunnelScene },
   { name: 'MetaballsScene',     Component: MetaballsScene },
-  { name: 'RotozoomScene',      Component: RotozoomScene },
   { name: 'DotCloudScene',      Component: DotCloudScene },
-  { name: 'PlasmaDemo',         Component: PlasmaDemo },
-  { name: 'DNAHelix',           Component: DNAHelix },
-  { name: 'EnhanceView',        Component: EnhanceView },
   { name: 'AllYourBase',        Component: AllYourBase },
   { name: 'ParallaxPanel',      Component: ParallaxPanel },
   { name: 'ElitePanel',         Component: ElitePanel },
-  { name: 'AmiModPanel',        Component: AmiModPanel },
   { name: 'CADRobotPanel',      Component: CADRobotPanel },
   { name: 'C64Panel',           Component: C64Panel },
   { name: 'RetroErrorPanel',    Component: RetroErrorPanel },
@@ -259,8 +345,6 @@ const ALL_PANELS: { name: string; Component: React.ComponentType }[] = [
   { name: 'FractalElephant',    Component: FractalElephant },
   { name: 'FractalMini',        Component: FractalMini },
   { name: 'FractalSatellite',   Component: FractalSatellite },
-  { name: 'FractalJulia',       Component: FractalJulia },
-  { name: 'SolarSystemPanel',   Component: SolarSystemPanel },
   { name: 'RadarSweepPanel',    Component: RadarSweepPanel },
 ]
 
@@ -297,7 +381,9 @@ function saveReview(entry: ReviewEntry): void {
 // Layout-Wechsel wartet, bis kein Sound mehr läuft.
 function isAudioPlaying(): boolean {
   const vid = document.querySelector<HTMLVideoElement>('video')
-  return !!vid && !vid.muted && !vid.paused
+  const vidPlaying = !!vid && !vid.muted && !vid.paused
+  const modPlaying = !!(window as any).fraktallab_mod_playing
+  return vidPlaying || modPlaying
 }
 
 // ── Layout-Renderer ───────────────────────────────────────────────────────────
@@ -321,8 +407,8 @@ function LayoutContent({ layout }: { layout: GeneratedLayout }) {
         >
           {/* Zellinhalt je nach Typ */}
           {cell.type === 'fractal' && <FractalView />}
-          {cell.type === 'text'    && <PanelSlot pool={POOL_TEXT} className="h-full" />}
-          {cell.type === 'gfx'     && <PanelSlot pool={POOL_GFX}  className="h-full" />}
+          {cell.type === 'text'    && <PanelSlot pool={POOL_TEXT} className="h-full" layoutId={layout.id.toString()} />}
+          {cell.type === 'gfx'     && <PanelSlot pool={POOL_GFX}  className="h-full" layoutId={layout.id.toString()} />}
         </div>
       ))}
     </div>
@@ -338,6 +424,17 @@ export default function App() {
   const [sliding,    setSliding]    = useState(false)
   // Ambient Sound: standardmäßig eingeschaltet
   const [soundEnabled, setSoundEnabled] = useState(true)
+
+  // Automatische Review-Zurücksetzung bei Versionsänderung
+  useEffect(() => {
+    const RESET_VERSION = 'v0.9.9-reset-5'
+    const currentReset = localStorage.getItem('fraktallab_reset_version')
+    if (currentReset !== RESET_VERSION) {
+      localStorage.removeItem(LS_KEY)
+      localStorage.setItem('fraktallab_reset_version', RESET_VERSION)
+    }
+  }, [])
+
 
   // ── Review-Modus-State ─────────────────────────────────────────────────────
   const [reviewMode, setReviewMode] = useState(false)
@@ -375,9 +472,9 @@ export default function App() {
   /** Öffnet den Review-Modus und lädt die Bewertung für das erste Panel */
   const enterReview = useCallback(() => {
     setReviewMode(true)
-    // Index bleibt, wo er war — nur Bewertung neu laden
-    loadPanelReview(ALL_PANELS[reviewIdx].name)
-  }, [reviewIdx, loadPanelReview])
+    setReviewIdx(0)
+    loadPanelReview(ALL_PANELS[0].name)
+  }, [loadPanelReview])
 
   /** Wählt Daumen und speichert sofort — kein separater Save-Schritt nötig */
   const handleRating = useCallback((rating: 'up' | 'down') => {
@@ -451,8 +548,6 @@ export default function App() {
   // ── abgeleitete Variablen für den Review-Modus ─────────────────────────────
   const totalPanels    = ALL_PANELS.length
   const currentPanel   = ALL_PANELS[reviewIdx]
-  // JSX benötigt einen Identifier mit Großbuchstaben als Komponenten-Tag
-  const CurrentPanelComponent = currentPanel.Component
   // Bereits gespeicherte Bewertung für das aktuelle Panel (für grüne Hervorhebung nach SAVE)
   const savedReviews   = reviewMode ? loadReviews() : []
   const savedForCurrent = savedReviews.find(r => r.panel === currentPanel?.name)
@@ -526,15 +621,15 @@ export default function App() {
         <div className="md:hidden flex flex-col gap-1 h-full p-1">
           {/* Panel 1: gemischter Pool aus Text und GFX */}
           <div className="flex-1 min-h-0">
-            <PanelSlot pool={[...POOL_TEXT, ...POOL_GFX]} className="h-full" />
+            <PanelSlot pool={[...POOL_TEXT, ...POOL_GFX]} className="h-full" layoutId="mobile" />
           </div>
           {/* Panel 2: Grafik-Panel */}
           <div className="flex-1 min-h-0">
-            <PanelSlot pool={POOL_GFX} className="h-full" />
+            <PanelSlot pool={POOL_GFX} className="h-full" layoutId="mobile" />
           </div>
           {/* Panel 3: Text-Panel */}
           <div className="flex-1 min-h-0">
-            <PanelSlot pool={POOL_TEXT} className="h-full" />
+            <PanelSlot pool={POOL_TEXT} className="h-full" layoutId="mobile" />
           </div>
         </div>
 
@@ -542,18 +637,54 @@ export default function App() {
         <div className="hidden md:contents">
 
         {reviewMode ? (
-          /* ── Review-Modus: ein Panel fullscreen + Bewertungsleiste ── */
+          /* ── Review-Modus: vier Panels gleichzeitig im 2x2 Grid + Bewertungsleiste ── */
           <div className="h-full flex flex-col p-1 gap-1">
 
             {/* Panel-Container — nimmt ~85% der Höhe */}
-            <div className="flex-1 min-h-0">
-              <Panel title={`REVIEW MODE // ${currentPanel.name} [${reviewIdx + 1}/${totalPanels}]`}>
-                {/* CurrentPanelComponent ist der Großbuchstaben-Alias (JSX-Pflicht) */}
-                <CurrentPanelComponent />
-              </Panel>
+            <div className="flex-1 min-h-0 grid grid-cols-2 grid-rows-2 gap-1 bg-black">
+              {[0, 1, 2, 3].map(offset => {
+                const pageStartIdx = Math.floor(reviewIdx / 4) * 4
+                const idx = pageStartIdx + offset
+                if (idx < totalPanels) {
+                  const panel = ALL_PANELS[idx]
+                  const Comp = panel.Component
+                  const isActive = idx === reviewIdx
+                  return (
+                    <div
+                      key={panel.name}
+                      className={`min-h-0 min-w-0 relative flex flex-col transition-all duration-200 cursor-pointer ${
+                        isActive ? 'ring-2 ring-green-500 border border-green-500 z-10' : 'opacity-65 hover:opacity-95'
+                      }`}
+                      onClick={() => goToPanel(idx)}
+                    >
+                      <Panel
+                        title={`REVIEW // ${panel.name} [${idx + 1}/${totalPanels}]`}
+
+                        className={isActive ? 'border-green-500' : ''}
+                      >
+                        <Comp />
+                      </Panel>
+                    </div>
+                  )
+                } else {
+                  // Render empty placeholder panel to keep 2x2 grid balanced
+                  return (
+                    <div
+                      key={`empty-${offset}`}
+                      className="min-h-0 min-w-0 relative flex flex-col opacity-30 border border-dashed border-green-950"
+                    >
+                      <Panel title="REVIEW // EMPTY SLOT">
+                        <div className="h-full bg-black flex items-center justify-center text-xs text-green-900">
+                          [ NO SYSTEM INTEL ]
+                        </div>
+                      </Panel>
+                    </div>
+                  )
+                }
+              })}
             </div>
 
-            {/* Bewertungsleiste — schmaler Streifen unten (~15%) */}
+            {/* Bewertungsleiste — schmaler Streifen unten (~14%) */}
             <div
               className="border border-green-900 bg-black shrink-0 flex items-stretch gap-2 px-3 py-1"
               style={{ height: '14%' }}
@@ -562,21 +693,25 @@ export default function App() {
               <div className="flex flex-col justify-center gap-1">
                 <div className="flex gap-1">
                   <button
-                    onClick={() => goToPanel((reviewIdx - 1 + totalPanels) % totalPanels)}
+                    onClick={() => {
+                      goToPanel((reviewIdx - 1 + totalPanels) % totalPanels)
+                    }}
                     className="border border-green-800 text-green-500 text-xs px-2 py-0.5
                                hover:border-green-500 hover:text-green-200 transition-colors"
                   >
                     ← PREV
                   </button>
                   <button
-                    onClick={() => goToPanel((reviewIdx + 1) % totalPanels)}
+                    onClick={() => {
+                      goToPanel((reviewIdx + 1) % totalPanels)
+                    }}
                     className="border border-green-800 text-green-500 text-xs px-2 py-0.5
                                hover:border-green-500 hover:text-green-200 transition-colors"
                   >
                     NEXT →
                   </button>
                 </div>
-                <span className="text-green-800 text-xs text-center">
+                <span className="text-green-800 text-xs text-center whitespace-nowrap">
                   Panel {reviewIdx + 1} / {totalPanels}
                 </span>
               </div>
@@ -650,7 +785,7 @@ export default function App() {
               {/* Trennlinie */}
               <div className="border-l border-green-900 mx-1" />
 
-              {/* COPY-Button */}
+              {/* Action Buttons */}
               <div className="flex flex-col justify-center gap-1">
                 <button
                   onClick={() => {
@@ -662,6 +797,18 @@ export default function App() {
                   className="border border-green-800 text-green-600 hover:border-green-500 hover:text-green-300 text-xs px-3 py-1 transition-colors"
                 >
                   [ COPY ]
+                </button>
+                <button
+                  onClick={() => {
+                    if (window.confirm("Alle Kommentare und Bewertungen zurücksetzen?")) {
+                      localStorage.removeItem(LS_KEY)
+                      window.location.reload()
+                    }
+                  }}
+                  title="Alle Bewertungen und Kommentare löschen"
+                  className="border border-red-800 text-red-600 hover:border-red-500 hover:text-red-300 text-xs px-3 py-1 transition-colors"
+                >
+                  [ RESET ]
                 </button>
               </div>
             </div>

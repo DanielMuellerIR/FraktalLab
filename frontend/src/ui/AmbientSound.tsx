@@ -26,9 +26,10 @@ export default function AmbientSound({ enabled }: AmbientSoundProps) {
     const ctx = new AudioContext()
     ctxRef.current = ctx
 
-    // Problem 1 — Autostart-Fix: Beim ersten User-Gesture AudioContext fortsetzen.
-    // Browser starten AudioContext im "suspended"-Zustand. Der erste Click/Key/Touch
-    // weckt ihn auf — danach läuft alles ohne weiteres Zutun.
+    // Problem 1 — Autostart-Fix: Versuchen den AudioContext sofort zu starten.
+    // Falls der Browser es blockiert, weckt die erste Geste (Klick/Taste/Touch) ihn auf.
+    ctx.resume().catch(() => {})
+
     function onFirstGesture() {
       ctx.resume().catch(() => { /* kein Fehler werfen wenn ctx bereits geschlossen */ })
       document.removeEventListener('click',      onFirstGesture)
@@ -234,8 +235,8 @@ export default function AmbientSound({ enabled }: AmbientSoundProps) {
       typingTimer = setTimeout(tick, interval(state))
     }
 
-    // Kurze Einschwinglzeit, dann starten
-    typingTimer = setTimeout(tick, 400 + Math.random() * 1200)
+    // Sofort und ohne Verzögerung starten
+    tick()
 
     stopperRef.current = () => {
       clearTimeout(typingTimer)

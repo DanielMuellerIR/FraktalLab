@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 // ── Typen ──────────────────────────────────────────────────────────────────────
@@ -37,6 +37,49 @@ const INITIAL_SATS: Satellite[] = [
 
 // ── Hilfsfunktionen ────────────────────────────────────────────────────────────
 
+// Zeichnet das ASCII-Raster für die Orbit-Verfolgung
+function drawAsciiGrid(tick: number): string[] {
+  const width = 11
+  const height = 5
+  const sweepCol = tick % width
+
+  // Feste/leicht bewegliche Satelliten-Blips auf dem Gitter
+  const blips = [
+    { x: 2, y: 1, char: '■' },
+    { x: 8, y: 3, char: '▲' },
+    { x: 4, y: 2, char: '⧇' }
+  ]
+
+  const rows: string[] = []
+  for (let y = 0; y < height; y++) {
+    let row = ''
+    for (let x = 0; x < width; x++) {
+      if (x === sweepCol) {
+        row += '│ '
+      } else {
+        const blip = blips.find(b => b.x === x && b.y === y)
+        if (blip) {
+          row += blip.char + ' '
+        } else {
+          row += '· '
+        }
+      }
+    }
+    rows.push(row)
+  }
+  return rows
+}
+
+const LOG_TEMPLATES = [
+  'LOCK: [SAT] signal stable',
+  'AZIMUTH adjust: [SAT] +0.12°',
+  'ELEVATION adjust: [SAT] -0.05°',
+  'DATA: packet received from [SAT]',
+  'BEACON: [SAT] ping [MS]ms',
+  'DOPPLER: [SAT] shift [SHIFT]Hz',
+  'TELEMETRY: [SAT] status nominal',
+]
+
 // Kleine zufällige Fluktuation eines Werts um delta, gerundet auf `dec` Stellen
 function jitter(val: number, delta: number, dec = 1): number {
   return parseFloat((val + (Math.random() - 0.5) * 2 * delta).toFixed(dec))
@@ -69,53 +112,87 @@ function statusClass(s: SatStatus): string {
 }
 
 // ── Komponente ─────────────────────────────────────────────────────────────────
-export default function SatellitePanel() {
+export default function SatellitePanel({ onComplete }: { onComplete?: () => void }) {
   // Vollständige Satelliten-Liste als React-State
   const [sats, setSats]       = useState<Satellite[]>(INITIAL_SATS)
   // Blink-State für "GROUND STATION LOCK"-Indikator
   const [lockBlink, setLockBlink] = useState(true)
+  // Tick-Zustand für Radar und Logs
+  const [tick, setTick] = useState(0)
+  const [logs, setLogs] = useState<string[]>([
+    'SYSINIT: Tracking online',
+    'SCANNING: Grid locked'
+  ])
+
+  const tickRef = useRef(0)
 
   useEffect(() => {
-    // Jede Sekunde: Werte leicht fluktuieren lassen + Countdowns herunterzählen
+    if (onComplete) {
+      const t = setTimeout(() => {
+        onComplete()
+      }, 10000)
+      return () => clearTimeout(t)
+    }
+  }, [onComplete])
+
+  useEffect(() => {
+    // 200ms Interval für erhöhte Aktivität
     const interval = setInterval(() => {
-      setSats(prev => prev.map(sat => {
-        // LOST-Satelliten: keine Wert-Updates, nur Countdown-Simulation
+      tickRef.current++
+      const currentTick = tickRef.current
+      setTick(currentTick)
+
+      setSats(prev => prev.map((sat, index) => {
+        // Countdown nur alle 5 Ticks (1 Sekunde) reduzieren
+        const passCountdown = (currentTick + index) % 5 === 0
+          ? (sat.passCountdown > 1 ? sat.passCountdown - 1 : Math.floor(3600 + Math.random() * 7200))
+          : sat.passCountdown
+
         if (sat.status === 'LOST') {
-          return { ...sat, passCountdown: sat.passCountdown - 1 }
+          return { ...sat, passCountdown }
         }
 
-        // Kleiner Höhen-Drift (±0.3 km)
-        const altKm  = jitter(sat.altKm,  0.3, 1)
-        // Geschwindigkeit fluktuiert minimal (±0.02 km/s)
-        const velKms = jitter(sat.velKms, 0.02, 2)
-        // Inklination fast stabil (±0.01°)
-        const incDeg = jitter(sat.incDeg, 0.01, 1)
+        // Jitter verkleinert, da Interval 5x schneller ist
+        const altKm  = jitter(sat.altKm,  0.06, 1)
+        const velKms = jitter(sat.velKms, 0.004, 2)
+        const incDeg = jitter(sat.incDeg, 0.002, 1)
 
-        // Signal fluktuiert um ±0.03, ACQUIRING-Signal schwingt stärker
         const sigDelta = sat.status === 'ACQUIRING' ? 0.08 : 0.03
         const signal   = Math.max(0.05, Math.min(1, jitter(sat.signal, sigDelta, 2)))
 
-        // Countdown läuft runter; bei 0 neu setzen (nächster Überflug)
-        const passCountdown = sat.passCountdown > 1
-          ? sat.passCountdown - 1
-          : Math.floor(3600 + Math.random() * 7200) // 1–3 Stunden bis zum übernächsten
-
-        // Status gelegentlich wechseln:
-        // ACQUIRING → TRACKED wenn Signal stark genug
-        // TRACKED   → ACQUIRING mit sehr kleiner Wahrscheinlichkeit
         let status = sat.status
-        if (sat.status === 'ACQUIRING' && signal > 0.55 && Math.random() > 0.85) {
+        if (sat.status === 'ACQUIRING' && signal > 0.55 && Math.random() > 0.97) {
           status = 'TRACKED'
-        } else if (sat.status === 'TRACKED' && Math.random() > 0.998) {
+        } else if (sat.status === 'TRACKED' && Math.random() > 0.9996) {
           status = 'ACQUIRING'
         }
 
         return { ...sat, altKm, velKms, incDeg, signal, status, passCountdown }
       }))
 
-      // Blink-Indikator toggeln
+      // Gelegentlich Log-Eintrag hinzufügen (etwa alle 8 Ticks = 1.6s)
+      if (currentTick % 8 === 0) {
+        setLogs(prev => {
+          const template = LOG_TEMPLATES[Math.floor(Math.random() * LOG_TEMPLATES.length)]
+          const randomSat = INITIAL_SATS[Math.floor(Math.random() * INITIAL_SATS.length)].id
+          const ms = Math.floor(20 + Math.random() * 80)
+          const shift = (Math.random() * 10 - 5).toFixed(1)
+          
+          const logText = template
+            .replace('[SAT]', randomSat)
+            .replace('[MS]', String(ms))
+            .replace('[SHIFT]', shift)
+          
+          const next = [...prev, logText]
+          if (next.length > 3) {
+            next.shift()
+          }
+          return next
+        })
+      }
+
       setLockBlink(b => !b)
-    }, 1000)
+    }, 200)
 
     return () => clearInterval(interval)
   }, [])
@@ -198,6 +275,29 @@ export default function SatellitePanel() {
               </div>
             )
           })}
+        </div>
+
+        {/* ── Grid Scan & Logs ────────────────────────────────────────── */}
+        <div className="flex gap-2 shrink-0 h-[65px] mt-0.5 border-t border-green-950 pt-1">
+          {/* Grid scan on left */}
+          <div className="font-mono text-[9px] text-green-400 bg-black/40 p-1 border border-green-900/50 rounded shrink-0 select-none w-[110px]">
+            <div className="text-green-700 text-[8px] uppercase mb-0.5 border-b border-green-950 font-bold">GRID SCAN</div>
+            <div className="leading-none whitespace-pre text-green-500 font-bold mt-0.5">
+              {drawAsciiGrid(tick).join('\n')}
+            </div>
+          </div>
+          
+          {/* Dynamic Tracking Logs on right */}
+          <div className="flex-1 font-mono text-[9px] text-green-500/80 bg-black/40 p-1 border border-green-900/50 rounded overflow-hidden select-none flex flex-col justify-end">
+            <div className="text-green-700 text-[8px] uppercase mb-0.5 border-b border-green-950 pb-0.5 font-bold">TRACKING LOGS</div>
+            <div className="flex flex-col gap-0.5 leading-none overflow-hidden justify-end flex-1">
+              {logs.map((log, idx) => (
+                <div key={idx} className="whitespace-nowrap overflow-hidden text-ellipsis">
+                  {log}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div className="border-t border-green-900 shrink-0" />

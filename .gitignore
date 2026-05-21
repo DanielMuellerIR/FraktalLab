@@ -25,3 +25,10 @@ frontend/dist/
 frontend/test-results/
 frontend/playwright-report/
 frontend/tests/screenshots/
+
+# Scratch & Screenshots
+scratch/
+frontend/scratch/
+frontend/scratch_test_mod.cjs
+screenshots/
+
