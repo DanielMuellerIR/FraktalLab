@@ -23,13 +23,14 @@ export default function PanelSlot({
   pool,
   className = '',
   layoutId = 'default',
+  slotIndex = 0,
 }: {
   pool: React.ComponentType<any>[]
   className?: string
   layoutId?: string
+  slotIndex?: number
 }) {
-  // Eindeutige ID für diesen Slot generieren (bleibt über die Lebensdauer des Slots stabil)
-  const [slotId] = useState(() => 'slot_' + Math.random().toString(36).substring(2, 11))
+  const slotId = `slot_${slotIndex}`
 
   // Initiale Auswahl: bevorzugt eine Komponente, die noch nicht aktiv ist.
   const [idx, setIdx]         = useState(() => pickInitial(pool, layoutId, slotId))

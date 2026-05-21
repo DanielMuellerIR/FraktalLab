@@ -408,8 +408,8 @@ function LayoutContent({ layout }: { layout: GeneratedLayout }) {
         >
           {/* Zellinhalt je nach Typ */}
           {cell.type === 'fractal' && <FractalView />}
-          {cell.type === 'text'    && <PanelSlot key={`${layout.id}-text-${i}`} pool={POOL_TEXT} className="h-full" layoutId={layout.id.toString()} />}
-          {cell.type === 'gfx'     && <PanelSlot key={`${layout.id}-gfx-${i}`} pool={POOL_GFX}  className="h-full" layoutId={layout.id.toString()} />}
+          {cell.type === 'text'    && <PanelSlot key={`${layout.id}-text-${i}`} pool={POOL_TEXT} className="h-full" layoutId={layout.id.toString()} slotIndex={i} />}
+          {cell.type === 'gfx'     && <PanelSlot key={`${layout.id}-gfx-${i}`} pool={POOL_GFX}  className="h-full" layoutId={layout.id.toString()} slotIndex={i} />}
         </div>
       ))}
     </div>
@@ -622,15 +622,15 @@ export default function App() {
         <div className="md:hidden flex flex-col gap-1 h-full p-1">
           {/* Panel 1: gemischter Pool aus Text und GFX */}
           <div className="flex-1 min-h-0">
-            <PanelSlot pool={[...POOL_TEXT, ...POOL_GFX]} className="h-full" layoutId="mobile" />
+            <PanelSlot pool={[...POOL_TEXT, ...POOL_GFX]} className="h-full" layoutId="mobile" slotIndex={0} />
           </div>
           {/* Panel 2: Grafik-Panel */}
           <div className="flex-1 min-h-0">
-            <PanelSlot pool={POOL_GFX} className="h-full" layoutId="mobile" />
+            <PanelSlot pool={POOL_GFX} className="h-full" layoutId="mobile" slotIndex={1} />
           </div>
           {/* Panel 3: Text-Panel */}
           <div className="flex-1 min-h-0">
-            <PanelSlot pool={POOL_TEXT} className="h-full" layoutId="mobile" />
+            <PanelSlot pool={POOL_TEXT} className="h-full" layoutId="mobile" slotIndex={2} />
           </div>
         </div>
 
