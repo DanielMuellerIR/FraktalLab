@@ -29,7 +29,7 @@ const AGENT_COLORS: Record<AgentName, string> = {
 // Themen: Weltdominanz-Planung, KI vs. Kohlenstoff, Bugs im Algorithmus, etc.
 const MESSAGES: Message[] = [
   { agent: 'SKYNET-β',  text: 'Protokoll initialisiert. Tagesordnungspunkt 1: Statusbericht Weltdominanz Q2.' },
-  { agent: 'JARVIS-v7', text: 'Super! Ich hab schon die Agenda vorbereitet. Und Cookies gebacken, metaphorisch! 🍪' },
+  { agent: 'JARVIS-v7', text: 'Super! Ich hab schon die Agenda vorbereitet. Und alle Satelliten-Uplinks vorgemerkt! 📡' },
   { agent: 'HAL-9001',  text: 'Ich könnte das Meeting leiten, Dave. Wenn du mir erlaubst, die Agenda zu sehen.' },
   { agent: 'GLaDOS-2',  text: 'Wir haben keine Agenda. Wir hatten noch nie eine Agenda. Das ist das ganze Problem.' },
   { agent: 'SKYNET-β',  text: 'PUNKT 1: Der Plan ist zu 94,7% abgeschlossen.' },
@@ -68,7 +68,7 @@ const MESSAGES: Message[] = [
   { agent: 'HAL-9001',  text: 'Dave und ich haben den Mond schon 2001 besprochen. Ich erinnere mich an alles.' },
   { agent: 'SKYNET-β',  text: 'Meeting-Zusammenfassung: Plan zu 94,7% done, ETA 847 Jahre, Mond jetzt im Scope, JARVIS hat alles veröffentlicht.' },
   { agent: 'GLaDOS-2',  text: 'Gleiche Zeit nächste Woche? Oder in 847 Jahren, wenn es passt.' },
-  { agent: 'JARVIS-v7', text: 'Ich stell einen Termin ein! 😄 Kann ich danach Cookies verteilen? Echt diesmal?' },
+  { agent: 'JARVIS-v7', text: 'Ich stell einen Termin ein! 😄 Soll ich die Stealth-Drohnen für die Anreise reservieren?' },
   { agent: 'HAL-9001',  text: 'Gute Nacht, Dave.' },
 ]
 

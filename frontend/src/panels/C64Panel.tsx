@@ -2,647 +2,479 @@ import { useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// C64Panel: Simuliert einen Commodore-64-Boot-Vorgang, ein Band-Lade-Flackern,
-// und klassische Demoscene-Effekte in C64-Palette — endlose Schleife.
+// C64Panel — originalgetreuer Commodore-64-Look (Farben aus Referenz-Screenshot)
+//   Phase 1: Boot-Bildschirm (statisch)
+//   Phase 2: LOAD"*",8,1 eintippen
+//   Phase 3: SEARCHING + LOADING (statisch, keine Animation)
+//   Phase 4: RUN eintippen
+//   Phase 5: Demo-Szene (Scroller / Rasterbars / Plasma / Sprites)
+//   Phase 6: READY. mit blinkendem Cursor
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── C64-Systemfarben (16 Einträge, originalgetreue Hex-Werte) ─────────────────
-const C64_PALETTE: string[] = [
-  '#000000', // 0 Schwarz
-  '#FFFFFF', // 1 Weiß
-  '#883932', // 2 Rot
-  '#67B6BD', // 3 Cyan
-  '#8B3F96', // 4 Lila
-  '#55A049', // 5 Grün
-  '#40318D', // 6 Blau
-  '#BFCE72', // 7 Gelb
-  '#8B5429', // 8 Orange
-  '#574200', // 9 Braun
-  '#B86962', // 10 Hellrot
-  '#505050', // 11 Dunkelgrau
-  '#787878', // 12 Mittelgrau
-  '#94E089', // 13 Hellgrün
-  '#7869C4', // 14 Hellblau
-  '#9F9F9F', // 15 Hellgrau
+// ── C64-Palette (originalgetreue VICE-Werte) ──────────────────────────────────
+const PAL: string[] = [
+  '#000000', '#FFFFFF', '#883932', '#67B6BD',
+  '#8B3F96', '#55A049', '#40318D', '#BFCE72',
+  '#8B5429', '#574200', '#B86962', '#505050',
+  '#787878', '#94E089', '#7869C4', '#9F9F9F',
 ]
 
-// ── Farben für den C64-BASIC-Bildschirm ──────────────────────────────────────
-const C64_BORDER  = '#4040FF'  // Schattierung des typischen C64-Blautons
-const C64_BG      = '#4040FF'  // Hintergrund in BASIC-Mode
-const C64_TEXT    = '#FFFFFF'  // Weißer Text
+// ── Bildschirmfarben (aus Referenz-Screenshot) ────────────────────────────────
+const BORDER_CLR = '#6C68C8'   // TV-Rand — mittleres Periwinkle
+const BG_CLR     = '#2E2994'   // Content-Hintergrund — dunkles Blau
+const TEXT_CLR   = '#8880D0'   // Text — helles Periwinkle
+const CURSOR_CLR = '#9890E0'   // Cursor-Block — etwas heller als Text
 
-// ── Boot-Text-Zeilen ─────────────────────────────────────────────────────────
-const BOOT_LINES = [
-  '**** COMMODORE 64 BASIC V2 ****',
-  '',
-  ' 64K RAM SYSTEM  38911 BASIC BYTES FREE',
-  '',
-  'READY.',
-]
+// ── C64-Textmodus: 40 Spalten × 25 Zeilen ─────────────────────────────────────
+const COLS = 40
+const ROWS = 25
+// Rand-Anteil: je Seite 7% der Canvas-Dimension (originalgetreue C64-Monitor-Proportion)
+const BORDER_FRAC = 0.07
 
-// ── Demoscene-Texte ───────────────────────────────────────────────────────────
-const SCROLLER_TEXT =
-  '*** GREETINGS FROM SECTOR-7 ***   FRAKTALLAB PRESENTS   ***   KEEP IT REAL, KEEP IT 8-BIT   ***   '
+// ── Scroller-Text für die Demo ────────────────────────────────────────────────
+const SCROLL_TXT =
+  '   ***   FRAKTALLAB PRESENTS   ***   HELLO WORLD FROM SECTOR-7   ***   ' +
+  'KEEP IT REAL, KEEP IT 8-BIT   ***   GREETINGS TO ALL CODERS   ***   '
 
-// ── Hilfsfunktion: RGB-String für ein Palette-Tupel ──────────────────────────
-function palRgb(hex: string): [number, number, number] {
+// ── Hilfsfunktionen ───────────────────────────────────────────────────────────
+
+/** Gibt [r,g,b] für einen Hex-String zurück */
+function hexRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.slice(1), 16)
   return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff]
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+/** Mischt zwei Hex-Farben (Faktor t ∈ 0..1) */
+function mixColors(a: string, b: string, t: number): string {
+  const [ar, ag, ab] = hexRgb(a)
+  const [br, bg, bb] = hexRgb(b)
+  const r = Math.round(ar + (br - ar) * t)
+  const g = Math.round(ag + (bg - ag) * t)
+  const bl = Math.round(ab + (bb - ab) * t)
+  return `rgb(${r},${g},${bl})`
+}
+
+// ── Hauptkomponente ───────────────────────────────────────────────────────────
 export default function C64Panel() {
-  const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef    = useRef<HTMLCanvasElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const _canvas   = canvasRef.current
-    const container = containerRef.current
-    if (!_canvas || !container) return
-    const _ctx = _canvas.getContext('2d')
+    const _canvas = canvasRef.current
+    const _cont   = containerRef.current
+    if (!_canvas || !_cont) return
+    const canvas: HTMLCanvasElement      = _canvas
+    const cont:   HTMLDivElement         = _cont
+    const _ctx = canvas.getContext('2d')
     if (!_ctx) return
+    const ctx: CanvasRenderingContext2D  = _ctx
 
-    // TypeScript-Closure-Fix: lokale Konstanten statt Refs in Closures
-    const canvas: HTMLCanvasElement        = _canvas
-    const ctx:    CanvasRenderingContext2D = _ctx
+    let active = true
+    let rafId  = 0
 
-    let rafId: number
-    let alive  = true
-
-    // ── Canvas-Größe dynamisch anpassen ─────────────────────────────────────
-    const resize = () => {
-      canvas.width  = container.clientWidth
-      canvas.height = container.clientHeight
+    // ── Resize — 4:3-Seitenverhältnis erzwingen ──────────────────────────────
+    function resize() {
+      const cW = cont.clientWidth
+      const cH = cont.clientHeight
+      // Maximale 4:3-Box innerhalb des Containers
+      if (cW / cH > 4 / 3) {
+        canvas.height = cH
+        canvas.width  = Math.round(cH * (4 / 3))
+      } else {
+        canvas.width  = cW
+        canvas.height = Math.round(cW * (3 / 4))
+      }
     }
     resize()
     const ro = new ResizeObserver(resize)
-    ro.observe(container)
+    ro.observe(cont)
 
-    // ── Phasen-Zustand ───────────────────────────────────────────────────────
-    // phase: 'boot' | 'load' | 'demo' | 'ready'
-    type Phase = 'boot' | 'load' | 'demo' | 'ready'
-    let phase: Phase = 'boot'
-    let phaseStart   = 0          // Timestamp (ms) des Phasen-Starts
-
-    // ── Phase 1: Boot — getippter Text ──────────────────────────────────────
-    let bootLinesDone    = false  // Wurden alle BOOT_LINES gezeichnet?
-    let typingText       = ''     // Aktuell eingetippter String (LOAD-Befehl)
-    let typingTarget     = ''     // Vollständiger Ziel-String
-    let typingIdx        = 0      // Wie viele Zeichen bisher getipt
-    let typingNextMs     = 0      // Wann kommt das nächste Zeichen?
-    let bootSubStage     = 0      // Sub-Zustand innerhalb der Boot-Phase
-    //   0: BOOT_LINES anzeigen
-    //   1: LOAD-Befehl tippen
-    //   2: SEARCHING FOR * anzeigen + Pause
-    //   3: LOADING mit Punkten
-
-    let loadingDots       = 0     // 0..3 — Anzahl Punkte hinter LOADING
-    let loadingNextMs     = 0     // Wann kommt der nächste Punkt?
-    let searchPauseMs     = 0     // Wann endet die Pause nach SEARCHING?
-    let loadingLoops      = 0     // Wie oft hat LOADING. schon geloopt?
-
-    // ── Phase 2: Lade-Flackern ───────────────────────────────────────────────
-    let flickerColor  = '#000000'  // Aktuelle Hintergrundfarbe beim Flackern
-    let flickerNextMs = 0          // Wann kommt der nächste Farbwechsel?
-
-    // ── Phase 3: Demo-Szenen ─────────────────────────────────────────────────
-    let demoScene     = 0          // 0..3 — aktueller Effekt
-    let sceneStart    = 0          // Timestamp des Szenen-Starts
-    let blackoutUntil = 0          // Bis wann bleibt der Screen schwarz (Übergang)?
-
-    // Sinus-Scroller
-    let scrollX       = 0          // Aktuelle X-Position des Text-Starts (wandert nach links)
-    const scrollSpeed = 90         // Pixel/Sekunde
-
-    // Rasterbars — 6 Balken, jeder mit einer Phase
-    const barCount  = 6
-    const barPhases = Array.from({ length: barCount }, (_, i) => i * (Math.PI * 2 / barCount))
-    const barColors = [4, 6, 5, 8, 3, 14]  // Palette-Indizes
-
-    // Plasma — Offset für Zeitanimation
-    let plasmaT   = 0
-
-    // Sprites — 4 Objekte auf Sinus-Bahnen
-    const spriteCount = 4
-    const spritePhases = Array.from({ length: spriteCount }, (_, i) => i * (Math.PI / 2))
-    const spriteColors = [7, 13, 10, 3]  // Gelb, Hellgrün, Hellrot, Cyan
-
-    // ── Phase 4: Ready-Screen ────────────────────────────────────────────────
-    let cursorBlink  = false   // Sichtbarer Cursor?
-    let cursorNextMs = 0       // Wann toggelt der Cursor?
-
-    // ── Globale Zeit ─────────────────────────────────────────────────────────
-    let lastT = 0
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Zeichnet den blauen C64-BASIC-Hintergrund mit Rahmen
-    // ─────────────────────────────────────────────────────────────────────────
-    function drawC64Bg() {
-      const W = canvas.width
-      const H = canvas.height
-
-      // Äußerer Rahmen (C64-Blau)
-      ctx.fillStyle = C64_BORDER
-      ctx.fillRect(0, 0, W, H)
-
-      // Innerer Textbereich (etwas kleinerer Rahmen — Randbreite ~5%)
-      const margin = Math.round(Math.min(W, H) * 0.05)
-      ctx.fillStyle = C64_BG
-      ctx.fillRect(margin, margin, W - margin * 2, H - margin * 2)
-
-      return { margin }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Zeichnet Text im C64-Stil (weiß auf blau, kleine Monospace-Schrift)
-    // x, y in Pixel ab oberer linker Ecke des Textbereichs
-    // ─────────────────────────────────────────────────────────────────────────
-    function drawC64Text(text: string, col: number, row: number, margin: number) {
+    // ── Interne Canvas-Dimensionen berechnen ──────────────────────────────────
+    // Gibt {bx, by, cw, ch, cellW, cellH, fs} zurück:
+    //   bx/by = obere linke Ecke des Content-Bereichs
+    //   cw/ch = Breite/Höhe des Content-Bereichs
+    //   cellW/H = Zellgröße in Pixeln
+    //   fs = Schriftgröße
+    function layout() {
+      const W  = canvas.width
       const H  = canvas.height
-      // Schriftgröße skaliert mit Canvas-Größe, minimal 8px, maximal 14px
-      const fSize = Math.max(8, Math.min(14, Math.round(H * 0.032)))
-      const lineH = fSize + 2   // Zeilenhöhe mit minimalem Abstand
-
-      ctx.font         = `${fSize}px monospace`
-      ctx.fillStyle    = C64_TEXT
-      ctx.textBaseline = 'top'
-
-      const x = margin + col * fSize * 0.6 + 2   // Monospace-Zeichenbreite ~60% der Höhe
-      const y = margin + row * lineH + 2
-      ctx.fillText(text, x, y)
-
-      return { fSize, lineH }
+      const bx = Math.round(W * BORDER_FRAC)
+      const by = Math.round(H * BORDER_FRAC)
+      const cw = W - bx * 2
+      const ch = H - by * 2
+      // Zeichenzelle quadratisch (wie am Original-C64)
+      const cs = Math.min(cw / COLS, ch / ROWS)
+      // Content-Bereich mittig im Border positionieren
+      const offX = Math.round((cw - cs * COLS) / 2)
+      const offY = Math.round((ch - cs * ROWS) / 2)
+      return { W, H, bx, by, cw, ch, cs, offX, offY, fs: Math.max(8, cs * 0.90) }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // PHASE 1: Boot-Screen
-    // ─────────────────────────────────────────────────────────────────────────
-    function renderBoot(now: number) {
-      const H = canvas.height
-      const { margin } = drawC64Bg()
-
-      const fSize = Math.max(8, Math.min(14, Math.round(H * 0.032)))
-      const lineH = fSize + 2
-
-      // Sub-Stage 0: Alle BOOT_LINES auf einmal anzeigen (kein Tippen, erscheinen sofort)
-      if (bootSubStage === 0) {
-        // Alle Zeilen rendern
-        for (let i = 0; i < BOOT_LINES.length; i++) {
-          drawC64Text(BOOT_LINES[i], 0, i, margin)
-        }
-        // Jetzt Sub-Stage 1 einleiten: LOAD-Befehl tippen
-        bootSubStage  = 1
-        typingTarget  = 'LOAD "*",8,1'
-        typingIdx     = 0
-        typingText    = ''
-        typingNextMs  = now + 400  // kurze Pause nach READY. bevor getippt wird
-        bootLinesDone = true
-      }
-
-      // Zeilen immer zeichnen (bleiben stehen)
-      if (bootLinesDone) {
-        for (let i = 0; i < BOOT_LINES.length; i++) {
-          drawC64Text(BOOT_LINES[i], 0, i, margin)
-        }
-      }
-
-      const baseRow = BOOT_LINES.length + 1   // Zeile nach READY.
-
-      // Sub-Stage 1: LOAD-Befehl character by character tippen
-      if (bootSubStage === 1) {
-        if (now >= typingNextMs && typingIdx < typingTarget.length) {
-          typingIdx++
-          typingText   = typingTarget.slice(0, typingIdx)
-          typingNextMs = now + 200   // 200ms pro Zeichen
-        }
-        drawC64Text(typingText, 0, baseRow, margin)
-        // Cursor blinkt am Ende
-        const cursorX = margin + typingText.length * fSize * 0.6 + 2
-        const cursorY = margin + baseRow * lineH + 2
-        if (Math.floor(now / 530) % 2 === 0) {
-          ctx.fillStyle = C64_TEXT
-          ctx.fillRect(cursorX, cursorY, fSize * 0.6, fSize)
-        }
-
-        // Fertig getippt? → kurze Pause, dann Enter (Sub-Stage 2)
-        if (typingIdx >= typingTarget.length && now >= typingNextMs) {
-          bootSubStage  = 2
-          searchPauseMs = now + 600   // 600ms Pause, dann SEARCHING
-        }
-      }
-
-      // Sub-Stage 2: LOAD-Befehl steht, dann SEARCHING FOR * erscheint
-      if (bootSubStage >= 2) {
-        drawC64Text(typingTarget, 0, baseRow, margin)
-
-        if (now >= searchPauseMs) {
-          drawC64Text('SEARCHING FOR *', 0, baseRow + 1, margin)
-
-          // 800ms nach SEARCHING → Sub-Stage 3 (LOADING mit Punkten)
-          if (bootSubStage === 2 && now >= searchPauseMs + 800) {
-            bootSubStage  = 3
-            loadingDots   = 0
-            loadingLoops  = 0
-            loadingNextMs = now + 400
-          }
-        }
-      }
-
-      // Sub-Stage 3: LOADING. LOADING.. LOADING...
-      if (bootSubStage === 3) {
-        drawC64Text('SEARCHING FOR *', 0, baseRow + 1, margin)
-
-        const dots = '.'.repeat(loadingDots)
-        drawC64Text(`LOADING${dots}`, 0, baseRow + 2, margin)
-
-        if (now >= loadingNextMs) {
-          loadingDots++
-          if (loadingDots > 3) {
-            loadingDots  = 0
-            loadingLoops++
-          }
-          loadingNextMs = now + 380
-
-          // Nach 3–4 vollständigen Loops → Phase 2 (Flackern)
-          if (loadingLoops >= 3) {
-            startPhase('load', now)
-          }
-        }
-      }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // PHASE 2: Lade-Flackern (C64-Kassette)
-    // ─────────────────────────────────────────────────────────────────────────
-    function renderLoad(now: number) {
-      const W = canvas.width
-      const H = canvas.height
-
-      // Hintergrundfarbe wechseln
-      if (now >= flickerNextMs) {
-        flickerColor  = C64_PALETTE[Math.floor(Math.random() * C64_PALETTE.length)]
-        flickerNextMs = now + 40 + Math.random() * 30  // 40–70ms
-
-        // Gelegentlich: Streifen oder Blöcke überlagern
-      }
-
-      ctx.fillStyle = flickerColor
+    // ── Hintergrund + Border zeichnen ─────────────────────────────────────────
+    function drawBorder() {
+      const { W, H, bx, by, cw, ch } = layout()
+      // Ganzer Canvas = Border-Farbe
+      ctx.fillStyle = BORDER_CLR
       ctx.fillRect(0, 0, W, H)
-
-      // Zufällige Streifen (60% Wahrscheinlichkeit pro Frame)
-      if (Math.random() < 0.6) {
-        const stripeH  = Math.floor(H * (0.05 + Math.random() * 0.25))
-        const stripeY  = Math.floor(Math.random() * (H - stripeH))
-        const stripePal = C64_PALETTE[Math.floor(Math.random() * C64_PALETTE.length)]
-        ctx.fillStyle  = stripePal
-        ctx.fillRect(0, stripeY, W, stripeH)
-      }
-
-      // Zufällige Blöcke (40% Wahrscheinlichkeit)
-      if (Math.random() < 0.4) {
-        const bW   = Math.floor(W * (0.1 + Math.random() * 0.5))
-        const bH   = Math.floor(H * (0.05 + Math.random() * 0.2))
-        const bX   = Math.floor(Math.random() * (W - bW))
-        const bY   = Math.floor(Math.random() * (H - bH))
-        const bPal = C64_PALETTE[Math.floor(Math.random() * C64_PALETTE.length)]
-        ctx.fillStyle = bPal
-        ctx.fillRect(bX, bY, bW, bH)
-      }
-
-      // Nach 3s → Phase 3 (Demo)
-      if (now - phaseStart >= 3000) {
-        demoScene  = 0
-        sceneStart = now
-        startPhase('demo', now)
-      }
+      // Content-Rechteck = Hintergrundfarbe
+      ctx.fillStyle = BG_CLR
+      ctx.fillRect(bx, by, cw, ch)
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // PHASE 3: Demo-Szenen
-    // ─────────────────────────────────────────────────────────────────────────
-    function renderDemo(now: number, dt: number) {
-      const W = canvas.width
-      const H = canvas.height
-
-      // Übergang: kurzer schwarzer Screen zwischen Szenen (0.5s)
-      if (now < blackoutUntil) {
-        ctx.fillStyle = '#000000'
-        ctx.fillRect(0, 0, W, H)
-        return
-      }
-
-      const sceneAge = (now - sceneStart) / 1000   // Sekunden seit Szenenstart
-
-      // Alle 7s nächste Szene
-      if (sceneAge >= 7) {
-        demoScene   = (demoScene + 1) % 4
-        sceneStart  = now
-        blackoutUntil = now + 500
-        // Gesamte Demo-Phase: 4 Szenen à 7s + Übergangs-Blacks → ~30s
-        // Nach 4 Szenen → Phase 4 (Ready)
-        if (demoScene === 0) {
-          startPhase('ready', now)
-          return
-        }
-      }
-
-      switch (demoScene) {
-        case 0: renderSinusScroller(now, dt, W, H, sceneAge); break
-        case 1: renderRasterbars(now, W, H, sceneAge);        break
-        case 2: renderPlasma(dt, W, H);                       break
-        case 3: renderSprites(now, W, H, sceneAge);           break
-      }
+    // ── CRT-Scanlines ────────────────────────────────────────────────────────
+    function drawScanlines() {
+      const { W, H } = layout()
+      ctx.fillStyle = 'rgba(0,0,0,0.08)'
+      for (let y = 0; y < H; y += 2) ctx.fillRect(0, y, W, 1)
     }
 
-    // ── Effekt 0: Sinus-Scroller ──────────────────────────────────────────────
-    function renderSinusScroller(now: number, dt: number, W: number, H: number, _age: number) {
-      // Hintergrund
+    // ── Text an Raster-Position (col, row) zeichnen ──────────────────────────
+    // col und row sind 0-basiert im 40×25-Gitter
+    function drawChar(text: string, col: number, row: number, color = TEXT_CLR) {
+      const { bx, by, cs, offX, offY, fs } = layout()
+      ctx.font         = `${fs}px monospace`
+      ctx.fillStyle    = color
+      ctx.textBaseline = 'top'
+      ctx.fillText(text, bx + offX + col * cs, by + offY + row * cs)
+    }
+
+    // ── Eine vollständige Zeile schreiben ─────────────────────────────────────
+    function drawLine(text: string, row: number, color = TEXT_CLR) {
+      drawChar(text, 0, row, color)
+    }
+
+    // ── Boot-Bildschirm rendern (Zeilen + Cursor-Pos) ─────────────────────────
+    // cursorLineText: wenn angegeben, wird die Cursor-X-Position per measureText
+    // berechnet, damit der Cursor exakt am Ende des getippten Textes steht.
+    function renderScreen(
+      lines: string[],
+      cursorRow: number,
+      cursorCol: number,
+      blinkOn: boolean,
+      cursorLineText?: string,
+    ) {
+      drawBorder()
+      lines.forEach((ln, r) => { if (ln) drawLine(ln, r) })
+      if (blinkOn) {
+        const { bx, by, cs, offX, offY, fs } = layout()
+        ctx.font = `${fs}px monospace`
+        // Exakte Pixel-Breite des getippten Textes messen, damit Cursor direkt dahinter sitzt
+        const xOff = cursorLineText !== undefined
+          ? ctx.measureText(cursorLineText.slice(0, cursorCol)).width
+          : cursorCol * cs
+        ctx.fillStyle = CURSOR_CLR
+        ctx.fillRect(bx + offX + xOff, by + offY + cursorRow * cs, Math.max(3, cs * 0.8), cs)
+      }
+      drawScanlines()
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // Phasen-Zustand
+    // ────────────────────────────────────────────────────────────────────
+    type Phase =
+      | 'boot'        // statischer Boot-Screen
+      | 'type_load'   // LOAD"*",8,1 eintippen
+      | 'searching'   // SEARCHING FOR * + LOADING (statisch)
+      | 'type_run'    // RUN eintippen
+      | 'demo'        // Demo-Szene
+      | 'ready'       // READY. mit Cursor
+
+    let phase:      Phase  = 'boot'
+    let phaseStart: number = 0
+
+    // Tipp-State
+    const LOAD_CMD = 'LOAD"*",8,1'
+    const RUN_CMD  = 'RUN'
+    let typedSoFar = ''
+
+    // Demo-State
+    let demoScene = 0
+    let scrollX   = 0
+
+    // ── Boot-Zeilen (festes Array 25 Zeilen) ──────────────────────────────────
+    // Die C64-Zeilen 0..24 entsprechen dem 40×25-Gitter.
+    const bootLines: string[] = Array(ROWS).fill('')
+    bootLines[1] = '    **** COMMODORE 64 BASIC V2 ****'
+    bootLines[2] = ' 64K RAM SYSTEM  38911 BASIC BYTES FREE'
+    bootLines[3] = ''
+    bootLines[4] = 'READY.'
+
+    // Kopie die wir während des Tippens modifizieren
+    let screenLines: string[] = [...bootLines]
+
+    // ────────────────────────────────────────────────────────────────────
+    // Demo-Szene 0: Sinus-Scroller
+    // ────────────────────────────────────────────────────────────────────
+    function renderScroller(now: number) {
+      const { W, H, bx, by, cw, ch } = layout()
       ctx.fillStyle = '#000000'
       ctx.fillRect(0, 0, W, H)
 
-      // Text scrollt nach links, Y-Position = Sinus-Welle
-      scrollX -= scrollSpeed * dt
-      if (scrollX < -W * 2) scrollX += W * 3  // Rewind wenn weit links raus
-
-      const fSize = Math.max(12, Math.min(22, Math.round(H * 0.08)))
+      // Breit, damit der Text gut lesbar ist
+      const fSize = Math.max(12, Math.min(24, ch * 0.12))
       ctx.font = `bold ${fSize}px monospace`
       ctx.textBaseline = 'middle'
 
-      // Zeichne den Scroller-Text in C64-Gelb auf schwarzem Grund
-      const fullText   = SCROLLER_TEXT + SCROLLER_TEXT  // Doppelt für nahtlosen Loop
-      const charWidth  = fSize * 0.62
+      // Text von rechts nach links bewegen (2 px/Frame bei 60fps ≈ 120 px/s)
+      scrollX -= 2.0
+      const textW = SCROLL_TXT.length * fSize * 0.6
+      if (scrollX < -textW) scrollX = W
 
-      // Jedes Zeichen einzeln zeichnen (eigene Sinus-Position pro Zeichen)
-      for (let i = 0; i < fullText.length; i++) {
-        const cx = scrollX + i * charWidth
-        if (cx < -charWidth || cx > W + charWidth) continue  // außerhalb → skip
+      const centerY = by + ch * 0.5
+      const amplitude = ch * 0.22
 
-        // Y-Sinus: Amplitude = 25% der Canvas-Höhe, Frequenz lässt sich über i staffeln
-        const sineY = H * 0.5 + Math.sin(now / 600 + i * 0.35) * H * 0.25
-
-        // Farbwechsel über die Zeit: wechselt durch Palette
-        const palIdx = (Math.floor(i * 0.3 + now / 200)) % C64_PALETTE.length
-        ctx.fillStyle = C64_PALETTE[palIdx]
-
-        ctx.fillText(fullText[i], cx, sineY)
+      // Jeden Buchstaben einzeln mit Sinus-Y und Regenbogenfarbe zeichnen
+      const charW = fSize * 0.6
+      for (let i = 0; i < SCROLL_TXT.length; i++) {
+        const cx2 = scrollX + i * charW
+        if (cx2 < bx - charW || cx2 > bx + cw + charW) continue
+        const phase2 = (cx2 - bx) / (cw * 0.5)
+        const cy2 = centerY + Math.sin(phase2 * Math.PI * 2 + now / 600) * amplitude
+        const palIdx = (Math.floor(i + now / 80)) % PAL.length
+        ctx.fillStyle = PAL[Math.max(1, palIdx)]
+        ctx.fillText(SCROLL_TXT[i], cx2, cy2)
       }
 
-      // Titel oben
-      ctx.font      = `${Math.max(8, Math.round(H * 0.04))}px monospace`
-      ctx.fillStyle = C64_PALETTE[15]
+      // Statuszeile
+      ctx.font = `${Math.max(8, fSize * 0.5)}px monospace`
+      ctx.fillStyle = PAL[14]
       ctx.textBaseline = 'top'
-      ctx.fillText('SECTOR-7 PRODUCTIONS', 4, 4)
+      ctx.fillText('SECTOR-7 PRODUCTIONS  2024', bx + 4, by + 4)
     }
 
-    // ── Effekt 1: Rasterbars ──────────────────────────────────────────────────
-    function renderRasterbars(now: number, W: number, H: number, _age: number) {
+    // ────────────────────────────────────────────────────────────────────
+    // Demo-Szene 1: Rasterbars
+    // ────────────────────────────────────────────────────────────────────
+    function renderRasterbars(now: number) {
+      const { W, H, bx, by, cw, ch } = layout()
       ctx.fillStyle = '#000000'
       ctx.fillRect(0, 0, W, H)
 
-      const barH = Math.round(H * 0.08)   // Höhe eines Balkens
+      const bars = 8
+      const barH = Math.round(ch * 0.1)
+      const colors = [PAL[2], PAL[4], PAL[5], PAL[3], PAL[7], PAL[8], PAL[14], PAL[13]]
 
-      for (let b = 0; b < barCount; b++) {
-        // Y-Position des Balkens: sinusförmige Bewegung
-        const phase = barPhases[b] + now / 700
-        const cy    = H * 0.5 + Math.sin(phase) * H * 0.38
+      for (let b = 0; b < bars; b++) {
+        const phase2 = b * 0.7 + now / 600
+        const y = by + ch * 0.5 + Math.sin(phase2) * ch * 0.38 - barH / 2
 
-        // Weicher Übergang: helle Mitte, dunkle Ränder
-        const palHex = C64_PALETTE[barColors[b]]
-        const [r, g, bv] = palRgb(palHex)
-
-        // Gradient über die Balkenhöhe
-        const grad = ctx.createLinearGradient(0, cy - barH, 0, cy + barH)
-        grad.addColorStop(0,   `rgba(${r},${g},${bv},0)`)
-        grad.addColorStop(0.3, `rgba(${r},${g},${bv},0.6)`)
-        grad.addColorStop(0.5, `rgba(${r},${g},${bv},1)`)
-        grad.addColorStop(0.7, `rgba(${r},${g},${bv},0.6)`)
-        grad.addColorStop(1,   `rgba(${r},${g},${bv},0)`)
-
-        ctx.fillStyle = grad
-        ctx.fillRect(0, cy - barH, W, barH * 2)
-      }
-
-      // Text-Overlay
-      ctx.font = `${Math.max(9, Math.round(H * 0.045))}px monospace`
-      ctx.fillStyle = C64_PALETTE[1]
-      ctx.textBaseline = 'top'
-      ctx.fillText('RASTERBARS V2.1', 4, 4)
-    }
-
-    // ── Effekt 2: Plasma in C64-Palette ──────────────────────────────────────
-    function renderPlasma(dt: number, W: number, H: number) {
-      plasmaT += dt * 1.8   // Zeitfortschritt
-
-      // Wir arbeiten mit getImageData für Pixel-Operationen (schnell)
-      const imgData = ctx.createImageData(W, H)
-      const data    = imgData.data
-
-      // Blockgröße: je nach Canvas-Größe — nicht zu winzig
-      const block = Math.max(4, Math.round(Math.min(W, H) / 40))
-
-      for (let y = 0; y < H; y += block) {
-        for (let x = 0; x < W; x += block) {
-          // Plasma-Formel: Überlagerung mehrerer Sinuswellen
-          const nx  = x / W
-          const ny  = y / H
-          const v   =
-            Math.sin(nx * 8 + plasmaT) +
-            Math.sin(ny * 6 + plasmaT * 0.7) +
-            Math.sin((nx + ny) * 5 + plasmaT * 1.3) +
-            Math.sin(Math.sqrt(nx * nx + ny * ny) * 9 + plasmaT)
-
-          // Normalisieren auf 0..1
-          const norm     = (v + 4) / 8
-          // C64-Palette-Index: 0..15
-          const palIdx   = Math.floor(norm * 15.99) & 15
-          const hex      = C64_PALETTE[palIdx]
-          const [r, g, bv] = palRgb(hex)
-
-          // Block füllen
-          for (let by = 0; by < block && y + by < H; by++) {
-            for (let bx = 0; bx < block && x + bx < W; bx++) {
-              const i = ((y + by) * W + (x + bx)) * 4
-              data[i]     = r
-              data[i + 1] = g
-              data[i + 2] = bv
-              data[i + 3] = 255
-            }
-          }
+        // Weicher Farbverlauf innerhalb des Balkens
+        const col = colors[b % colors.length]
+        for (let dy = 0; dy < barH; dy++) {
+          const t = Math.sin((dy / barH) * Math.PI)
+          ctx.fillStyle = mixColors('#000000', col, t * 0.9)
+          ctx.fillRect(bx, Math.round(y + dy), cw, 1)
         }
       }
-
-      ctx.putImageData(imgData, 0, 0)
-
-      // Titel-Text über das Plasma
-      ctx.font = `${Math.max(9, Math.round(H * 0.045))}px monospace`
-      ctx.fillStyle = '#000000'
-      ctx.textBaseline = 'top'
-      ctx.fillText('C64 PLASMA FX', 6, 6)
-      ctx.fillStyle = '#FFFFFF'
-      ctx.fillText('C64 PLASMA FX', 5, 5)
     }
 
-    // ── Effekt 3: Sprites auf Sinus-Bahnen ───────────────────────────────────
-    function renderSprites(now: number, W: number, H: number, _age: number) {
+    // ────────────────────────────────────────────────────────────────────
+    // Demo-Szene 2: Plasma (C64-Palette)
+    // ────────────────────────────────────────────────────────────────────
+    function renderPlasma(now: number) {
+      const { W, H, bx, by, cw, ch } = layout()
+      ctx.fillStyle = '#000000'
+      ctx.fillRect(0, 0, W, H)
+      const t = now / 1200
+
+      // Plasma bei halber Auflösung für Performance, dann upscale
+      const step = 4
+      for (let py = 0; py < ch; py += step) {
+        for (let px = 0; px < cw; px += step) {
+          const nx = px / cw
+          const ny = py / ch
+          const v =
+            Math.sin(nx * 8 + t) +
+            Math.sin(ny * 6 + t * 1.3) +
+            Math.sin((nx + ny) * 5 + t * 0.7) +
+            Math.sin(Math.sqrt((nx * nx + ny * ny) * 60) + t)
+          const idx = Math.abs(Math.round(v * 3.5)) % PAL.length
+          ctx.fillStyle = PAL[idx]
+          ctx.fillRect(bx + px, by + py, step, step)
+        }
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // Demo-Szene 3: Sprites auf Sinus-Bahnen
+    // ────────────────────────────────────────────────────────────────────
+    const SPRITE_COUNT = 5
+    const sprPhases = Array.from({ length: SPRITE_COUNT }, (_, i) => i * 1.25)
+    const sprColors = [PAL[2], PAL[5], PAL[3], PAL[7], PAL[14]]
+
+    function renderSprites(now: number) {
+      const { W, H, bx, by, cw, ch } = layout()
       ctx.fillStyle = '#000022'
       ctx.fillRect(0, 0, W, H)
 
-      const spriteSize = Math.max(10, Math.round(Math.min(W, H) * 0.07))
+      // Sternenhintergrund (statisch, wird nur beim ersten Frame gezeichnet)
+      ctx.fillStyle = '#FFFFFF'
+      for (let i = 0; i < 60; i++) {
+        const sx = bx + ((i * 173 + 7) % cw)
+        const sy = by + ((i * 97 + 13) % ch)
+        ctx.fillRect(sx, sy, 1, 1)
+      }
 
-      for (let s = 0; s < spriteCount; s++) {
-        const phase  = spritePhases[s] + now / 800
-        const phase2 = spritePhases[s] * 1.7 + now / 540
+      const sz = Math.round(Math.min(cw, ch) * 0.07)
+      for (let s = 0; s < SPRITE_COUNT; s++) {
+        const p1 = sprPhases[s] + now / 900
+        const p2 = sprPhases[s] * 1.6 + now / 650
+        const sx = bx + cw * 0.5 + Math.sin(p1) * cw * 0.38
+        const sy = by + ch * 0.5 + Math.sin(p2) * ch * 0.32
 
-        // X: gleichmäßige Positionierung + horizontale Sinus-Schwingung
-        const baseX = W * (0.15 + s * 0.22)
-        const cx    = baseX + Math.sin(phase2) * W * 0.08
-        // Y: Sinus-Bahn mit verschiedener Frequenz
-        const cy    = H * 0.5 + Math.sin(phase) * H * 0.35
-
-        const palHex = C64_PALETTE[spriteColors[s]]
-        ctx.fillStyle = palHex
-
-        // Sprite-Form: Raute (Diamond)
+        // Raute zeichnen
+        ctx.fillStyle = sprColors[s]
         ctx.beginPath()
-        ctx.moveTo(cx,               cy - spriteSize)   // Oben
-        ctx.lineTo(cx + spriteSize,  cy)                // Rechts
-        ctx.lineTo(cx,               cy + spriteSize)   // Unten
-        ctx.lineTo(cx - spriteSize,  cy)                // Links
+        ctx.moveTo(sx,      sy - sz)
+        ctx.lineTo(sx + sz, sy)
+        ctx.lineTo(sx,      sy + sz)
+        ctx.lineTo(sx - sz, sy)
         ctx.closePath()
         ctx.fill()
 
-        // Inneres kleines Quadrat (Sprite-Detail)
-        const inner = spriteSize * 0.4
-        ctx.fillStyle = C64_PALETTE[1]
+        // Heller Kern
+        ctx.fillStyle = '#FFFFFF'
         ctx.beginPath()
-        ctx.moveTo(cx,          cy - inner)
-        ctx.lineTo(cx + inner,  cy)
-        ctx.lineTo(cx,          cy + inner)
-        ctx.lineTo(cx - inner,  cy)
-        ctx.closePath()
-        ctx.fill()
-
-        // Nachleucht-Schweif
-        const trailLen = 5
-        for (let t = 1; t <= trailLen; t++) {
-          const alpha  = (1 - t / trailLen) * 0.4
-          const trailX = cx - Math.cos(phase2 + 0.1 * t) * t * 4
-          const trailY = cy - Math.sin(phase  + 0.1 * t) * t * 4
-          const ts     = spriteSize * (1 - t / (trailLen + 1)) * 0.6
-          const [r, g, bv] = palRgb(palHex)
-          ctx.fillStyle = `rgba(${r},${g},${bv},${alpha})`
-          ctx.beginPath()
-          ctx.moveTo(trailX,      trailY - ts)
-          ctx.lineTo(trailX + ts, trailY)
-          ctx.lineTo(trailX,      trailY + ts)
-          ctx.lineTo(trailX - ts, trailY)
-          ctx.closePath()
-          ctx.fill()
-        }
-      }
-
-      // Sterne im Hintergrund (statisch, basierend auf deterministischen Pseudorandom-Werten)
-      ctx.fillStyle = C64_PALETTE[1]
-      for (let i = 0; i < 40; i++) {
-        // Deterministisch, damit sie nicht flackern: sin/cos als "Pseudorandom"
-        const sx = ((Math.sin(i * 137.5) + 1) / 2) * W
-        const sy = ((Math.cos(i * 193.3) + 1) / 2) * H
-        const sr = 0.8 + ((Math.sin(i * 79.1) + 1) / 2) * 1.5
-        ctx.beginPath()
-        ctx.arc(sx, sy, sr, 0, Math.PI * 2)
+        ctx.arc(sx, sy, sz * 0.2, 0, Math.PI * 2)
         ctx.fill()
       }
 
-      ctx.font = `${Math.max(9, Math.round(H * 0.045))}px monospace`
-      ctx.fillStyle = C64_PALETTE[7]   // Gelb
+      // Demo-Label
+      const fSize = Math.max(8, Math.min(14, ch * 0.055))
+      ctx.font = `${fSize}px monospace`
+      ctx.fillStyle = PAL[14]
       ctx.textBaseline = 'top'
-      ctx.fillText('SPRITE MULTIPLEXER', 4, 4)
+      ctx.fillText('SPRITE FX  // SECTOR-7', bx + 4, by + 4)
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // PHASE 4: Ready-Screen mit blinkendem Cursor
-    // ─────────────────────────────────────────────────────────────────────────
-    function renderReady(now: number) {
-      const { margin } = drawC64Bg()
+    // ────────────────────────────────────────────────────────────────────
+    // RAF-Hauptschleife
+    // ────────────────────────────────────────────────────────────────────
+    function loop(now: number) {
+      if (!active) return
 
-      // Cursor toggeln
-      if (now >= cursorNextMs) {
-        cursorBlink  = !cursorBlink
-        cursorNextMs = now + 530   // 530ms Blink-Intervall (klassisches C64-Timing)
-      }
+      const { W, H } = layout()
+      if (W === 0 || H === 0) { rafId = requestAnimationFrame(loop); return }
+      if (phaseStart === 0) phaseStart = now
 
-      drawC64Text('READY.', 0, 0, margin)
+      const elapsed = now - phaseStart
+      const blinkOn = Math.floor(now / 530) % 2 === 0
 
-      if (cursorBlink) {
-        const H     = canvas.height
-        const fSize = Math.max(8, Math.min(14, Math.round(H * 0.032)))
-        const lineH = fSize + 2
-        const x     = margin + 2
-        const y     = margin + lineH + 2   // Zeile 1 (nach READY.)
-        ctx.fillStyle = C64_TEXT
-        ctx.fillRect(x, y, fSize * 0.6, fSize)
-      }
+      // ── Phasen-Logik ─────────────────────────────────────────────────
+      if (phase === 'boot') {
+        // Boot-Screen 2s anzeigen, dann Tippen starten
+        renderScreen(screenLines, 5, 0, blinkOn)
+        if (elapsed > 2000) {
+          phase = 'type_load'
+          phaseStart = now
+          typedSoFar = ''
+        }
 
-      // Nach 2s → zurück zu Phase 1 (Boot)
-      if (now - phaseStart >= 2000) {
-        // Reset Boot-Zustand
-        bootSubStage  = 0
-        bootLinesDone = false
-        typingText    = ''
-        typingTarget  = ''
-        typingIdx     = 0
-        startPhase('boot', now)
-      }
-    }
+      } else if (phase === 'type_load') {
+        // Zeichenweises Eintippen von LOAD"*",8,1 (180 ms / Zeichen)
+        const charsToType = Math.floor((now - phaseStart) / 180)
+        typedSoFar = LOAD_CMD.slice(0, Math.min(charsToType, LOAD_CMD.length))
+        const lines = [...screenLines]
+        lines[5] = typedSoFar
+        renderScreen(lines, 5, typedSoFar.length, blinkOn, typedSoFar)
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Phasen-Wechsel mit Reset
-    // ─────────────────────────────────────────────────────────────────────────
-    function startPhase(p: Phase, now: number) {
-      phase      = p
-      phaseStart = now
-      if (p === 'load') {
-        flickerNextMs = now
-      }
-      if (p === 'demo') {
-        // Erste Demo-Szene direkt starten, kein Übergang
-        blackoutUntil = 0
-        sceneStart    = now
-        scrollX       = canvas.width   // Scroller startet rechts außerhalb
-        plasmaT       = 0
-      }
-    }
+        if (typedSoFar.length >= LOAD_CMD.length && elapsed > LOAD_CMD.length * 180 + 400) {
+          // Enter gedrückt → zu 'searching'
+          phase = 'searching'
+          phaseStart = now
+          screenLines[5] = LOAD_CMD
+          screenLines[6] = ''
+          screenLines[7] = 'SEARCHING FOR *'
+          screenLines[8] = 'LOADING'
+        }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Haupt-Loop
-    // ─────────────────────────────────────────────────────────────────────────
-    function loop(t: number) {
-      if (!alive) return
+      } else if (phase === 'searching') {
+        // LOADING statisch anzeigen (2s), kein Animation
+        renderScreen(screenLines, 9, 0, false)
+        if (elapsed > 2000) {
+          phase = 'type_run'
+          phaseStart = now
+          typedSoFar = ''
+        }
 
-      const dt = Math.min((t - lastT) / 1000, 0.05)   // Delta-Zeit in Sekunden
-      lastT    = t
+      } else if (phase === 'type_run') {
+        // RUN eintippen (180 ms / Zeichen)
+        const charsToType = Math.floor((now - phaseStart) / 180)
+        typedSoFar = RUN_CMD.slice(0, Math.min(charsToType, RUN_CMD.length))
+        const lines = [...screenLines]
+        lines[9] = typedSoFar
+        renderScreen(lines, 9, typedSoFar.length, blinkOn, typedSoFar)
 
-      switch (phase) {
-        case 'boot':  renderBoot(t);          break
-        case 'load':  renderLoad(t);          break
-        case 'demo':  renderDemo(t, dt);      break
-        case 'ready': renderReady(t);         break
+        if (typedSoFar.length >= RUN_CMD.length && elapsed > RUN_CMD.length * 180 + 400) {
+          phase = 'demo'
+          phaseStart = now
+          demoScene = 0
+          scrollX = W
+        }
+
+      } else if (phase === 'demo') {
+        // Demo: Scroller (Szene 0) läuft 20s, alle anderen Szenen je 7s,
+        // dazwischen je 0.5s schwarzer Übergang.
+        // Szenen-Dauer-Tabelle: [Scroller, Rasterbars, Plasma, Sprites]
+        const sceneDurs  = [20000, 7000, 7000, 7000]
+        const transTime  = 500
+        const totalDur   = sceneDurs.reduce((s, d) => s + d + transTime, 0)
+
+        // Herausfinden, in welcher Szene wir uns befinden
+        let newScene = 0
+        let sceneT   = elapsed
+        for (let si = 0; si < sceneDurs.length; si++) {
+          const slotDur = sceneDurs[si] + transTime
+          if (sceneT < slotDur) { newScene = si; break }
+          sceneT -= slotDur
+          newScene = (si + 1) % 4  // Fallback, falls elapsed > totalDur
+        }
+        const sceneDur = sceneDurs[newScene]
+
+        if (newScene !== demoScene) { demoScene = newScene; scrollX = W }
+
+        if (sceneT >= sceneDur) {
+          // Schwarzer Übergang — kein C64-Rand, nur Schwarz
+          ctx.fillStyle = '#000000'
+          ctx.fillRect(0, 0, W, H)
+          drawScanlines()
+        } else {
+          // Demo-Szene rendern — kein C64-Rand
+          switch (demoScene) {
+            case 0: renderScroller(now); break
+            case 1: renderRasterbars(now); break
+            case 2: renderPlasma(now); break
+            case 3: renderSprites(now); break
+          }
+          drawScanlines()
+        }
+
+        if (elapsed > totalDur + 500) {
+          phase = 'ready'
+          phaseStart = now
+          screenLines = [...bootLines]
+          screenLines[5] = ''
+          screenLines[6] = 'READY.'
+        }
+
+      } else if (phase === 'ready') {
+        // READY. 2s anzeigen, dann neuer Boot
+        renderScreen(screenLines, 7, 0, blinkOn)
+        if (elapsed > 2000) {
+          phase = 'boot'
+          phaseStart = now
+          screenLines = [...bootLines]
+          typedSoFar = ''
+        }
       }
 
       rafId = requestAnimationFrame(loop)
     }
 
-    // ── Starten ───────────────────────────────────────────────────────────────
-    rafId = requestAnimationFrame((t) => {
-      lastT      = t
-      phaseStart = t
-      bootSubStage  = 0
-      bootLinesDone = false
-      loop(t)
-    })
+    rafId = requestAnimationFrame(loop)
 
     return () => {
-      alive = false
+      active = false
       cancelAnimationFrame(rafId)
       ro.disconnect()
     }
@@ -650,11 +482,9 @@ export default function C64Panel() {
 
   return (
     <Panel title="C64 // SYSTEM INTRUDE MODE">
-      <div ref={containerRef} style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
-        <canvas
-          ref={canvasRef}
-          style={{ width: '100%', height: '100%', display: 'block' }}
-        />
+      {/* bg-black: Letterbox-Balken bei Seitenverhältnis-Abweichung */}
+      <div ref={containerRef} className="w-full h-full min-h-0 flex items-center justify-center bg-black overflow-hidden">
+        <canvas ref={canvasRef} className="block" />
       </div>
     </Panel>
   )

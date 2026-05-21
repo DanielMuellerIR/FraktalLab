@@ -26,6 +26,19 @@ export default function AmbientSound({ enabled }: AmbientSoundProps) {
     const ctx = new AudioContext()
     ctxRef.current = ctx
 
+    // Problem 1 — Autostart-Fix: Beim ersten User-Gesture AudioContext fortsetzen.
+    // Browser starten AudioContext im "suspended"-Zustand. Der erste Click/Key/Touch
+    // weckt ihn auf — danach läuft alles ohne weiteres Zutun.
+    function onFirstGesture() {
+      ctx.resume().catch(() => { /* kein Fehler werfen wenn ctx bereits geschlossen */ })
+      document.removeEventListener('click',      onFirstGesture)
+      document.removeEventListener('keydown',    onFirstGesture)
+      document.removeEventListener('touchstart', onFirstGesture)
+    }
+    document.addEventListener('click',      onFirstGesture)
+    document.addEventListener('keydown',    onFirstGesture)
+    document.addEventListener('touchstart', onFirstGesture)
+
     // Einen vollständigen Tastendruck-Sound erzeugen (3 Schichten)
     function pressKey(volume = 1.0) {
       if (ctx.state === 'closed') return
@@ -84,6 +97,48 @@ export default function AmbientSound({ enabled }: AmbientSoundProps) {
       }
     }
 
+    // Schwerer Spacebar-Thump: extra Low-Frequenz-Schicht für den satten Druck
+    function pressSpacebar() {
+      // Normalen Klick mit etwas höherem Volumen
+      pressKey(1.1)
+
+      // Zusätzliche tiefe Thump-Schicht (60–120 Hz) für das schwere Spacebar-Gefühl
+      if (ctx.state === 'closed') return
+      const now    = ctx.currentTime
+      const dur    = 0.018 + Math.random() * 0.010
+      const buf    = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate)
+      const data   = buf.getChannelData(0)
+      for (let i = 0; i < data.length; i++)
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 1.2)
+      const src    = ctx.createBufferSource()
+      const lpf    = ctx.createBiquadFilter()
+      const gain   = ctx.createGain()
+      src.buffer        = buf
+      lpf.type          = 'lowpass'
+      lpf.frequency.value = 80 + Math.random() * 60   // 80–140 Hz
+      gain.gain.value   = 0.20 + Math.random() * 0.10
+      src.connect(lpf); lpf.connect(gain); gain.connect(ctx.destination)
+      src.start(now)
+    }
+
+    // Problem 2 — Tastatur-Sounds: Physische Tastendrücke klingen lassen
+    function onKey(e: KeyboardEvent) {
+      if (e.code === 'Space') {
+        // Leertaste: schwerer, bassiger Klick
+        pressSpacebar()
+      } else {
+        // Alle anderen Tasten: leise, um Überlappung mit Zustandsautomat zu minimieren
+        pressKey(0.7)
+      }
+    }
+    document.addEventListener('keydown', onKey)
+
+    // Problem 3 — Maus-Klick-Sounds: Jeder Mausklick erzeugt ein weiches Click
+    function onMouse() {
+      pressKey(0.5)
+    }
+    document.addEventListener('mousedown', onMouse)
+
     // CRT-Summen: leises Sägezan-Summen bei ~15,7 kHz
     const humOsc  = ctx.createOscillator()
     const humGain = ctx.createGain()
@@ -139,7 +194,7 @@ export default function AmbientSound({ enabled }: AmbientSoundProps) {
         case 'idle':     return 300 + Math.random() * 1700  // 0.3–2 s Pause
         case 'thinking': return 180 + Math.random() * 600   // 0.18–0.78 s
         case 'typing':   return 55  + Math.random() * 120   // 55–175 ms normal
-        case 'burst':    return 22  + Math.random() * 45    // 22–67 ms schnell
+        case 'burst':    return 15  + Math.random() * 25    // Problem 4: 15–40 ms (vorher 22–67 ms)
       }
     }
 
@@ -153,6 +208,14 @@ export default function AmbientSound({ enabled }: AmbientSoundProps) {
       // Im Nicht-Idle-Zustand Taste drücken
       if (state !== 'idle') {
         pressKey(0.65 + Math.random() * 0.55)
+
+        // Problem 4 — Burst-Intensivierung: im Burst-Modus 2 Klicks pro Tick,
+        // zweiter Click 10 ms versetzt, damit es mehr hetzt.
+        if (state === 'burst') {
+          setTimeout(() => {
+            if (ctx.state !== 'closed') pressKey(0.55 + Math.random() * 0.40)
+          }, 10)
+        }
       }
 
       // Burst-Länge verwalten
@@ -182,6 +245,12 @@ export default function AmbientSound({ enabled }: AmbientSoundProps) {
     }
 
     return () => {
+      // Alle Event-Listener sauber entfernen, bevor der AudioContext geschlossen wird
+      document.removeEventListener('click',      onFirstGesture)
+      document.removeEventListener('keydown',    onFirstGesture)
+      document.removeEventListener('touchstart', onFirstGesture)
+      document.removeEventListener('keydown',    onKey)
+      document.removeEventListener('mousedown',  onMouse)
       stopperRef.current?.()
       ctx.close()
     }

@@ -25,6 +25,13 @@ export default function DNAHelix() {
 
     let rafId: number
     let alive = true
+    // IntersectionObserver: Animation pausieren wenn Panel nicht sichtbar ist
+    let isVisible = true
+    const io = new IntersectionObserver(
+      ([entry]) => { isVisible = entry.isIntersecting },
+      { threshold: 0.1 },
+    )
+    io.observe(canvas)
 
     // ── ResizeObserver: Canvas-Auflösung == Container-Größe ─────────────────
     const resize = () => {
@@ -39,6 +46,8 @@ export default function DNAHelix() {
     // ── RAF-Loop ─────────────────────────────────────────────────────────────
     function loop(t: number) {
       if (!alive) return
+      // Panel nicht sichtbar → Frame überspringen, aber Loop fortsetzen
+      if (!isVisible) { rafId = requestAnimationFrame(loop); return }
 
       // Aktuelle Canvas-Dimensionen dynamisch lesen
       const W = canvas!.width
@@ -207,6 +216,7 @@ export default function DNAHelix() {
       alive = false
       cancelAnimationFrame(rafId)
       ro.disconnect()
+      io.disconnect()
     }
   }, [])
 

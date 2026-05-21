@@ -1,8 +1,13 @@
 import { useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
-// Konvertiert HSL → RGB (s und l als 0..1)
+// Konvertiert HSL → RGB (h in 0..360, s und l als 0..1)
 function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  // HSL-Werte auf gültige Bereiche klemmen
+  h = ((h % 360) + 360) % 360
+  s = Math.max(0, Math.min(1, s))
+  l = Math.max(0, Math.min(1, l))
+
   const c = (1 - Math.abs(2 * l - 1)) * s
   const x = c * (1 - Math.abs((h / 60) % 2 - 1))
   const m = l - c / 2
@@ -13,8 +18,49 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   else if (h < 240) { g = x; b = c }
   else if (h < 300) { r = x; b = c }
   else              { r = c; b = x }
-  return [Math.round((r+m)*255), Math.round((g+m)*255), Math.round((b+m)*255)]
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)]
 }
+
+// ── Dunkle Paletten ────────────────────────────────────────────────────────────
+// Jede Palette nimmt den rohen Plasma-Wert v (ca. −4..+4) und gibt [r, g, b] zurück.
+// Die Formeln nutzen abs/sin, damit Luminanz immer positiv bleibt.
+
+// Palette 0 — Dark Nebula: tiefes Blau/Lila, nur an Peaks elektrisch hell
+function paletteNebula(v: number): [number, number, number] {
+  const h = 240 + Math.sin(v) * 30          // 210..270 — Blau bis Lila
+  const s = 0.70
+  const l = 0.05 + Math.abs(Math.sin(v * 2)) * 0.20   // 0.05..0.25 — fast schwarz
+  return hslToRgb(h, s, l)
+}
+
+// Palette 1 — Infrared: Dunkelrot/Orange wie Wärmebildkamera
+function paletteInfrared(v: number): [number, number, number] {
+  const h = 0 + Math.abs(v) * 20            // 0..80 — Rot über Orange
+  const s = 0.80
+  const l = 0.03 + Math.abs(Math.sin(v)) * 0.25       // 0.03..0.28 — sehr dunkel
+  return hslToRgb(h, s, l)
+}
+
+// Palette 2 — Acidic Dark: Dunkelgrün mit grellen Lime-Spitzen
+function paletteAcidic(v: number): [number, number, number] {
+  const h = 120 + Math.sin(v * 3) * 40      // 80..160 — Gelbgrün bis Cyan-Grün
+  const s = 0.90
+  const l = 0.03 + Math.abs(Math.sin(v * 2)) * 0.20   // 0.03..0.23 — fast schwarz
+  return hslToRgb(h, s, l)
+}
+
+// Palette 3 — Void: fast monochromes Dunkelcyan, kurze weiße Funken
+function paletteVoid(v: number): [number, number, number] {
+  const h = 180                             // Cyan, fix
+  const s = 0.60
+  const l = 0.03 + Math.abs(Math.sin(v * 4)) * 0.18   // 0.03..0.21 — fast schwarz
+  return hslToRgb(h, s, l)
+}
+
+// Array aller Paletten zur Indizierung
+const PALETTES = [paletteNebula, paletteInfrared, paletteAcidic, paletteVoid]
+const PALETTE_DURATION = 20   // Sekunden pro Palette
+const CROSSFADE_DURATION = 2  // Sekunden Überblendung
 
 export default function PlasmaDemo() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -27,6 +73,13 @@ export default function PlasmaDemo() {
 
     let rafId: number
     let running = true
+    // IntersectionObserver: Animation pausieren wenn Panel nicht sichtbar ist
+    let isVisible = true
+    const io = new IntersectionObserver(
+      ([entry]) => { isVisible = entry.isIntersecting },
+      { threshold: 0.1 },
+    )
+    io.observe(canvas)
 
     // ── ResizeObserver: Canvas-Auflösung == Container-Größe ─────────────────
     const resize = () => {
@@ -43,6 +96,8 @@ export default function PlasmaDemo() {
 
     function loop(t: number) {
       if (!running) return
+      // Panel nicht sichtbar → Frame überspringen, aber Loop fortsetzen
+      if (!isVisible) { rafId = requestAnimationFrame(loop); return }
 
       // Sicherheitscheck: falls Canvas noch keine Größe hat, überspringen
       if (canvas!.width === 0 || canvas!.height === 0) {
@@ -66,14 +121,29 @@ export default function PlasmaDemo() {
       const img = offCtx.createImageData(W, H)
       const d = img.data
 
-      // Alle 8 Sekunden wechselt das Plasma-Motiv (3 Modi)
+      // Alle 8 Sekunden wechselt die Plasma-Wellenform (3 Modi)
       const mode = Math.floor(ts / 8) % 3
+
+      // Alle 20 Sekunden wechselt die Farbpalette (4 dunkle Paletten), mit 2s Crossfade
+      const paletteCycle = ts / PALETTE_DURATION
+      const paletteIdx   = Math.floor(paletteCycle) % PALETTES.length
+      const nextIdx      = (paletteIdx + 1) % PALETTES.length
+      // Fortschritt innerhalb des aktuellen Palette-Slots (0..1)
+      const progress     = paletteCycle % 1
+      // Crossfade-Anteil: 0 → 1 nur im letzten CROSSFADE_DURATION-Bereich des Slots
+      const fadeFraction = CROSSFADE_DURATION / PALETTE_DURATION
+      const alpha = progress > (1 - fadeFraction)
+        ? (progress - (1 - fadeFraction)) / fadeFraction   // 0..1 während Überblendung
+        : 0                                                 // kein Überblenden
+
+      const palA = PALETTES[paletteIdx]
+      const palB = PALETTES[nextIdx]
 
       for (let y = 0; y < H; y++) {
         for (let x = 0; x < W; x++) {
           const cx = x - W / 2
           const cy = y - H / 2
-          const r  = Math.sqrt(cx*cx + cy*cy)
+          const r  = Math.sqrt(cx * cx + cy * cy)
           let v: number
 
           if (mode === 0) {
@@ -99,12 +169,21 @@ export default function PlasmaDemo() {
               + Math.sin(x * 0.1  + y * 0.1 + ts * 2)
           }
 
-          // Hue aus Plasma-Wert + zeitlich rotierender Basisfarbe
-          const hue = ((v + 4) / 8 * 360 + ts * 40) % 360
-          const [ri, gi, bi] = hslToRgb(hue, 1, 0.5)
+          // Farbe aus aktueller Palette, ggf. mit Crossfade zur nächsten
+          const [raA, gaA, baA] = palA(v)
+          let ri: number, gi: number, bi: number
+          if (alpha > 0) {
+            // Lineare Überblendung zwischen zwei Paletten (Crossfade)
+            const [raB, gaB, baB] = palB(v)
+            ri = Math.round(raA + (raB - raA) * alpha)
+            gi = Math.round(gaA + (gaB - gaA) * alpha)
+            bi = Math.round(baA + (baB - baA) * alpha)
+          } else {
+            ri = raA; gi = gaA; bi = baA
+          }
 
           const pi = (y * W + x) * 4
-          d[pi] = ri; d[pi+1] = gi; d[pi+2] = bi; d[pi+3] = 255
+          d[pi] = ri; d[pi + 1] = gi; d[pi + 2] = bi; d[pi + 3] = 255
         }
       }
 
@@ -121,6 +200,7 @@ export default function PlasmaDemo() {
       running = false
       cancelAnimationFrame(rafId)
       ro.disconnect()
+      io.disconnect()
     }
   }, [])
 

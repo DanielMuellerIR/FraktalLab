@@ -38,6 +38,281 @@ const CAPITALS = [
   { name: 'ZAGREB',      country: 'CROATIA',                   lat:  45.81, lon:  15.98, pop: '0.8M',  threat: 'LOW',      intel: 'BALKAN ROUTE MONITORED'        },
 ]
 
+// ── Vereinfachte Kontinental-Umrisse ─────────────────────────────────────────
+// Jedes Sub-Array ist ein Polygon aus [lat, lon]-Paaren (Grad).
+// Punkte im Uhrzeigersinn, letzter Punkt schließt zurück zum ersten.
+// Koordinaten-Reihenfolge: [Breitengrad, Längengrad].
+const LAND_POLYGONS: [number, number][][] = [
+
+  // ── Nordamerika ─────────────────────────────────────────────────────────────
+  // Umriss von der NW-Ecke Alaskas im Uhrzeigersinn bis zur karibischen Spitze
+  [
+    [71,-156],[70,-140],[68,-137],[65,-138],  // Alaska Nordküste
+    [60,-145],[58,-137],[58,-134],[54,-130],  // Alaska Südküste → BC
+    [50,-125],[48,-124],[46,-124],[44,-124],  // Pazifikküste
+    [40,-124],[36,-122],[34,-120],[32,-117],  // Westküste USA → Baja
+    [28,-110],[24,-110],[22,-106],[18,-103],  // Westmexiko
+    [16,-98],[16,-90],[15,-88],[13,-84],      // Mittelamerika
+    [10,-83],[8,-77],[8,-76],[10,-75],        // Panama
+    [12,-72],[15,-65],[18,-66],[20,-70],      // Karibikküste
+    [25,-77],[28,-80],[30,-81],[32,-80],      // Florida Ostküste
+    [35,-76],[38,-75],[40,-74],[42,-70],      // Ostküste USA
+    [44,-66],[46,-60],[48,-53],[50,-55],      // Neuengland → Neufundland
+    [52,-56],[55,-60],[57,-61],[60,-64],      // Labrador
+    [62,-68],[64,-68],[65,-70],[67,-75],      // Hudson Strait
+    [65,-82],[63,-85],[60,-85],[58,-80],      // Hudson Bay West
+    [55,-76],[52,-80],[50,-85],[50,-88],      // Hudson Bay Süd
+    [52,-90],[55,-95],[58,-100],[60,-105],    // Manitoba
+    [62,-110],[65,-120],[68,-130],[70,-140],  // NW Territories
+    [71,-140],[72,-145],[71,-156],            // zurück zu Alaska
+  ],
+
+  // ── Grönland ────────────────────────────────────────────────────────────────
+  [
+    [83,-35],[82,-60],[80,-72],[76,-72],[72,-55],[68,-50],
+    [65,-38],[67,-25],[70,-22],[74,-18],[78,-18],[82,-18],[83,-35],
+  ],
+
+  // ── Südamerika ──────────────────────────────────────────────────────────────
+  // Karibikküste Kolumbiens im Uhrzeigersinn
+  [
+    [12,-72],[11,-63],[10,-62],[8,-60],[6,-55],  // Nordküste
+    [4,-52],[2,-50],[0,-50],                      // NW-Brasilien
+    [-3,-42],[-5,-35],[-8,-35],                   // NO-Brasilien
+    [-12,-37],[-15,-39],[-18,-39],                // Bahia
+    [-23,-43],[-28,-48],[-30,-51],                // Rio → Porto Alegre
+    [-33,-53],[-35,-57],[-38,-57],                // Rio Grande do Sul
+    [-42,-62],[-46,-66],[-50,-69],                // Patagonien
+    [-54,-67],[-56,-68],[-55,-65],[-52,-58],      // Feuerland
+    [-48,-53],[-44,-51],[-40,-50],                // Falklands-Küste
+    [-35,-52],[-30,-50],[-25,-43],                // Nordwärts
+    [-20,-40],[-15,-40],[-10,-36],[-5,-35],       // Ostküste
+    [0,-50],[4,-52],[6,-55],[8,-60],              // zurück Nord
+    [10,-62],[12,-70],[12,-72],                   // Karibik
+  ],
+
+  // ── Europa (kontinental) ────────────────────────────────────────────────────
+  // Portugal Südspitze → im Uhrzeigersinn rund um Kontinentaleuropa
+  [
+    [36,-9],[37,-9],[38,-9],[40,-8],[42,-9],    // Portugal
+    [44,-8],[44,-2],[46,-2],[47,2],             // Pyrenäen + Atlantikküste
+    [48,2],[51,2],[52,4],[53,8],[55,8],         // Nordseeküste
+    [55,10],[55,12],[54,10],[54,8],             // Dänemark
+    [56,10],[58,8],[60,5],[62,5],[64,14],       // Norwegen Westküste
+    [68,14],[70,20],[71,26],[70,28],[68,20],    // Norwegen Nordküste
+    [65,18],[60,18],[58,18],[56,16],[55,12],    // Schweden
+    [56,24],[58,24],[60,24],[62,26],[65,28],    // Finnland West
+    [68,28],[70,28],[71,28],[70,30],[68,32],    // Finnland Nord → Kola
+    [65,33],[60,28],[55,22],[54,20],[54,18],    // Baltikum
+    [54,20],[52,22],[52,24],[50,24],[48,22],    // Polen
+    [46,20],[45,18],[44,16],[44,14],[42,14],    // Adria
+    [40,18],[38,16],[38,15],[40,15],[42,12],    // Apennin-Halbinsel
+    [38,16],[38,15],[36,14],[37,10],[38,8],     // Kalabrien → Sizilien Nähe
+    [43,5],[44,7],[46,8],[48,8],[50,8],         // Alpen Südseite → Rhein
+    [51,4],[51,2],[50,-2],[50,-5],              // Englischer Kanal
+    [44,-2],[42,-2],[40,-2],[38,-1],[36,-5],    // Spanien Südküste
+    [36,-6],[36,-8],[36,-9],                    // Gibraltar → zurück
+  ],
+
+  // ── Großbritannien ──────────────────────────────────────────────────────────
+  [
+    [58,-3],[57,0],[54,0],[52,2],[51,2],
+    [50,0],[50,-5],[51,-5],[52,-4],[54,-3],
+    [55,-4],[56,-5],[57,-4],[58,-3],
+  ],
+
+  // ── Irland ──────────────────────────────────────────────────────────────────
+  [
+    [55,-7],[54,-10],[52,-10],[51,-9],
+    [52,-6],[54,-6],[55,-7],
+  ],
+
+  // ── Island ──────────────────────────────────────────────────────────────────
+  [
+    [66,-24],[64,-24],[63,-20],[63,-14],
+    [64,-13],[66,-13],[67,-18],[66,-24],
+  ],
+
+  // ── Afrika ──────────────────────────────────────────────────────────────────
+  // Tunesien/Libyen Nordküste im Uhrzeigersinn
+  [
+    [37,10],[32,12],[30,32],[30,33],[28,34],   // N-Afrika → Rotes Meer Küste
+    [22,37],[18,38],[12,44],[10,43],[10,45],   // Horn von Afrika
+    [2,42],[0,42],[-5,40],                     // Ost-Afrika
+    [-10,40],[-20,35],[-25,33],                // Mosambik Küste
+    [-30,30],[-35,20],[-35,18],                // Südafrika Ostküste
+    [-35,17],[-35,15],[-34,18],[-34,22],       // Kapstadt Runde
+    [-30,17],[-25,15],[-20,12],                // Namibia
+    [-15,12],[-10,14],[-5,10],[-5,8],         // Angola
+    [0,8],[5,2],[4,2],[5,2],                   // Golf von Guinea
+    [5,5],[8,5],[10,14],[10,15],               // Nigeria
+    [15,15],[15,12],[20,14],[20,15],           // Sahel
+    [22,15],[25,14],[30,15],[30,25],           // Sahara
+    [30,32],[32,32],[37,10],                   // Ägypten zurück
+  ],
+
+  // ── Madagaskar ──────────────────────────────────────────────────────────────
+  [
+    [-12,49],[-15,50],[-18,47],[-20,44],
+    [-24,44],[-25,47],[-22,50],[-18,50],
+    [-14,50],[-12,49],
+  ],
+
+  // ── Asien (Großer Block: Arabien, Zentralasien, Sibirien, Fernost) ──────────
+  // Türkei Westküste → im Uhrzeigersinn rund um den eurasischen Kontinent
+  [
+    [42,28],[38,26],[36,28],[36,36],[38,36],   // Türkei Süd + Levante
+    [35,37],[35,40],[38,44],[40,44],[42,48],   // Kaukasus Süd
+    [38,50],[36,52],[25,57],[22,60],[18,57],   // Arabische Halbinsel Ost
+    [12,45],[12,44],[15,42],[22,37],[28,34],   // Arabische Halbinsel Süd → Rotes Meer
+    [30,33],[30,32],[32,35],[36,37],[38,36],   // Sinai → zurück
+    [38,44],[42,48],[42,52],[45,54],[48,58],   // Kaspisches Meer Ost
+    [42,60],[45,60],[48,58],[50,57],[55,60],   // Zentralasien
+    [58,65],[60,68],[62,70],[65,72],[68,72],   // Sibirien West
+    [68,75],[70,80],[72,80],[72,100],[72,130], // Sibirien Nord
+    [72,142],[68,140],[65,140],[60,150],       // Ostsibirien
+    [55,140],[50,142],[46,137],[44,134],       // Fernöstliche Küste
+    [40,124],[38,122],[35,120],[30,122],       // Chinesische Küste
+    [24,118],[20,110],[15,108],[10,104],       // Südchina → Vietnam
+    [5,103],[2,104],[0,104],                   // Malaiische Halbinsel
+    [5,100],[10,98],[15,100],[20,94],          // Thailand + Myanmar
+    [22,92],[24,92],[25,90],[22,88],[20,87],   // Bangladesch + Golf von Bengalen
+    [15,80],[10,78],[8,77],                    // Südindien Ostküste
+    [8,80],[10,80],[12,80],[15,80],            // Sri Lanka Nähe
+    [20,87],[22,90],[24,92],[26,90],[28,97],   // Nordostindien
+    [28,88],[28,80],[28,72],[25,68],[22,68],   // Himalaya Südhang
+    [15,73],[10,75],[8,77],                    // Westindien → Spitze
+    [10,78],[8,77],[8,74],[10,72],[15,73],     // Malabar-Küste
+    [20,73],[22,70],[25,68],[28,65],[28,62],   // Pakistan → Arabisches Meer
+    [25,60],[22,60],[18,57],[15,55],[12,45],   // Arabisches Meer Nordküste
+    [25,57],[30,60],[35,62],[38,58],[42,58],   // Persischer Golf Ost
+    [38,50],[36,52],[30,48],[25,50],[22,56],   // Arabien Ostküste
+    [18,57],[15,52],[12,44],[10,43],[12,45],   // Jemen → Horn
+    [10,52],[12,52],[15,50],[18,55],[22,60],   // Oman
+    [25,57],[30,56],[35,60],[38,62],[42,60],   // Iran Südküste
+    [42,48],[44,48],[46,50],[48,56],[50,58],   // Kasachstan
+    [55,60],[58,60],[60,60],[62,68],[65,72],   // West-Sibirien
+    [68,72],[70,75],[72,80],[72,68],[68,68],   // Ob-Mündung
+    [65,65],[60,60],[55,55],[50,53],[45,54],   // Ural
+    [42,52],[40,52],[38,46],[42,44],[44,42],   // Schwarzes Meer Nord
+    [48,38],[52,36],[55,38],[60,40],[65,38],   // Osteuropa Grenze
+    [68,36],[70,32],[71,28],[68,28],[65,28],   // Kola Halbinsel
+    [62,30],[60,28],[58,28],[55,22],[54,20],   // Finnland → Baltikum
+    [52,22],[50,24],[48,22],[46,20],[44,16],   // Osteuropa Süd
+    [42,28],                                   // zurück zum Start
+  ],
+
+  // ── Indische Halbinsel (separates Polygon für Klarheit) ─────────────────────
+  [
+    [28,72],[25,68],[22,68],[18,73],[15,73],
+    [10,78],[8,77],[8,74],[10,72],[15,73],
+    [18,73],[22,70],[25,68],[28,72],
+  ],
+
+  // ── Japan: Honshu ───────────────────────────────────────────────────────────
+  [
+    [36,136],[34,136],[33,130],[34,131],[36,132],
+    [38,140],[40,140],[42,140],[44,142],[43,144],
+    [40,141],[38,140],[36,136],
+  ],
+
+  // ── Japan: Hokkaido ─────────────────────────────────────────────────────────
+  [
+    [44,142],[44,145],[43,144],[42,143],[44,142],
+  ],
+
+  // ── Korea-Halbinsel ─────────────────────────────────────────────────────────
+  [
+    [40,126],[38,128],[35,129],[34,127],[36,126],[38,124],[40,126],
+  ],
+
+  // ── Australien ──────────────────────────────────────────────────────────────
+  // Cape York im Uhrzeigersinn
+  [
+    [-10,142],[-14,145],[-18,146],[-22,149],  // Queensland Ostküste
+    [-28,153],[-32,152],[-34,151],            // NSW Küste
+    [-38,146],[-38,144],[-38,140],            // Victoria
+    [-36,137],[-34,135],[-32,133],            // Eyre Halbinsel
+    [-32,128],[-30,115],[-24,113],            // Westaustralien Küste
+    [-18,122],[-16,122],[-14,126],            // Kimberley
+    [-12,130],[-12,136],[-10,136],            // Arnhem Land
+    [-12,135],[-12,132],[-13,130],            // Darwin Bereich
+    [-12,130],[-14,128],[-16,124],            // zurück NW
+    [-18,122],[-22,114],[-28,114],            // Westaustralien
+    [-34,118],[-36,118],[-38,140],            // Südküste
+    [-38,144],[-36,146],[-34,150],            // Victoria → NSW
+    [-28,153],[-22,149],[-18,146],            // zurück Nord
+    [-14,145],[-10,142],                      // Cape York
+  ],
+
+  // ── Antarktis ───────────────────────────────────────────────────────────────
+  // Als breiter Streifen entlang ~70°S (stark vereinfacht)
+  [
+    [-68,-180],[-68,-120],[-72,-90],[-68,-60],
+    [-72,-30],[-68,0],[-72,30],[-68,60],
+    [-72,90],[-68,120],[-72,150],[-68,180],
+    [-74,180],[-74,150],[-76,120],[-74,90],
+    [-76,60],[-74,30],[-76,0],[-74,-30],
+    [-76,-60],[-74,-90],[-76,-120],[-74,-150],
+    [-76,-180],[-68,-180],
+  ],
+
+  // ── Kuba ────────────────────────────────────────────────────────────────────
+  [
+    [23,-84],[22,-81],[20,-75],[20,-77],[21,-80],[23,-84],
+  ],
+
+  // ── Neuseeland: Nordinsel ───────────────────────────────────────────────────
+  [
+    [-34,172],[-37,175],[-41,174],[-39,174],[-37,174],[-34,172],
+  ],
+
+  // ── Neuseeland: Südinsel ───────────────────────────────────────────────────
+  [
+    [-41,174],[-46,168],[-46,170],[-44,172],[-41,174],
+  ],
+
+  // ── Borneo ──────────────────────────────────────────────────────────────────
+  [
+    [7,117],[6,116],[4,115],[2,114],[0,110],
+    [-2,110],[-4,114],[-2,116],[0,117],
+    [2,116],[4,118],[6,118],[7,117],
+  ],
+
+  // ── Sumatra ──────────────────────────────────────────────────────────────────
+  [
+    [5,95],[4,98],[2,100],[0,104],[-2,104],
+    [-4,104],[-6,106],[-5,104],[-3,102],
+    [0,99],[2,99],[4,98],[5,95],
+  ],
+
+  // ── Java ─────────────────────────────────────────────────────────────────────
+  [
+    [-6,106],[-7,108],[-8,111],[-8,115],
+    [-7,112],[-6,108],[-6,106],
+  ],
+
+  // ── Philippinen: Luzon ──────────────────────────────────────────────────────
+  [
+    [18,121],[16,120],[14,120],[12,123],[14,124],[16,122],[18,121],
+  ],
+
+  // ── Sri Lanka ────────────────────────────────────────────────────────────────
+  [
+    [10,80],[8,80],[6,81],[7,82],[9,81],[10,80],
+  ],
+
+  // ── Skandinavien: Schweden + Norwegen (separater Pfad für klarere Linien) ──
+  // (Der Haupteuropa-Block hat diese Region bereits, aber ein separates
+  //  Polygon für die Halbinsel macht die Form deutlicher)
+  [
+    [56,10],[58,10],[60,5],[62,5],[64,14],
+    [68,14],[70,20],[71,26],[70,28],[68,20],
+    [65,18],[62,16],[60,18],[58,18],
+    [56,16],[55,12],[56,10],
+  ],
+]
+
 // ── Hilfsfunktionen ──────────────────────────────────────────────────────────
 
 /** Lineares Interpolieren zwischen a und b um Faktor t */
@@ -122,6 +397,13 @@ export default function GlobePanel() {
 
     let rafId: number
     let running = true
+    // IntersectionObserver: Animation pausieren wenn Panel nicht sichtbar ist
+    let isVisible = true
+    const io = new IntersectionObserver(
+      ([entry]) => { isVisible = entry.isIntersecting },
+      { threshold: 0.1 },
+    )
+    io.observe(canvas)
 
     // ── ResizeObserver: Canvas-Auflösung == Container-Größe ─────────────────
     const resize = () => {
@@ -180,6 +462,46 @@ export default function GlobePanel() {
             else            { ctx.lineTo(sx, sy) }
           } else {
             if (pathOpen) { ctx.stroke(); ctx.beginPath(); pathOpen = false }
+          }
+        }
+        if (pathOpen) ctx.stroke()
+      }
+    }
+
+    // ── Hilfsfunktion: Kontinental-Umrisse zeichnen ─────────────────────────────
+    // Für jedes Polygon werden die lat/lon-Punkte mit derselben project()-Funktion
+    // wie das Gitternetz projiziert. Punkte auf der Rückseite (z2 ≤ 0) unterbrechen
+    // den Pfad, damit keine Linien quer durch den Globus gezogen werden.
+    function drawLandmasses(
+      rotY: number, rotX: number,
+      cx: number, cy: number, R: number,
+      alpha: number,
+    ) {
+      // Etwas gedämpfteres Grün als das Gitternetz (#1a4020 / #2d6030)
+      ctx.strokeStyle = `rgba(0,200,80,${alpha * 0.5})`
+      ctx.lineWidth   = 1.0
+
+      for (const polygon of LAND_POLYGONS) {
+        ctx.beginPath()
+        let pathOpen = false
+
+        for (const [lat, lon] of polygon) {
+          const { sx, sy, z2 } = project(lat, lon, rotY, rotX, cx, cy, R)
+          if (z2 > 0) {
+            // Punkt auf der Vorderseite: Linie oder Pfad beginnen
+            if (!pathOpen) {
+              ctx.moveTo(sx, sy)
+              pathOpen = true
+            } else {
+              ctx.lineTo(sx, sy)
+            }
+          } else {
+            // Rückseite: Pfad unterbrechen (kein Stroke über den Globus hinweg)
+            if (pathOpen) {
+              ctx.stroke()
+              ctx.beginPath()
+              pathOpen = false
+            }
           }
         }
         if (pathOpen) ctx.stroke()
@@ -298,6 +620,8 @@ export default function GlobePanel() {
     // ── RAF-Haupt-Loop ───────────────────────────────────────────────────────
     function loop(t: number) {
       if (!running) return
+      // Panel nicht sichtbar → Frame überspringen, aber Loop fortsetzen
+      if (!isVisible) { rafId = requestAnimationFrame(loop); return }
 
       // Aktuelle Canvas-Dimensionen dynamisch lesen
       const W = canvas!.width
@@ -387,6 +711,9 @@ export default function GlobePanel() {
       ctx.arc(cx, cy, R, 0, Math.PI * 2)
       ctx.fill()
 
+      // Kontinental-Umrisse zeichnen (vor dem Gitternetz, damit Gitter drüberliegt)
+      drawLandmasses(s.rotY, s.rotX, cx, cy, R, 1.0)
+
       // Gitternetz zeichnen
       drawGrid(s.rotY, s.rotX, cx, cy, R)
 
@@ -473,6 +800,7 @@ export default function GlobePanel() {
       running = false
       cancelAnimationFrame(rafId)
       ro.disconnect()
+      io.disconnect()
     }
   }, [])
 

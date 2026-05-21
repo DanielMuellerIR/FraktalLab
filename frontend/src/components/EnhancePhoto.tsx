@@ -1,27 +1,44 @@
 import { useEffect, useRef } from 'react'
 
-// Enhance-Slideshow: lade → pixeliert → enhance in 6 Phasen → kurze Pause → nächstes Bild.
-// Kein Stillstand — der Zyklus läuft dauerhaft durch.
+// Enhance-Slideshow: lade → pixeliert → enhance in 12 Phasen → 2s scharfes Bild → nächstes Foto.
+// 12 × 333 ms ≈ 4 s für die Enhance-Animation, dann 2 s Pause auf scharfem Bild.
 
+// Jede Phase: Blockgröße für Pixelierung + Statuslabel + Fortschrittsbalken (0–100).
 const STAGES = [
-  { block: 32, label: 'RECEIVING SIGNAL...',             pct:   0 },
-  { block: 16, label: 'ANALYZING PIXEL DATA...',         pct:  20 },
-  { block:  8, label: 'EXTRAPOLATING MISSING INFO...',   pct:  40 },
-  { block:  4, label: 'ENHANCING...',                    pct:  60 },
-  { block:  2, label: 'APPLYING SHARPNESS MATRIX...',    pct:  80 },
+  { block: 48, label: 'ESTABLISHING UPLINK...',          pct:   0 },
+  { block: 32, label: 'RECEIVING SIGNAL...',             pct:   9 },
+  { block: 24, label: 'DECRYPTING DATASTREAM...',        pct:  18 },
+  { block: 16, label: 'ANALYZING PIXEL DATA...',         pct:  27 },
+  { block: 12, label: 'MAPPING FACIAL GEOMETRY...',      pct:  36 },
+  { block:  8, label: 'EXTRAPOLATING MISSING INFO...',   pct:  45 },
+  { block:  6, label: 'CROSS-REFERENCING DATABASE...',   pct:  54 },
+  { block:  4, label: 'ENHANCING RESOLUTION...',         pct:  63 },
+  { block:  3, label: 'APPLYING SHARPNESS MATRIX...',    pct:  72 },
+  { block:  2, label: 'NOISE REDUCTION PASS 2...',       pct:  81 },
+  { block:  1, label: 'FINALIZING OUTPUT...',            pct:  90 },
   { block:  1, label: 'ENHANCEMENT COMPLETE',            pct: 100 },
 ]
+
+// Dauer pro Phase in ms — 12 × 333 ms ≈ 4 s Gesamtdauer
+const PHASE_MS = 333
+
+// Dauer, wie lange das fertig enhancete (scharfe) Bild stehen bleibt, bevor es weitergeht
+const HOLD_MS = 2000
 
 // Lokale Dateien (6 Fotos) + loremflickr ausschließlich mit Großstadt-Menschen-Keywords.
 // Kein Natur/Wald — nur urbane Settings mit Menschen in der Öffentlichkeit.
 const LOCAL = [0, 1, 2, 3, 4, 5].map(i => `/enhance/street-${i}.jpg`)
-const FLICKR_TAGS = ['crowd,city', 'subway,people', 'street,people', 'market,city', 'commuters', 'pedestrians,downtown', 'urban,crowd', 'city,people']
+const FLICKR_TAGS = [
+  'crowd,city', 'subway,people', 'street,people', 'market,city',
+  'commuters', 'pedestrians,downtown', 'urban,crowd', 'city,people',
+]
 const FLICKR = Array.from({ length: 32 }, (_, i) => {
   const tag = FLICKR_TAGS[i % FLICKR_TAGS.length]
   return `https://loremflickr.com/320/213/${tag}?lock=${i + 1}`
 })
 const PHOTOS = [...LOCAL, ...FLICKR]
 
+// Zeichnet das Bild pixeliert (blockSize > 1) oder scharf (blockSize <= 1)
 function drawPixelated(
   ctx: CanvasRenderingContext2D,
   img: HTMLImageElement,
@@ -30,10 +47,12 @@ function drawPixelated(
   h: number,
 ) {
   if (blockSize <= 1) {
+    // Scharf zeichnen
     ctx.imageSmoothingEnabled = true
     ctx.drawImage(img, 0, 0, w, h)
     return
   }
+  // Auf winzige Zwischenleinwand skalieren, dann ohne Smoothing hochskalieren
   const tmp    = document.createElement('canvas')
   tmp.width    = Math.max(1, Math.floor(w / blockSize))
   tmp.height   = Math.max(1, Math.floor(h / blockSize))
@@ -43,6 +62,7 @@ function drawPixelated(
   ctx.drawImage(tmp, 0, 0, w, h)
 }
 
+// Zeichnet Scanlinien, Vignette und Statusleiste über das Bild
 function drawOverlays(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -66,19 +86,19 @@ function drawOverlays(
   ctx.fillRect(0, h - 22, w, 22)
   ctx.fillStyle = '#4ade80'
   ctx.font      = '10px monospace'
-  const bar = '█'.repeat(Math.round(pct / 10)) + '░'.repeat(10 - Math.round(pct / 10))
+  const filled = Math.round(pct / 10)
+  const bar    = '█'.repeat(filled) + '░'.repeat(10 - filled)
   ctx.fillText(`${bar}  ${label}`, 5, h - 7)
 }
 
 export default function EnhancePhoto() {
   const canvasRef    = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const activeRef    = useRef(true)
+  // Speichert die Cleanup-Funktion des aktuell laufenden Zyklus
+  const cancelRef    = useRef<(() => void) | null>(null)
   const indexRef     = useRef(Math.floor(Math.random() * PHOTOS.length))
 
   useEffect(() => {
-    activeRef.current = true
-
     const canvas    = canvasRef.current
     const container = containerRef.current
     if (!canvas || !container) return
@@ -100,44 +120,71 @@ export default function EnhancePhoto() {
       drawOverlays(ctx, canvas.width, canvas.height, label, pct)
     }
 
-    // Einen vollständigen Enhance-Zyklus für ein Foto durchlaufen
+    // Startet einen vollständigen Enhance-Zyklus für ein Foto.
+    // Gibt eine Cleanup-Funktion zurück, die alle ausstehenden Timeouts abbricht.
     function runCycle() {
-      if (!activeRef.current) return
+      // Laufenden Zyklus abbrechen, bevor ein neuer startet
+      if (cancelRef.current) {
+        cancelRef.current()
+        cancelRef.current = null
+      }
 
-      // Nächstes Foto (kein unmittelbares Repeat)
+      // --- Abbruch-Mechanismus ---
+      // `cancel` wird auf true gesetzt, wenn dieser Zyklus abgebrochen werden soll.
+      // `timeouts` sammelt alle setTimeout-Handles dieses Zyklus.
+      let cancel = false
+      const timeouts: ReturnType<typeof setTimeout>[] = []
+
+      // Sicheres setTimeout: führt fn nur aus, wenn der Zyklus noch aktiv ist
+      function safeTimeout(fn: () => void, ms: number) {
+        const t = setTimeout(() => { if (!cancel) fn() }, ms)
+        timeouts.push(t)
+      }
+
+      // Cleanup: Zyklus als abgebrochen markieren und alle Timeouts löschen
+      function cleanup() {
+        cancel = true
+        timeouts.forEach(clearTimeout)
+      }
+
+      // Cleanup-Funktion für externen Zugriff (z.B. beim Unmount oder neuem Zyklus) speichern
+      cancelRef.current = cleanup
+
+      // Nächstes Foto auswählen (kein unmittelbares Repeat)
       const prev = indexRef.current
       let   next = prev
       while (next === prev) next = Math.floor(Math.random() * PHOTOS.length)
       indexRef.current = next
 
-      const img         = new Image()
-      img.crossOrigin   = 'anonymous'
-      img.src           = PHOTOS[next]
+      const img       = new Image()
+      img.crossOrigin = 'anonymous'
+      img.src         = PHOTOS[next]
 
       img.onload = () => {
-        if (!activeRef.current) return
+        if (cancel) return
         resize()
         redraw(img, 0)
 
-        // 6 Enhance-Phasen à 400 ms durchlaufen
+        // 12 Enhance-Phasen à PHASE_MS Millisekunden durchlaufen
         let phase = 0
         function advance() {
-          if (!activeRef.current) return
+          if (cancel) return
           phase++
           if (phase < STAGES.length) {
+            // Nächste Phase zeichnen
             redraw(img, phase)
-            setTimeout(advance, 400)
+            safeTimeout(advance, PHASE_MS)
           } else {
-            // Fertig: 1.8 s scharfes Bild zeigen, dann nächstes
-            setTimeout(runCycle, 1800)
+            // Alle Phasen durchlaufen → scharfes Bild HOLD_MS lang halten, dann nächstes Foto
+            safeTimeout(runCycle, HOLD_MS)
           }
         }
-        setTimeout(advance, 400)
+        safeTimeout(advance, PHASE_MS)
       }
 
       img.onerror = () => {
-        // Fehler → gleich nächstes Bild
-        if (activeRef.current) setTimeout(runCycle, 200)
+        // Ladefehler → kurz warten, dann nächstes Bild versuchen
+        if (!cancel) safeTimeout(runCycle, 200)
       }
     }
 
@@ -148,7 +195,11 @@ export default function EnhancePhoto() {
     ro.observe(container)
 
     return () => {
-      activeRef.current = false
+      // Beim Unmount: laufenden Zyklus abbrechen
+      if (cancelRef.current) {
+        cancelRef.current()
+        cancelRef.current = null
+      }
       ro.disconnect()
     }
   }, [])

@@ -67,6 +67,52 @@ fn mandelbrot_iter(cx: f64, cy: f64, max_iter: u32) -> u32 {
     max_iter
 }
 
+/// Rendert die Julia-Menge in einen Pixel-Buffer (RGBA, row-major).
+///
+/// Im Gegensatz zu Mandelbrot ist der Parameter `c = cx + i*cy` fest —
+/// der Startpunkt `z` variiert pro Pixel.
+/// Buffer muss exakt `width * height * 4` Bytes groß sein.
+#[wasm_bindgen]
+pub fn render_julia(
+    buf: &mut [u8],   // RGBA-Pixel-Buffer, vom JS-Caller bereitgestellt
+    width: u32,
+    height: u32,
+    cx: f64,          // Julia-Parameter — Realteil von c
+    cy: f64,          // Julia-Parameter — Imaginärteil von c
+    center_x: f64,    // Viewport-Mittelpunkt (Realteil)
+    center_y: f64,    // Viewport-Mittelpunkt (Imaginärteil)
+    zoom: f64,        // Pixel pro Einheit in der komplexen Ebene
+    max_iter: u32,
+) {
+    for py in 0..height {
+        for px in 0..width {
+            // Pixel → komplexe Koordinate z₀
+            let mut zx = center_x + (px as f64 - width  as f64 / 2.0) / zoom;
+            let mut zy = center_y + (py as f64 - height as f64 / 2.0) / zoom;
+
+            // Julia-Iteration: z ← z² + c  (c ist fest, z ist der Startpunkt)
+            let mut iter = 0u32;
+            while iter < max_iter {
+                let zx2 = zx * zx;
+                let zy2 = zy * zy;
+                if zx2 + zy2 > 4.0 {
+                    break;
+                }
+                zy = 2.0 * zx * zy + cy;
+                zx = zx2 - zy2 + cx;
+                iter += 1;
+            }
+
+            let color = iter_to_color(iter, max_iter);
+            let idx = ((py * width + px) * 4) as usize;
+            buf[idx]     = color.0; // R
+            buf[idx + 1] = color.1; // G
+            buf[idx + 2] = color.2; // B
+            buf[idx + 3] = 255;     // A (volle Deckkraft)
+        }
+    }
+}
+
 /// Mappt Iterationszahl auf RGB-Farbe (einfache Hue-Rotation).
 fn iter_to_color(iter: u32, max_iter: u32) -> (u8, u8, u8) {
     if iter == max_iter {

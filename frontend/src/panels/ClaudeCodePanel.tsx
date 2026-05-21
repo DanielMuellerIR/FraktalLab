@@ -327,7 +327,7 @@ export default function ClaudeCodePanel() {
         <div className="flex items-center text-xs font-mono text-green-300 shrink-0 border-t border-green-900 pt-0.5">
           <span
             ref={inputLineRef}
-            className="flex-1 whitespace-pre"
+            className="flex-1 whitespace-pre-wrap break-all"
           />
           {/* Blinkender Block-Cursor */}
           <span

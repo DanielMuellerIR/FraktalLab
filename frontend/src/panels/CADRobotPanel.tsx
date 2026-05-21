@@ -5,11 +5,15 @@ import Panel from '../ui/Panel'
 // CADRobotPanel: Simuliert eine CAD-Software — vier 3D-Wireframe-Figuren
 // rotieren automatisch auf einer Drehbühne. Kein WebGL, nur Canvas 2D mit
 // einfacher Rotation (Euler) + perspektivischer Projektion.
+// Jeder zweite Modell-Slot wird im Solid-Modus gerendert (gefüllte Flächen,
+// Painter's Algorithm + diffuses Licht). Wireframe-Slots bleiben wie gehabt.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── 3D-Hilfstypen ─────────────────────────────────────────────────────────────
 interface Vec3 { x: number; y: number; z: number }
 interface Edge  { a: number; b: number }  // Indizes in das Vertices-Array
+// Face: Liste von Vertex-Indizes (konvex, in Reihenfolge) — für Solid-Rendering
+interface Face  { verts: number[] }
 
 // ── Modell-Beschreibung (wird oben-links im Panel angezeigt) ─────────────────
 interface ModelDef {
@@ -18,6 +22,7 @@ interface ModelDef {
   dimensions: string       // Abmessungen als Text (z.B. "1.8m × 0.5m × 0.4m")
   vertices:   Vec3[]
   edges:      Edge[]
+  faces:      Face[]       // Flächen für den Solid-Render-Modus
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,15 +71,15 @@ function project(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HILFSFUNKTIONEN FÜR MODELL-GEOMETRIE
-// Box aus 8 Eckpunkten + 12 Kanten, normiert auf gegebene Halbmaße.
-// Gibt neue Vertices und Edges zurück, wobei die Vertex-Indizes um
+// Box aus 8 Eckpunkten + 12 Kanten + 6 Flächen, normiert auf gegebene Halbmaße.
+// Gibt neue Vertices, Edges und Faces zurück, wobei die Vertex-Indizes um
 // `offset` verschoben sind (damit mehrere Boxen im selben Array leben).
 // ─────────────────────────────────────────────────────────────────────────────
 function makeBox(
   cx: number, cy: number, cz: number,  // Mittelpunkt
   hw: number, hh: number, hd: number,  // Halbmaße (half-width, half-height, half-depth)
   offset: number                        // Vertex-Index-Offset
-): { verts: Vec3[]; edges: Edge[] } {
+): { verts: Vec3[]; edges: Edge[]; faces: Face[] } {
   // 8 Ecken einer Quader in lokalen Koordinaten
   const verts: Vec3[] = [
     { x: cx - hw, y: cy - hh, z: cz - hd },  // 0: links  unten  vorne
@@ -95,11 +100,22 @@ function makeBox(
     // Verbindungskanten (vorne→hinten)
     { a: o+0, b: o+4 }, { a: o+1, b: o+5 }, { a: o+2, b: o+6 }, { a: o+3, b: o+7 },
   ]
-  return { verts, edges }
+  // 6 Flächen des Quaders (je 4 Eckpunkte, im Uhrzeigersinn von außen gesehen)
+  // Normalen zeigen nach außen, damit Back-Face Culling korrekt funktioniert.
+  const faces: Face[] = [
+    { verts: [o+0, o+3, o+2, o+1] },  // vorne  (-Z), Normale zeigt in -Z
+    { verts: [o+5, o+6, o+7, o+4] },  // hinten (+Z), Normale zeigt in +Z
+    { verts: [o+0, o+1, o+5, o+4] },  // unten  (-Y)
+    { verts: [o+3, o+7, o+6, o+2] },  // oben   (+Y)
+    { verts: [o+0, o+4, o+7, o+3] },  // links  (-X)
+    { verts: [o+1, o+2, o+6, o+5] },  // rechts (+X)
+  ]
+  return { verts, edges, faces }
 }
 
 // Kreisring aus n Punkten auf einer gegebenen Ebene (XY, XZ oder YZ).
 // plane: 'xy' | 'xz' | 'yz'. Gibt Vertices + geschlossene Kantenschleife zurück.
+// Keine Flächen — für Solid-Rendering werden Zylinderstreifen per makeRingStrip erzeugt.
 function makeRing(
   cx: number, cy: number, cz: number,  // Mittelpunkt
   r: number,                            // Radius
@@ -124,19 +140,36 @@ function makeRing(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// makeRingStrip: erzeugt rechteckige Flächen zwischen zwei Ringen gleicher Länge.
+// Wird für Solid-Rendering des Aliens und SpiderBots verwendet.
+// offsetA/B: globale Vertex-Indizes des unteren bzw. oberen Rings.
+// ─────────────────────────────────────────────────────────────────────────────
+function makeRingStrip(n: number, offsetA: number, offsetB: number): Face[] {
+  const faces: Face[] = []
+  for (let i = 0; i < n; i++) {
+    const next = (i + 1) % n
+    // Rechteck aus zwei benachbarten Vertex-Paaren der beiden Ringe
+    faces.push({ verts: [offsetA + i, offsetA + next, offsetB + next, offsetB + i] })
+  }
+  return faces
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MODELL 1: HUMANOID-ROBOTER
 // Torso, Kopf, 2 Arme mit Ellenbogen, 2 Beine mit Knien.
 // Alle Teile als Boxen, verbunden durch einzelne Linien (Gelenkknochen).
 // ─────────────────────────────────────────────────────────────────────────────
-function buildHumanoidRobot(): { vertices: Vec3[]; edges: Edge[] } {
+function buildHumanoidRobot(): { vertices: Vec3[]; edges: Edge[]; faces: Face[] } {
   const verts: Vec3[] = []
   const edges: Edge[] = []
+  const faces: Face[] = []
 
   // Hilfsfunktion: Box einbauen und Indizes merken
   function addBox(cx: number, cy: number, cz: number, hw: number, hh: number, hd: number) {
-    const { verts: bv, edges: be } = makeBox(cx, cy, cz, hw, hh, hd, verts.length)
+    const { verts: bv, edges: be, faces: bf } = makeBox(cx, cy, cz, hw, hh, hd, verts.length)
     verts.push(...bv)
     edges.push(...be)
+    faces.push(...bf)
   }
 
   // ── Torso (Hauptkörper) ──────────────────────────────────────────────────
@@ -155,6 +188,8 @@ function buildHumanoidRobot(): { vertices: Vec3[]; edges: Edge[] } {
     { a: neckBase+1, b: neckBase+3 },
     { a: neckBase+2, b: neckBase+3 },
   )
+  // Halsfläche (Rechteck) für Solid-Modus
+  faces.push({ verts: [neckBase, neckBase+1, neckBase+3, neckBase+2] })
 
   // ── Linkes Bein: Oberschenkel-Box + Unterschenkel-Box ───────────────────
   addBox(-0.13, -0.30, 0, 0.07, 0.18, 0.08)   // Oberschenkel
@@ -195,7 +230,7 @@ function buildHumanoidRobot(): { vertices: Vec3[]; edges: Edge[] } {
     { a: antennaBase+2, b: antennaBase+3 },  // Querbalken
   )
 
-  return { vertices: verts, edges }
+  return { vertices: verts, edges, faces }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -203,9 +238,10 @@ function buildHumanoidRobot(): { vertices: Vec3[]; edges: Edge[] } {
 // Länglicher ovalförmiger Kopf aus gestapelten Ringen, große runde Augen,
 // schmaler Körper, dünne Extremitäten.
 // ─────────────────────────────────────────────────────────────────────────────
-function buildAlien(): { vertices: Vec3[]; edges: Edge[] } {
+function buildAlien(): { vertices: Vec3[]; edges: Edge[]; faces: Face[] } {
   const verts: Vec3[] = []
   const edges: Edge[] = []
+  const faces: Face[] = []
 
   // ── Kopf: gestapelte Ringe bilden ein Ovoid ─────────────────────────────
   // Ringprofil: Radius nimmt nach oben und unten ab (Ellipsoid-Annäherung)
@@ -238,6 +274,10 @@ function buildAlien(): { vertices: Vec3[]; edges: Edge[] } {
     for (let k = 0; k < nConn; k += 2) {
       edges.push({ a: startA + k, b: startB + k })
     }
+    // Solid-Flächen: Streifen zwischen benachbarten gleichgroßen Ringen hinzufügen
+    // Für Ringe unterschiedlicher Größe nehmen wir den kleineren
+    const nStrip = nConn
+    faces.push(...makeRingStrip(nStrip, startA, startB))
   }
 
   // ── Große Augen (je ein Ring in der XY-Ebene, leicht zur Seite verschoben) ─
@@ -258,17 +298,18 @@ function buildAlien(): { vertices: Vec3[]; edges: Edge[] } {
     const { verts: rv, edges: re } = makeRing(0, ring.y, 0, ring.r, ring.n, 'xz', verts.length)
     verts.push(...rv); edges.push(...re)
   }
-  // Hals-Längsverbindungen
+  // Hals-Längsverbindungen + Flächen
   for (let ri = 0; ri + 1 < neckRings.length; ri++) {
     const n = neckRings[ri].n
     for (let k = 0; k < n; k += 2) {
       edges.push({ a: neckStarts[ri] + k, b: neckStarts[ri+1] + k })
     }
+    faces.push(...makeRingStrip(n, neckStarts[ri], neckStarts[ri+1]))
   }
 
   // ── Schmaler Torso ────────────────────────────────────────────────────────
-  const { verts: tv, edges: te } = makeBox(0, -0.28, 0, 0.12, 0.18, 0.08, verts.length)
-  verts.push(...tv); edges.push(...te)
+  const { verts: tv, edges: te, faces: tf } = makeBox(0, -0.28, 0, 0.12, 0.18, 0.08, verts.length)
+  verts.push(...tv); edges.push(...te); faces.push(...tf)
 
   // ── Linker Arm (sehr dünn, drei Segmente) ────────────────────────────────
   const armLPoints = verts.length
@@ -334,20 +375,21 @@ function buildAlien(): { vertices: Vec3[]; edges: Edge[] } {
     { a: legRPoints+2, b: legRPoints+3 },
   )
 
-  return { vertices: verts, edges }
+  return { vertices: verts, edges, faces }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MODELL 3: ACTIONFIGUR
 // Muskulöser Humanoid: breite Schultern, Helm mit Visier, anatomische Blöcke.
 // ─────────────────────────────────────────────────────────────────────────────
-function buildActionFigure(): { vertices: Vec3[]; edges: Edge[] } {
+function buildActionFigure(): { vertices: Vec3[]; edges: Edge[]; faces: Face[] } {
   const verts: Vec3[] = []
   const edges: Edge[] = []
+  const faces: Face[] = []
 
   function addBox(cx: number, cy: number, cz: number, hw: number, hh: number, hd: number) {
-    const { verts: bv, edges: be } = makeBox(cx, cy, cz, hw, hh, hd, verts.length)
-    verts.push(...bv); edges.push(...be)
+    const { verts: bv, edges: be, faces: bf } = makeBox(cx, cy, cz, hw, hh, hd, verts.length)
+    verts.push(...bv); edges.push(...be); faces.push(...bf)
   }
 
   // ── Torso (breit und muskulös) ────────────────────────────────────────────
@@ -399,8 +441,10 @@ function buildActionFigure(): { vertices: Vec3[]; edges: Edge[] } {
     { a: beltBase,   b: beltBase+2 },  // linke Seite
     { a: beltBase+1, b: beltBase+3 },  // rechte Seite
   )
+  // Gürtel-Fläche für Solid-Modus
+  faces.push({ verts: [beltBase, beltBase+2, beltBase+3, beltBase+1] })
 
-  return { vertices: verts, edges }
+  return { vertices: verts, edges, faces }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -408,9 +452,10 @@ function buildActionFigure(): { vertices: Vec3[]; edges: Edge[] } {
 // 8 Beine mit je 3 Gelenken, runder Torso (aus Ringen), Antennenpaar,
 // niedrig und breit — typische Science-Fiction-Drohne.
 // ─────────────────────────────────────────────────────────────────────────────
-function buildSpiderBot(): { vertices: Vec3[]; edges: Edge[] } {
+function buildSpiderBot(): { vertices: Vec3[]; edges: Edge[]; faces: Face[] } {
   const verts: Vec3[] = []
   const edges: Edge[] = []
+  const faces: Face[] = []
 
   // ── Torso: zwei gestapelte Ringe (Draufsicht Ellipse) ───────────────────
   const torsoRings = [
@@ -424,11 +469,12 @@ function buildSpiderBot(): { vertices: Vec3[]; edges: Edge[] } {
     const { verts: rv, edges: re } = makeRing(0, ring.y, 0, ring.r, ring.n, 'xz', verts.length)
     verts.push(...rv); edges.push(...re)
   }
-  // Längsstreben des Torsos
+  // Längsstreben des Torsos + Flächen
   for (let ri = 0; ri + 1 < torsoRings.length; ri++) {
     for (let k = 0; k < torsoRings[ri].n; k += 3) {
       edges.push({ a: torsoStarts[ri] + k, b: torsoStarts[ri+1] + k })
     }
+    faces.push(...makeRingStrip(torsoRings[ri].n, torsoStarts[ri], torsoStarts[ri+1]))
   }
 
   // ── Zentrale Kuppel oben (kleiner Ring) ──────────────────────────────────
@@ -507,7 +553,7 @@ function buildSpiderBot(): { vertices: Vec3[]; edges: Edge[] } {
   )
   edges.push({ a: ant2Base, b: ant2Base+1 })
 
-  return { vertices: verts, edges }
+  return { vertices: verts, edges, faces }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -539,6 +585,36 @@ const MODELS: ModelDef[] = [
     ...buildSpiderBot(),
   },
 ]
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SOLID-RENDERING HILFSFUNKTIONEN
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Berechnet die Normale einer planaren Fläche (konvex) aus den ersten 3 Punkten.
+// Verwendet Kreuzprodukt der beiden ersten Kanten.
+function faceNormal(pts: Vec3[]): Vec3 {
+  // Zwei Kantenvektoren der Fläche
+  const ax = pts[1].x - pts[0].x, ay = pts[1].y - pts[0].y, az = pts[1].z - pts[0].z
+  const bx = pts[2].x - pts[0].x, by = pts[2].y - pts[0].y, bz = pts[2].z - pts[0].z
+  // Kreuzprodukt a × b ergibt die Flächennormale
+  return {
+    x: ay * bz - az * by,
+    y: az * bx - ax * bz,
+    z: ax * by - ay * bx,
+  }
+}
+
+// Normiert einen Vektor auf Länge 1.
+function normalize(v: Vec3): Vec3 {
+  const len = Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z)
+  if (len < 0.0001) return { x: 0, y: 0, z: 1 }
+  return { x: v.x/len, y: v.y/len, z: v.z/len }
+}
+
+// Skalarprodukt zweier Vektoren.
+function dot(a: Vec3, b: Vec3): number {
+  return a.x*b.x + a.y*b.y + a.z*b.z
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HAUPTKOMPONENTE
@@ -589,6 +665,10 @@ export default function CADRobotPanel() {
     // Blinke-Status für die Statuszeile (simuliert Cursor-Blinken)
     let blinkPhase = 0
 
+    // Render-Modus-Zähler: gerader Index = WIRE, ungerader Index = SOLID
+    // Wird bei jedem Modell-Wechsel erhöht (unabhängig vom modelIdx).
+    let slotCount = 0
+
     // ── Hilfsfunktion: Perspektivgitter zeichnen ─────────────────────────────
     // Klassisches CAD-Bodenraster, perspektivisch zusammenlaufend.
     function drawGrid(W: number, H: number) {
@@ -637,7 +717,7 @@ export default function CADRobotPanel() {
     // Die Achsen zeigen die aktuelle Ausrichtung des Modells.
     function drawAxes(cx: number, cy: number, scale: number, rx: number, ry: number) {
       const axisLen = 0.55  // Länge der Achsen in Modell-Einheiten
-      const focalLen = 3.5
+      const focalLen = 6.0  // muss zur focalLen in drawModel passen
 
       // Achsen-Endpunkte in 3D
       const origin: Vec3 = { x: 0, y: -0.95, z: 0 }  // Ursprung liegt unter dem Modell
@@ -686,14 +766,14 @@ export default function CADRobotPanel() {
 
     // ── Hilfsfunktion: Wireframe-Modell zeichnen ─────────────────────────────
     // Rotiert alle Vertices, projiziert sie perspektivisch und zeichnet alle Kanten.
-    function drawModel(
+    function drawModelWire(
       model: ModelDef,
       cx: number, cy: number,
       scale: number,
       rx: number, ry: number,
       alpha: number   // Transparenz 0..1 (für Überblende)
     ) {
-      const focalLen = 3.5  // Brennweite der Perspektivprojektion
+      const focalLen = 6.0  // erhöhte Brennweite = weniger Perspektivverzerrung, näher am Objekt
 
       // Alle Vertices rotieren und projizieren
       const projected = model.vertices.map(v => {
@@ -712,6 +792,88 @@ export default function CADRobotPanel() {
       ctx.stroke()
     }
 
+    // ── Hilfsfunktion: Solid-Modell zeichnen (Painter's Algorithm) ────────────
+    // Zeichnet alle Flächen von hinten nach vorne (Tiefensortierung), füllt sie
+    // mit diffusen grünen Farbtönen (CAD-Shading). Back-Face Culling überspringt
+    // Flächen, die von der Kamera abgewandt sind.
+    function drawModelSolid(
+      model: ModelDef,
+      cx: number, cy: number,
+      scale: number,
+      rx: number, ry: number,
+      alpha: number
+    ) {
+      const focalLen = 6.0
+
+      // Lichtrichtung (normiert) — von leicht oben-links-vorne
+      const light = normalize({ x: 0.5, y: 0.8, z: 1.0 })
+      // Kamerarichtung: wir schauen in +Z-Richtung (Kamera bei z = -focalLen)
+      const camDir: Vec3 = { x: 0, y: 0, z: 1 }
+
+      // Alle Vertices rotieren (3D) und projizieren (2D)
+      const rotated3D = model.vertices.map(v => rotateVec3(v, rx, ry, 0))
+      const projected = rotated3D.map(v => project(v, cx, cy, scale, focalLen))
+
+      // Für jede Fläche: Tiefe, Normale und Sichtbarkeit berechnen
+      type FaceDrawData = {
+        face:      Face
+        avgZ:      number   // Durchschnitts-Z der rotierten Punkte (für Painter-Sort)
+        intensity: number   // diffuse Beleuchtungsstärke 0..1
+        visible:   boolean  // back-face culling
+      }
+
+      const faceData: FaceDrawData[] = model.faces.map(face => {
+        // 3D-Positionen der Eckpunkte nach Rotation
+        const pts3D = face.verts.map(i => rotated3D[i])
+
+        // Durchschnittliche Z-Tiefe (für Painter's Algorithm)
+        const avgZ = pts3D.reduce((s, p) => s + p.z, 0) / pts3D.length
+
+        // Flächennormale berechnen und normieren
+        const n = normalize(faceNormal(pts3D))
+
+        // Back-Face Culling: Fläche cullen, wenn Normale vom Betrachter wegzeigt
+        // (dot(Normale, Kamerarichtung) > 0 heißt: Fläche zeigt zur Kamera)
+        const visible = dot(n, camDir) < 0  // Normale zeigt in -Z = zur Kamera
+
+        // Diffuse Beleuchtung: Lambert-Modell (maximiere mit 0, damit Rückseiten schwarz)
+        const intensity = Math.max(0, dot(n, light))
+
+        return { face, avgZ, intensity, visible }
+      })
+
+      // Painter's Algorithm: Flächen nach Z-Tiefe sortieren (hinten zuerst)
+      faceData.sort((a, b) => b.avgZ - a.avgZ)
+
+      // Flächen zeichnen (nur sichtbare)
+      for (const fd of faceData) {
+        if (!fd.visible) continue
+
+        // Farbe berechnen: grünliches CAD-Shading
+        // intensity 0..1 → Grüntöne mit leichtem Kontrast
+        const r = Math.round(fd.intensity * 30)           // kaum Rot
+        const g = Math.round(fd.intensity * 180 + 30)     // viel Grün (30–210)
+        const b = Math.round(fd.intensity * 60 + 20)      // wenig Blau (20–80)
+
+        // Fläche füllen
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`
+        ctx.beginPath()
+        const firstPt = projected[fd.face.verts[0]]
+        ctx.moveTo(firstPt.sx, firstPt.sy)
+        for (let k = 1; k < fd.face.verts.length; k++) {
+          const pt = projected[fd.face.verts[k]]
+          ctx.lineTo(pt.sx, pt.sy)
+        }
+        ctx.closePath()
+        ctx.fill()
+
+        // Dünner dunkler Rand (wie CAD-Software Flächen trennt)
+        ctx.strokeStyle = `rgba(0, 60, 20, ${alpha * 0.6})`
+        ctx.lineWidth   = 0.5
+        ctx.stroke()
+      }
+    }
+
     // ── Hilfsfunktion: Info-Overlay oben links ───────────────────────────────
     function drawInfoOverlay(W: number, _H: number, model: ModelDef, alpha: number) {
       const fSize = Math.max(8, Math.min(11, W * 0.028))
@@ -728,6 +890,30 @@ export default function CADRobotPanel() {
       ctx.fillText(`MODEL  : ${model.name}`,        10, 8)
       ctx.fillText(`POLYS  : ${model.polyCount}`,   10, 8 + fSize * 1.3)
       ctx.fillText(`DIMS   : ${model.dimensions}`,  10, 8 + fSize * 2.6)
+    }
+
+    // ── Hilfsfunktion: Render-Modus-Label (SOLID / WIRE) ─────────────────────
+    // Wird in der oberen rechten Ecke angezeigt.
+    function drawModeLabel(W: number, solidMode: boolean, alpha: number) {
+      const fSize = Math.max(8, Math.min(11, W * 0.028))
+      ctx.font        = `bold ${fSize}px monospace`
+      ctx.textBaseline = 'top'
+
+      const label = solidMode ? 'SOLID' : 'WIRE'
+      const measured = ctx.measureText(label)
+      const boxPad = 4
+      const boxX = W - measured.width - boxPad * 2 - 8
+      const boxY = 4
+
+      // Hintergrund-Rechteck
+      ctx.fillStyle = `rgba(0, 0, 0, ${0.75 * alpha})`
+      ctx.fillRect(boxX, boxY, measured.width + boxPad * 2, fSize + boxPad * 2)
+
+      // Label-Text: SOLID = helleres Grün, WIRE = dimmer
+      ctx.fillStyle = solidMode
+        ? `rgba(0, 255, 128, ${alpha})`
+        : `rgba(0, 180, 80, ${alpha})`
+      ctx.fillText(label, boxX + boxPad, boxY + boxPad)
     }
 
     // ── Hilfsfunktion: Statuszeile unten ─────────────────────────────────────
@@ -793,6 +979,7 @@ export default function CADRobotPanel() {
           fadingOut = false
           // Modell wechseln + neue Startrotation
           modelIdx   = (modelIdx + 1) % MODELS.length
+          slotCount  = slotCount + 1   // Slot-Zähler: bestimmt WIRE vs. SOLID
           ry         = Math.random() * Math.PI * 2
           rxPhase    = Math.random() * Math.PI * 2
           switchTimer = 12000
@@ -811,6 +998,8 @@ export default function CADRobotPanel() {
 
       // Wenn weder ein Fade läuft: volles Alpha
       const modelAlpha = fadingOut || fadingIn ? fadeAlpha : 1.0
+      // Render-Modus: gerade Slots = WIRE, ungerade Slots = SOLID
+      const solidMode = (slotCount % 2) === 1
 
       // ── Rendering ─────────────────────────────────────────────────────────
 
@@ -826,19 +1015,26 @@ export default function CADRobotPanel() {
       const viewH  = H * 0.88
       const centerX = W * 0.5
       const centerY = viewH * 0.48
-      // Skalierung: das Modell soll ca. 60% der kleineren Dimension füllen
-      const scale  = Math.min(W, viewH) * 0.30
+      // Skalierung: erhöht auf 0.55 damit Modell 60–70% des Panels füllt (vorher 0.30)
+      const scale  = Math.min(W, viewH) * 0.55
 
       // Schritt 4: Koordinatenachsen zeichnen (hinter dem Modell, gleiche Rotation)
       drawAxes(centerX, centerY, scale, rx, ry)
 
-      // Schritt 5: Wireframe-Modell zeichnen
-      drawModel(MODELS[modelIdx], centerX, centerY, scale, rx, ry, modelAlpha)
+      // Schritt 5: Modell zeichnen — Modus je nach slotCount
+      if (solidMode) {
+        drawModelSolid(MODELS[modelIdx], centerX, centerY, scale, rx, ry, modelAlpha)
+      } else {
+        drawModelWire(MODELS[modelIdx], centerX, centerY, scale, rx, ry, modelAlpha)
+      }
 
       // Schritt 6: Info-Overlay oben links
       drawInfoOverlay(W, H, MODELS[modelIdx], modelAlpha)
 
-      // Schritt 7: Statuszeile unten
+      // Schritt 7: Render-Modus-Label (SOLID / WIRE) oben rechts
+      drawModeLabel(W, solidMode, modelAlpha)
+
+      // Schritt 8: Statuszeile unten
       drawStatusBar(W, H, MODELS[modelIdx])
 
       rafId = requestAnimationFrame(loop)

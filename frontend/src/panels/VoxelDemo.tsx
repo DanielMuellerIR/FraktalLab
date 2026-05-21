@@ -146,6 +146,13 @@ export default function VoxelDemo() {
     let rafId: number
     let running = true
     let lastT = 0
+    // IntersectionObserver: Animation pausieren wenn Panel nicht sichtbar ist
+    let isVisible = true
+    const io = new IntersectionObserver(
+      ([entry]) => { isVisible = entry.isIntersecting },
+      { threshold: 0.1 },
+    )
+    io.observe(canvas)
 
     // ── ResizeObserver: Canvas-Auflösung == Container-Größe ─────────────────
     const resize = () => {
@@ -159,6 +166,8 @@ export default function VoxelDemo() {
 
     function loop(t: number) {
       if (!running) return
+      // Panel nicht sichtbar → Frame überspringen, aber Loop fortsetzen
+      if (!isVisible) { rafId = requestAnimationFrame(loop); return }
 
       // Delta cappen damit ein Tab-Wechsel keine Sprünge erzeugt
       const dt = Math.min(t - lastT, 50)
@@ -211,6 +220,7 @@ export default function VoxelDemo() {
       running = false
       cancelAnimationFrame(rafId)
       ro.disconnect()
+      io.disconnect()
     }
   }, [])
 

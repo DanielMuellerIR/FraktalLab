@@ -21,12 +21,14 @@ function drawGlitchFrame(
   }
 
   // ── Horizontale Verschiebungs-Blöcke (simulierter Zeilen-Versatz) ────────
-  // Stärkere Verschiebungen: xOff bis ±80px statt ±30px
-  const sliceCount = 3 + Math.floor(Math.random() * 6)
+  // 3–8 Slices, jede mit frisch zufälligem y und xOff pro Frame
+  const sliceCount = 3 + Math.floor(Math.random() * 6)  // 3..8
   for (let i = 0; i < sliceCount; i++) {
+    // Jeder Slice bekommt eine völlig zufällige Bildschirmhöhe
     const y    = Math.random() * H
     const h    = 4 + Math.random() * 40
-    const xOff = (Math.random() - 0.5) * 80
+    // xOff wird jedes Frame neu gewürfelt → sichtbares Flackern
+    const xOff = (Math.random() - 0.5) * 160
     ctx.fillStyle = `rgba(255,0,0,${0.12 * intensity})`
     ctx.fillRect(xOff - 10, y, W, h)
     ctx.fillStyle = `rgba(0,100,255,${0.12 * intensity})`

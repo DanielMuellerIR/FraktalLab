@@ -14,7 +14,7 @@ Thematischer Rahmen: Ein fiktives „Neural Intrusion Dashboard", das Hacker-Kli
 
 **Speed-first-Regel:** Jedes Feature muss in einer einzigen Session vollständig lauffähig implementiert werden können. Features, die das nicht schaffen, werden auf kleineres Scope reduziert oder verschoben. Keine halbfertigen Implementierungen.
 
-Aktueller Stand: **v0.9.6**. Deployment auf Netcup-Webspace (Apache).
+Aktueller Stand: **v0.9.9**. Deployment auf Netcup-Webspace (Apache).
 
 ---
 
@@ -36,14 +36,16 @@ Testing:      Playwright (@playwright/test) — visueller Panel-Check
 wasm/                       Rust-Crate (cdylib). Build-Output: wasm/pkg/
 frontend/
   src/
-    App.tsx                 Grid-Layout-System, Pool-Definitionen, Layout-Wechsel-Logik
+    App.tsx                 Grid-Layout-System, Pool-Definitionen, Layout-Wechsel-Logik,
+                            Review-Modus (localStorage), Mobile-Layout (md:-Breakpoint)
     components/
-      FractalCanvas.tsx     WASM-Loader + rAF-Loop (Mandelbrot, 8 Koordinaten, Fade)
-      EnhancePhoto.tsx      Enhance-Slideshow
+      FractalCanvas.tsx     WASM-Mandelbrot, animierter Zoom durch 8 Koordinaten
+      EnhancePhoto.tsx      Enhance-Slideshow (12 Stufen, 4s Zyklus, nur urbane Fotos)
     panels/                 Alle Panel-Komponenten (je eine Datei, siehe Inventar unten)
     ui/
-      PanelSlot.tsx         Pool-basierter Slot: zufällige Rotation (45s–8min) + ⟳-Button
-      GlitchOverlay.tsx     Vollbild-CRT/VHS-Glitch (alle 20–60 s)
+      PanelSlot.tsx         Pool-basierter Slot + Duplikat-Tracking (kein Panel zweimal)
+      GlitchOverlay.tsx     Vollbild-CRT/VHS-Glitch (zufällige Positionen)
+      AmbientSound.tsx      Mechanische Tastatur-Sounds, startet bei erster Interaktion
       Panel.tsx             Rahmen mit grünem Border + Titelzeile
       Clock.tsx, StatBar.tsx, ScrollingLog.tsx
   public/
@@ -57,8 +59,9 @@ server/                     Express Prod-Server (wird auf Netcup nicht genutzt)
 ## Befehle
 
 ```bash
-# WASM bauen
+# WASM bauen (nach Änderungen an wasm/src/lib.rs)
 source "$HOME/.cargo/env"
+cd /Users/dm0/local/Arbeit/Viben/p_fraktal
 wasm-pack build wasm --target web --out-dir pkg
 
 # Frontend Dev-Server (COOP/COEP via vite.config.ts)
@@ -78,62 +81,63 @@ cd frontend && npm run test:panels
 
 ## Architektur-Kernpunkte
 
-**WASM ↔ React-Grenze:** `wasm/src/lib.rs` rendert Fraktale in einen `Vec<u8>`-Pixel-Buffer (RGBA, row-major). JS überträgt ihn via `ImageData` auf `<canvas>`. Keine Fraktal-Berechnung im React-Code.
+**WASM ↔ React-Grenze:** `wasm/src/lib.rs` rendert Fraktale in `Vec<u8>`-Pixel-Buffer (RGBA, row-major). Exportiert: `render()` (Mandelbrot) und `render_julia()` (Julia-Menge). JS überträgt den Buffer via `ImageData` auf `<canvas>`.
 
 **HTTP-Header (kritisch):** Vite-Dev-Server und `.htaccess` setzen `Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Embedder-Policy: require-corp`. Ohne diese Header verweigern Chrome und Safari den WASM-Load.
 
 **Tailwind v4:** Via `@tailwindcss/vite`-Plugin, kein `tailwind.config.js`. CSS-Einstiegspunkt: `frontend/src/index.css` mit `@import "tailwindcss"`.
 
-**Ästhetik:** Grüne Monospace-Schrift auf Schwarz (`text-green-400 bg-black font-mono`). Kein helles Theme, kein responsives Redesign angestrebt.
+**Ästhetik:** Grüne Monospace-Schrift auf Schwarz (`text-green-400 bg-black font-mono`). Kein helles Theme.
+
+**Mobile:** Unter 768px (`md:`-Breakpoint) wird ein vereinfachtes Single-Column-Layout mit 3 gestapelten PanelSlots gezeigt. Desktop-Layout und GlitchOverlay sind auf Mobile ausgeblendet.
+
+**TypeScript Closure-Narrowing:** Canvas-Panels müssen nach dem Null-Check `const canvas: HTMLCanvasElement = _canvas` und `const ctx: CanvasRenderingContext2D = _ctx` verwenden, da TypeScript Assertions (`!`) in Closures nicht durchträgt.
+
+**IntersectionObserver (BUG-02):** Die meisten Canvas-Panels beobachten ihren Container und pausieren den rAF-Loop (`if (!isVisible) { rafId = rAF(loop); return }`), wenn sie unsichtbar sind (z.B. während Layout-Übergängen).
 
 ---
 
 ## Panel-Inventar
 
-### Fraktal (fest eingebunden über `FractalView`)
+### Fraktal-Panels (WASM-basiert)
 
 | Datei | Inhalt |
 |---|---|
-| `components/FractalCanvas.tsx` | WASM-Mandelbrot, animierter Zoom durch 8 Koordinaten |
-| `panels/FractalScenes.tsx` | 9 Mini-Panels: `FractalSeahorse`, `FractalSpiral`, `FractalLightning`, `FractalElephant`, `FractalMini`, `FractalDendrite`, `FractalSwirl`, `FractalSatellite`, `FractalTendril` |
+| `components/FractalCanvas.tsx` | Mandelbrot, animierter Zoom durch 8 Koordinaten |
+| `panels/FractalJulia.tsx` | Julia-Menge, 6 Parameter-Paare, 12s-Zyklus, WASM `render_julia()` |
+| `panels/FractalScenes.tsx` | 7 aktive Mini-Panels: `FractalSeahorse`, `FractalSpiral`, `FractalLightning`, `FractalElephant`, `FractalMini`, `FractalSatellite`, `FractalTendril` (+ `FractalDendrite`, `FractalSwirl` archiviert) |
 
 ### Text-Panels (Hacker-Themen)
 
-`SystemLog`, `DataStream`, `SocialEngineering`, `Vitals`, `TrafficMonitor`, `NuclearTargets`, `PwdCracker`, `PortScanner`, `PseudoCode`
-
-**Neue Text-Panels (v0.9.6):**
-`ClaudeCodePanel` (Claude Code CLI-Simulation), `VisitorProfilePanel` (Browser-Fingerprint-Terminal), `ICQChatPanel` (AI-Agenten-Chat über Weltherrschaft), `BitcoinMinerPanel` (Fake-Hashrate-Dashboard), `DiskCleanupPanel` (Fake-Disk-Cleanup-Terminal)
+`SystemLog`, `DataStream`, `SocialEngineering`, `Vitals`, `TrafficMonitor`, `NuclearTargets`, `PwdCracker`, `PortScanner`, `PseudoCode`, `ClaudeCodePanel`, `VisitorProfilePanel`, `ICQChatPanel`, `BitcoinMinerPanel`, `DiskCleanupPanel`, `StockTickerPanel`, `SatellitePanel`, `ClassifiedPanel`
 
 ### Grafik-Panels (Canvas-Animationen)
 
 | Datei | Inhalt |
 |---|---|
-| `VoxelDemo.tsx` | Voxel-3D (Software-Renderer) |
-| `VoxelScenes.tsx` | 4 Varianten: `VoxelThermal`, `VoxelNeon`, `VoxelLava`, `VoxelMatrix` |
-| `PlasmaDemo.tsx` | Plasma-Effekt (sin/cos-Farbfelder) |
-| `GlobePanel.tsx` | Rotierender Wireframe-Globus |
+| `VoxelDemo.tsx` | Voxel-Terrain-Flug (Software-Renderer) |
+| `VoxelScenes.tsx` | 4 Varianten: `VoxelThermal` (IR-Palette, Seitwärts-Drift), `VoxelNeon` (TRON-Grid, Türme), `VoxelLava` (zerklüftete Heightmap, Glühkanal-Boost), `VoxelMatrix` (Phosphor-Bloom, CRT-Scanlines) |
+| `PlasmaDemo.tsx` | Plasma-Effekt, 4 dunkle Paletten (Nebula/Infrared/Acidic/Void), 20s-Crossfade |
+| `GlobePanel.tsx` | Rotierender Globus mit Kontinent-Umrissen (24 Land-Polygone) + Ziel-Bracket |
 | `DNAHelix.tsx` | Animierte DNA-Doppelhelix |
-| `OscilloscopePanel.tsx` | 6 Signalmodi: EKG, Seismik, FM, Interferenz, Rauschen, Sonar |
-| `DemoScenes.tsx` | 8 Demoscene-Klassiker: `FireScene`, `StarfieldScene`, `TunnelScene`, `RotozoomScene`, `MetaballsScene`, `DotCloudScene`, `BoingScene`, `LissajousScene` |
-| `ParallaxPanel.tsx` | 5-Layer-Parallax-Scrolling einer futuristischen Raumstadt |
-| `DaggerfallPanel.tsx` | Raycasting-Dungeon-Engine (DDA-Algorithmus), KI-Spieler, DOS-HUD |
+| `OscilloscopePanel.tsx` | 7 Signalmodi: EKG, Seismik, FM, Interferenz, Lissajous/Spiral, Sonar + weiterer |
+| `DemoScenes.tsx` | 8 Demoscene-Klassiker: `FireScene` (Plasmatrahlen+chem. Brand), `StarfieldScene` (3× mehr Sterne + Hyperspace), `TunnelScene` (1 Layer, grün/cyan, ruhig), `RotozoomScene`, `MetaballsScene` (1px, fein), `DotCloudScene` (Neural-Net mit Kanten), `BoingScene` (3D-Rotation alle Achsen), `LissajousScene` |
+| `ParallaxPanel.tsx` | Multi-Szenen-Parallax: Raumstadt + Neon-Regen + Raumstation + Tunnel |
 | `ElitePanel.tsx` | Wireframe-Raumschiff (Cobra Mk III), Radar, HUD — Elite-1984-Stil |
+| `CADRobotPanel.tsx` | Wireframe- und Solid-3D-Roboter (wechselnd), 4 Modelle, näher herangezoomt |
+| `AmiModPanel.tsx` | Synthetischer ProTracker-Chiptune, 4-Kanal WebAudio |
+| `C64Panel.tsx` | C64-Boot + Tipp-Sequenz + 4 Demo-Szenen (4:3, Rand nur im BASIC-Screen) |
+| `RetroErrorPanel.tsx` | Slideshow retro OS-Fehlermeldungen (Mac Bomb, BSOD, Amiga Guru etc.) |
+| `SolarSystemPanel.tsx` | Sonnensystem-Animation, 8 Planeten + Mond + Saturn-Ring, korrekte Umlaufzeiten |
+| `RadarSweepPanel.tsx` | Rotating Radar, Sweep-Linie, Blips mit Fade, bewegliche Ziele, grüner Phosphor |
+| `DaggerfallPanel.tsx` | **ARCHIVIERT** — Castle Pixelstein Alpha 0.1, DDA-Raycasting (nicht im Pool) |
 
 ### Spezial-Panels
 
 | Datei | Inhalt |
 |---|---|
-| `AllYourBase.tsx` | Video von archive.org — **aktuell defekt (BUG-01, CORS)** |
-| `EnhanceView.tsx` | „ENHANCE PHOTO"-Slideshow mit Straßenfotos |
-
-### Layout-Änderungen (v0.9.6)
-
-- **3 statt 5 Layouts** — ~50% weniger Slots pro Layout, deutlich größere Panels
-- **POOL_TEXT**: alle Text-Panels in einem gemeinsamen Pool (inkl. 5 neue)
-- **POOL_GFX**: alle Grafik-Panels in einem gemeinsamen Pool (inkl. 3 neue)
-- **AllYourBase**: immer in 16:9-Container (`aspect-ratio: 16/9` per CSS)
-- **GlitchOverlay**: deutlich intensiver (Intervall 5–15s statt 20–60s, mehr Effekte)
-- **Ambient Sound**: `AmbientSound.tsx` mit Tipp-Clicks, Pings, CRT-Hum; Toggle in der Kopfzeile
+| `AllYourBase.tsx` | Video von archive.org (BUG-01 behoben) |
+| `EnhanceView.tsx` | „ENHANCE PHOTO"-Slideshow, 12 Stufen, 4s, nur urbane Stadtfotos |
 
 ### Pool-Zuordnung (`App.tsx`)
 
@@ -141,28 +145,27 @@ cd frontend && npm run test:panels
 POOL_TEXT       SystemLog, DataStream, SocialEngineering, Vitals, TrafficMonitor,
                 NuclearTargets, PwdCracker, PortScanner, PseudoCode,
                 ClaudeCodePanel, VisitorProfilePanel, ICQChatPanel,
-                BitcoinMinerPanel, DiskCleanupPanel
+                BitcoinMinerPanel, DiskCleanupPanel,
+                StockTickerPanel, SatellitePanel, ClassifiedPanel
 
 POOL_GFX        VoxelDemo, GlobePanel, VoxelThermal, VoxelLava, VoxelNeon, VoxelMatrix,
                 FireScene, StarfieldScene, BoingScene, LissajousScene,
                 OscilloscopePanel, TunnelScene, MetaballsScene, RotozoomScene, DotCloudScene,
-                PlasmaDemo, DNAHelix, ParallaxPanel, DaggerfallPanel, ElitePanel,
+                PlasmaDemo, DNAHelix, EnhanceView, AllYourBase,
+                ParallaxPanel, ElitePanel, AmiModPanel,
+                CADRobotPanel, C64Panel, RetroErrorPanel,
+                SolarSystemPanel, RadarSweepPanel, FractalJulia,
                 FractalSeahorse, FractalSpiral, FractalTendril, FractalLightning,
-                FractalElephant, FractalMini, FractalDendrite, FractalSwirl, FractalSatellite
-
-POOL_ALLYOURBASE  AllYourBase (dediziert, immer in 16:9-Container)
-POOL_ENHANCE      EnhanceView (dediziert)
+                FractalElephant, FractalMini, FractalSatellite
 ```
 
 ---
 
 ## Layout-System
 
-`App.tsx` definiert 5 fest codierte Layouts (`layoutIdx 0..4`).
-Der **[LAYOUT x/5]-Button** und die Leertaste schalten mit Fade-Übergang (300 ms) durch.
-
-**Geplante Überarbeitung (GRID-01):** Vollständig zufälliger Grid-Generator statt fixer Layouts.
-Anforderungen: kein Leerraum, keine sehr schmalen Slots, Mindestgröße für `AllYourBase`/`EnhanceView`/`GlobePanel`, `FractalView` muss nicht mehr das größte Panel sein.
+`App.tsx` definiert 3 fest codierte Layouts (`layoutIdx 0..2`).
+Auto-Switch alle 1–3 Minuten mit Slide-Animation (OS-Desktop-Stil, 520ms).
+Desktop: `[LAYOUT x/3]`-Button + Leertaste. Mobile: ausgeblendet.
 
 ---
 
@@ -170,18 +173,15 @@ Anforderungen: kein Leerraum, keine sehr schmalen Slots, Mindestgröße für `Al
 
 | ID | Problem | Priorität |
 |---|---|---|
-| ~~BUG-01~~ | ~~AllYourBase-Video nicht sichtbar — CORS-Fehler mit archive.org~~ | ~~Hoch~~ — **behoben** (falsche Datei-URL, fehlende COEP-credentialless-Konfiguration) |
-| BUG-02 | Einzelne Panels zeigen in sehr kleinen Containern einfarbige Flächen | Mittel |
-| BUG-03 | Mehrere gleichzeitige Canvas-Animationen können auf schwächerer Hardware frame-droppen | Mittel |
+| ~~BUG-01~~ | ~~AllYourBase CORS~~ | ~~Hoch~~ — **behoben** |
+| ~~BUG-02~~ | ~~Panels pausieren nicht wenn unsichtbar~~ | ~~Mittel~~ — **behoben** (IntersectionObserver) |
+| BUG-03 | Mehrere Canvas-Animationen können auf schwächerer Hardware frame-droppen | Mittel |
 
 ---
 
-## Roadmap
+## Roadmap (offen)
 
-1. **Bugs & Qualität** — BUG-01, BUG-02, BUG-03 (IntersectionObserver zum Pausieren unsichtbarer Panels)
-2. **Grid-Überarbeitung** — GRID-01 (siehe Layout-System oben)
-3. **Neue Text-Panels** — Börsenkurse/Ticker, Satelliten-Tracking, Wetterradar, Classified-Dokumente
-4. **Neue Grafik-Panels** — Waveform-Visualizer, Radar-Sweep, Thermalkamera, Particle-System
-5. **Julia-Menge** — zweiter Fraktal-Typ im WASM-Modul (`wasm/src/lib.rs`)
-6. **Audio/Ambient** — WebAudio API, Standard stumm, An/Aus in der Kopfzeile
-7. **Mobile** — vereinfachtes Single-Column-Layout für schmale Viewports (nice-to-have)
+1. **AmiModPanel** — echte .mod-Dateien von modarchive.org abspielen (benötigt MOD-Parser oder libopenmpt-WASM)
+2. **Fraktal-Endloszoom** — statt Fade+Reset nahtlosen Endloszoom implementieren (kein schwarzes Bild je)
+3. **Grid-Überarbeitung (GRID-01)** — vollständig zufälliger Grid-Generator statt fixer Layouts
+4. **Archivierte Panels** — DaggerfallPanel, FractalDendrite, FractalSwirl bei Gelegenheit überarbeiten

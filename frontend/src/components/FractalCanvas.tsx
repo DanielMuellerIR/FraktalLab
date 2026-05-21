@@ -1,28 +1,33 @@
 import { useEffect, useRef } from 'react'
 
 // Interessante Mandelbrot-Koordinaten — werden zyklisch durchgezoomt.
-// Wenn die Float-Präzisionsgrenze erreicht wird, Fade-Out → nächste Location → Fade-In.
+// Wenn die Float-Präzisionsgrenze erreicht wird, Cross-Fade → nächste Location.
 const LOCATIONS = [
   { cx: -0.7269,  cy:  0.1889  },  // Seahorse Valley
   { cx: -0.5436,  cy:  0.6317  },  // Triple Spiral
-  { cx: -1.4012,  cy:  0.0001  },  // Dendrite Tip
+  { cx:  0.3600,  cy:  0.1000  },  // Right Bulb Spirals
   { cx: -0.7453,  cy:  0.1127  },  // Seahorse Satellite
   { cx: -0.1080,  cy:  0.9249  },  // Elephant Valley
   { cx: -0.0630,  cy:  0.6748  },  // Lightning Fork
-  { cx: -0.6180,  cy:  0.3890  },  // Deep Swirl
+  { cx: -0.7390,  cy:  0.1660  },  // Inner Seahorse
   { cx: -1.2560,  cy:  0.3818  },  // Satellite Bulb
 ]
 
 export default function FractalCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  // Zoom-State im Ref statt im React-State — kein Re-render-Overhead pro Frame
-  // Zufälliger Einstieg: andere Location und Zoom-Stufe bei jedem Laden
+  // Zoom-State im Ref statt im React-State — kein Re-render-Overhead pro Frame.
+  // Zufälliger Einstieg: andere Location und Zoom-Stufe bei jedem Laden.
   // eslint-disable-next-line react-hooks/purity
-  const stateRef  = useRef({
-    zoom:      80 + Math.random() * 800,
-    locIdx:    Math.floor(Math.random() * LOCATIONS.length),
-    fadeAlpha: 0,
-    fading:    false,
+  const stateRef = useRef({
+    zoom:          80 + Math.random() * 800,
+    locIdx:        Math.floor(Math.random() * LOCATIONS.length),
+    fadeAlpha:     0,
+    fading:        false,
+    // Cross-Fade: Snapshots des aktuellen und nächsten Frames
+    prevImageData: null as ImageData | null,
+    nextImageData: null as ImageData | null,
+    nextLocIdx:    0,
+    nextZoom:      80,
   })
   const rafRef = useRef<number>(0)
 
@@ -57,38 +62,85 @@ export default function FractalCanvas() {
             return
           }
 
-          const loc = LOCATIONS[s.locIdx]
+          // ── Cross-Fade läuft: nur Pixel blenden, kein WASM-Render ─────────
+          if (s.fading && s.prevImageData && s.nextImageData) {
+            s.fadeAlpha = Math.min(1, s.fadeAlpha + 0.025)
 
+            const prev   = s.prevImageData.data
+            const next   = s.nextImageData.data
+            const W      = canvas.width
+            const H      = canvas.height
+            const blended = new ImageData(W, H)
+            const out    = blended.data
+            const a      = s.fadeAlpha
+
+            // Pixel-genaues Blend: prev*(1-a) + next*a
+            for (let i = 0; i < out.length; i += 4) {
+              out[i]   = (prev[i]   * (1 - a) + next[i]   * a) | 0
+              out[i+1] = (prev[i+1] * (1 - a) + next[i+1] * a) | 0
+              out[i+2] = (prev[i+2] * (1 - a) + next[i+2] * a) | 0
+              out[i+3] = 255
+            }
+            ctx.putImageData(blended, 0, 0)
+
+            // Cross-Fade abgeschlossen: zu nächster Location wechseln
+            if (s.fadeAlpha >= 1) {
+              s.locIdx       = s.nextLocIdx
+              s.zoom         = s.nextZoom
+              s.fading       = false
+              s.fadeAlpha    = 0
+              s.prevImageData = null
+              s.nextImageData = null
+            }
+
+            rafRef.current = requestAnimationFrame(frame)
+            return
+          }
+
+          // ── Normaler Live-Render ────────────────────────────────────────────
+          const loc = LOCATIONS[s.locIdx]
           s.zoom *= 1.015
 
           // Übergang auslösen bevor Floating-Point-Artefakte sichtbar werden
           if (s.zoom > 3e4 && !s.fading) s.fading = true
 
-          if (s.fading) {
-            // Fade-Out: Alpha bis 1 erhöhen
-            s.fadeAlpha = Math.min(1, s.fadeAlpha + 0.04)
-            if (s.fadeAlpha >= 1) {
-              // Location wechseln, Zoom auf mittleren Bereich zurücksetzen (nicht zoom=1 → sonst große schwarze Fläche)
-              s.locIdx = (s.locIdx + 1) % LOCATIONS.length
-              s.zoom   = 80 + Math.random() * 800
-              s.fading = false
-            }
-          } else {
-            // Fade-In: Alpha bis 0 absenken
-            s.fadeAlpha = Math.max(0, s.fadeAlpha - 0.03)
-          }
-
           try {
             const params = new RenderParams(loc.cx, loc.cy, s.zoom, 128)
             const pixels = new Uint8ClampedArray(render(canvas.width, canvas.height, params))
-            ctx.putImageData(new ImageData(pixels, canvas.width, canvas.height), 0, 0)
-          } catch { /* WASM-Fehler still ignorieren */ }
 
-          // Schwarzes Overlay — erzeugt sanften Übergang ohne Schwarzbild
-          if (s.fadeAlpha > 0) {
-            ctx.fillStyle = `rgba(0,0,0,${s.fadeAlpha})`
-            ctx.fillRect(0, 0, canvas.width, canvas.height)
-          }
+            // Schwarzraum-Früherkennung: wenn >75% der Pixel Mandelbrot-Inneres sind,
+            // sofort Übergang auslösen statt schwarze Frames zu zeigen.
+            // Zoom-Guard: unter 200 ist ein großes Inneres normal (breite Außenansicht).
+            if (!s.fading && s.zoom > 200) {
+              let black = 0, total = 0
+              for (let i = 0; i < pixels.length; i += 128) {
+                if (pixels[i] === 0 && pixels[i + 1] === 0 && pixels[i + 2] === 0) black++
+                total++
+              }
+              if (black / total > 0.75) s.fading = true
+            }
+
+            // Aktuellen Frame immer auf Canvas ausgeben
+            ctx.putImageData(new ImageData(pixels, canvas.width, canvas.height), 0, 0)
+
+            // Übergang starten: Snapshot beider Frames vorbereiten
+            if (s.fading && !s.prevImageData) {
+              // Snapshot des gerade gerenderten Frames
+              s.prevImageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+
+              // Nächste Location und Zoom bestimmen
+              s.nextLocIdx = (s.locIdx + 1) % LOCATIONS.length
+              s.nextZoom   = 80 + Math.random() * 800
+
+              // Einen WASM-Frame der Ziel-Location rendern
+              const nextLoc    = LOCATIONS[s.nextLocIdx]
+              const nextParams = new RenderParams(nextLoc.cx, nextLoc.cy, s.nextZoom, 128)
+              const nextPixels = new Uint8ClampedArray(render(canvas.width, canvas.height, nextParams))
+              s.nextImageData  = new ImageData(nextPixels, canvas.width, canvas.height)
+
+              s.fadeAlpha = 0
+            }
+          } catch { /* WASM-Fehler still ignorieren */ }
 
           rafRef.current = requestAnimationFrame(frame)
         }
