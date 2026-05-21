@@ -5,12 +5,11 @@
     Header set Cross-Origin-Embedder-Policy "credentialless"
 </IfModule>
 
-# .mod.bin Tracker-Dateien als Binär ausliefern
+# Tracker-Dateien als Binär ausliefern
 <IfModule mod_mime.c>
-    AddType application/octet-stream .bin
+    AddType application/octet-stream .dat
 </IfModule>
-# Keine Encoding-Manipulation für Binärdateien
-<FilesMatch "\.bin$">
+<FilesMatch "\.dat$">
     SetEnv no-gzip 1
     Header unset Content-Encoding
 </FilesMatch>

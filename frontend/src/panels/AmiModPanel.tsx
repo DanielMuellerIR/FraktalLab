@@ -14,9 +14,9 @@ interface Track {
 }
 
 const TRACKS: Track[] = [
-  { id: '58072', name: 'Speedball 2', url: '/audio/track_58072.mod.bin?v=1.0.3', composer: 'Simon Rogers', arranger: 'Richard Joseph', year: '1990' },
-  { id: '142827', name: 'Stardust Memories', url: '/audio/track_142827.mod.bin?v=1.0.3', composer: 'Volker Tripp (Jester)', arranger: 'Volker Tripp (Jester)', year: '1992' },
-  { id: '87180', name: 'Bootup', url: '/audio/track_87180.mod.bin?v=1.0.3', composer: 'Barry Leitch', arranger: 'Barry Leitch', year: '1991' }
+  { id: '58072', name: 'Speedball 2', url: '/audio/track_58072.dat?v=1.0.3', composer: 'Simon Rogers', arranger: 'Richard Joseph', year: '1990' },
+  { id: '142827', name: 'Stardust Memories', url: '/audio/track_142827.dat?v=1.0.3', composer: 'Volker Tripp (Jester)', arranger: 'Volker Tripp (Jester)', year: '1992' },
+  { id: '87180', name: 'Bootup', url: '/audio/track_87180.dat?v=1.0.3', composer: 'Barry Leitch', arranger: 'Barry Leitch', year: '1991' }
 ];
 
 // Amiga-Frequenz-Perioden und Notennamen-Mapping
