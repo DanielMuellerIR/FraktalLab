@@ -185,6 +185,8 @@ Basis: manueller Durchlauf aller Panels am 2026-05-21. Daumen rauf/runter = erst
 - [ ] **SatellitePanel** — Mehr Bewegung ODER 10s Timeout dann Panel-Wechsel
 - [ ] **FractalJulia** — Flimmern reduzieren
 - [ ] **EnhanceView** — „Apollo"-Text fixen; anstößige/politische Bilder entfernen → nur neutrale Stadtszenen
+- [ ] **Fractal-Panels** — Alle Fraktal-Panels (außer FractalView / "Neural Fractal Dimension" und FractalJulia) sehen scheiße aus; diese wurden vorübergehend in POOL_GFX deaktiviert und müssen grundlegend verbessert werden. FractalView fehlt zudem im Review-Modus (ALL_PANELS) und sollte dort integriert werden.
+
 
 ### Mittel
 

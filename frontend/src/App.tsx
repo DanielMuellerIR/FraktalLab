@@ -62,16 +62,17 @@ const POOL_TEXT: React.ComponentType[] = [
 
 // Alle visuellen Panels in einem Pool — AllYourBase und EnhanceView sind normale Einträge
 const POOL_GFX: React.ComponentType[] = [
-  VoxelDemoColor, VoxelDemoBW, GlobePanel, VoxelThermal, VoxelLava, VoxelNeon, VoxelMatrix,
+  VoxelDemoColor, VoxelDemoBW, /* GlobePanel, */ VoxelThermal, VoxelLava, VoxelNeon, /* VoxelMatrix, */
 
-  FireScene, StarfieldScene, BoingScene, LissajousScene,
-  OscilloscopePanel, TunnelScene, MetaballsScene, RotozoomScene, DotCloudScene,
+  FireScene, StarfieldScene, BoingScene, /* LissajousScene, */
+  /* OscilloscopePanel, */ TunnelScene, MetaballsScene, RotozoomScene, DotCloudScene,
   PlasmaDemo, DNAHelix, EnhanceView, AllYourBase,
   ParallaxPanel, ElitePanel, AmiModPanel, CADRobotPanel, C64Panel, RetroErrorPanel, SolarSystemPanel,
-  FractalSeahorse, FractalSpiral, FractalTendril, FractalLightning,
-  FractalElephant, FractalMini, FractalSatellite,
+  /* FractalSeahorse, FractalSpiral, FractalTendril, FractalLightning, */
+  /* FractalElephant, FractalMini, FractalSatellite, */
   FractalJulia, RadarSweepPanel,
 ]
+
 
 // ── Zufallslayout-Generator ───────────────────────────────────────────────────
 
@@ -407,8 +408,8 @@ function LayoutContent({ layout }: { layout: GeneratedLayout }) {
         >
           {/* Zellinhalt je nach Typ */}
           {cell.type === 'fractal' && <FractalView />}
-          {cell.type === 'text'    && <PanelSlot pool={POOL_TEXT} className="h-full" layoutId={layout.id.toString()} />}
-          {cell.type === 'gfx'     && <PanelSlot pool={POOL_GFX}  className="h-full" layoutId={layout.id.toString()} />}
+          {cell.type === 'text'    && <PanelSlot key={`${layout.id}-text-${i}`} pool={POOL_TEXT} className="h-full" layoutId={layout.id.toString()} />}
+          {cell.type === 'gfx'     && <PanelSlot key={`${layout.id}-gfx-${i}`} pool={POOL_GFX}  className="h-full" layoutId={layout.id.toString()} />}
         </div>
       ))}
     </div>
