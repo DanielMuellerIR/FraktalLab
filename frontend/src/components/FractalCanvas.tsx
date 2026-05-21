@@ -41,15 +41,18 @@ export default function FractalCanvas() {
 
     let cancelled = false
 
-    // Dynamisch an Container anpassen (max 800×600 für Performance)
-    const MAX_W = 800
-    const MAX_H = 600
+    // Canvas-Auflösung exakt an Container anpassen (kein Seitenverhältnis-Verzerrung).
+    // Pixel-Budget begrenzt die Gesamtpixel für Performance, nicht W/H einzeln.
+    const MAX_PIXELS = 480000; // ~800×600 Budget
 
     const syncSize = () => {
       const cw = container.clientWidth  || 300
       const ch = container.clientHeight || 200
-      const w = Math.min(MAX_W, cw)
-      const h = Math.min(MAX_H, ch)
+      // Skaliere proportional herunter wenn über Budget
+      const pixels = cw * ch
+      const scale = pixels > MAX_PIXELS ? Math.sqrt(MAX_PIXELS / pixels) : 1
+      const w = Math.round(cw * scale)
+      const h = Math.round(ch * scale)
       if (canvas.width !== w || canvas.height !== h) {
         canvas.width  = w
         canvas.height = h
