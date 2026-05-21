@@ -444,6 +444,7 @@ function makeVoxelScene(
 
       // Wiederverwendbares OffscreenCanvas für die interne Niedrig-Auflösung
       const offscreen = document.createElement('canvas')
+      let cachedImg: ImageData | null = null
 
       function loop(t: number) {
         if (!running) return
@@ -471,12 +472,9 @@ function makeVoxelScene(
         if (offscreen.width !== W || offscreen.height !== H) {
           offscreen.width  = W
           offscreen.height = H
+          cachedImg = null
         }
         const offCtx = offscreen.getContext('2d')!
-
-        // ImageData pro Frame neu anlegen (Größe kann sich geändert haben)
-        const img = offCtx.createImageData(W, H)
-        const buf = img.data
 
         // Horizon dynamisch aus H berechnen (opts.horizon ignoriert für dynamischen H)
         const horizon = H * 0.42
@@ -637,6 +635,12 @@ function makeVoxelScene(
           rafId = requestAnimationFrame(loop)
           return
         }
+
+        if (!cachedImg) {
+          cachedImg = offCtx.createImageData(W, H)
+        }
+        const img = cachedImg
+        const buf = img.data
 
         // Himmel: fast schwarz mit leichtem Gradient nach oben
         for (let y = 0; y < H; y++) {

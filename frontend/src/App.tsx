@@ -36,7 +36,7 @@ import DNAHelix          from './panels/DNAHelix'
 import OscilloscopePanel from './panels/OscilloscopePanel'
 import {
   FireScene, StarfieldScene, TunnelScene, RotozoomScene,
-  MetaballsScene, DotCloudScene, BoingScene, LissajousScene,
+  MetaballsScene, DotCloudScene, ThreeBodyScene, LissajousScene,
 } from './panels/DemoScenes'
 import ParallaxPanel     from './panels/ParallaxPanel'
 import ElitePanel        from './panels/ElitePanel'
@@ -64,7 +64,7 @@ const POOL_TEXT: React.ComponentType[] = [
 const POOL_GFX: React.ComponentType[] = [
   VoxelDemoColor, VoxelDemoBW, /* GlobePanel, */ VoxelThermal, VoxelLava, VoxelNeon, /* VoxelMatrix, */
 
-  FireScene, StarfieldScene, BoingScene, /* LissajousScene, */
+  FireScene, StarfieldScene, ThreeBodyScene, /* LissajousScene, */
   /* OscilloscopePanel, */ TunnelScene, MetaballsScene, RotozoomScene, DotCloudScene,
   PlasmaDemo, DNAHelix, EnhanceView, AllYourBase,
   ParallaxPanel, ElitePanel, AmiModPanel, CADRobotPanel, C64Panel, RetroErrorPanel, SolarSystemPanel,
@@ -332,7 +332,7 @@ function generateLayout(id: number): GeneratedLayout {
 const ALL_PANELS: { name: string; Component: React.ComponentType }[] = [
   // --- Recently Modified/Improved Panels (Page 1) ---
   { name: 'AmiModPanel',        Component: AmiModPanel },
-  { name: 'BoingScene',         Component: BoingScene },
+  { name: 'ThreeBodyScene',     Component: ThreeBodyScene },
   { name: 'FireScene',          Component: FireScene },
   { name: 'LissajousScene',     Component: LissajousScene },
 

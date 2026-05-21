@@ -37,11 +37,23 @@ function renderVoxelColor(
   ctx: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
   camX: number, camY: number, angle: number, camH: number, t: number,
+  offscreen: HTMLCanvasElement,
+  cache: { img: ImageData | null },
 ) {
   const W = Math.min(canvas.width,  400)
   const H = Math.min(canvas.height, Math.round(400 * canvas.height / Math.max(canvas.width, 1)))
 
-  const img = ctx.createImageData(W, H)
+  if (offscreen.width !== W || offscreen.height !== H) {
+    offscreen.width = W
+    offscreen.height = H
+    cache.img = null
+  }
+
+  const offCtx = offscreen.getContext('2d')!
+  if (!cache.img) {
+    cache.img = offCtx.createImageData(W, H)
+  }
+  const img = cache.img
   const buf = img.data
 
   const horizon = H * 0.42
@@ -112,11 +124,8 @@ function renderVoxelColor(
     }
   }
 
-  const tmpCanvas = document.createElement('canvas')
-  tmpCanvas.width  = W
-  tmpCanvas.height = H
-  tmpCanvas.getContext('2d')!.putImageData(img, 0, 0)
-  ctx.drawImage(tmpCanvas, 0, 0, canvas.width, canvas.height)
+  offCtx.putImageData(img, 0, 0)
+  ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height)
 }
 
 // ── Voxel B&W Renderer ───────────────────────────────────────────────────────
@@ -124,11 +133,23 @@ function renderVoxelBW(
   ctx: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
   camX: number, camY: number, angle: number, camH: number,
+  offscreen: HTMLCanvasElement,
+  cache: { img: ImageData | null },
 ) {
   const W = Math.min(canvas.width,  400)
   const H = Math.min(canvas.height, Math.round(400 * canvas.height / Math.max(canvas.width, 1)))
 
-  const img = ctx.createImageData(W, H)
+  if (offscreen.width !== W || offscreen.height !== H) {
+    offscreen.width = W
+    offscreen.height = H
+    cache.img = null
+  }
+
+  const offCtx = offscreen.getContext('2d')!
+  if (!cache.img) {
+    cache.img = offCtx.createImageData(W, H)
+  }
+  const img = cache.img
   const buf = img.data
 
   const horizon = H * 0.42
@@ -187,11 +208,8 @@ function renderVoxelBW(
     }
   }
 
-  const tmpCanvas = document.createElement('canvas')
-  tmpCanvas.width  = W
-  tmpCanvas.height = H
-  tmpCanvas.getContext('2d')!.putImageData(img, 0, 0)
-  ctx.drawImage(tmpCanvas, 0, 0, canvas.width, canvas.height)
+  offCtx.putImageData(img, 0, 0)
+  ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height)
 }
 
 // ── Voxel Demo Color Panel Component ─────────────────────────────────────────
@@ -209,6 +227,9 @@ export function VoxelDemoColor() {
     if (!canvas) return
     const ctx = canvas.getContext('2d')!
     if (!ctx) return
+
+    const offscreen = document.createElement('canvas')
+    const cache = { img: null as ImageData | null }
 
     let rafId: number
     let running = true
@@ -267,7 +288,7 @@ export function VoxelDemoColor() {
       const terrainAtCam = heightmap[ty * HMAP + tx]
       const camH = Math.max(terrainAtCam + 70, 110 + 30 * Math.sin(t * 0.0004))
 
-      renderVoxelColor(ctx, canvas!, c.x, c.y, c.angle, camH, t)
+      renderVoxelColor(ctx, canvas!, c.x, c.y, c.angle, camH, t, offscreen, cache)
       rafId = requestAnimationFrame(loop)
     }
 
@@ -305,6 +326,9 @@ export function VoxelDemoBW() {
     if (!canvas) return
     const ctx = canvas.getContext('2d')!
     if (!ctx) return
+
+    const offscreen = document.createElement('canvas')
+    const cache = { img: null as ImageData | null }
 
     let rafId: number
     let running = true
@@ -363,7 +387,7 @@ export function VoxelDemoBW() {
       const terrainAtCam = heightmap[ty * HMAP + tx]
       const camH = Math.max(terrainAtCam + 75, 115 + 25 * Math.cos(t * 0.0003))
 
-      renderVoxelBW(ctx, canvas!, c.x, c.y, c.angle, camH)
+      renderVoxelBW(ctx, canvas!, c.x, c.y, c.angle, camH, offscreen, cache)
       rafId = requestAnimationFrame(loop)
     }
 

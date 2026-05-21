@@ -92,6 +92,8 @@ function makeScene(
       const { W: initW, H: initH } = getInternalSize()
       stateRef.current = mkState(initW, initH)
 
+      let img: ImageData | null = null
+
       function loop(t: number) {
         if (!alive) return
         // Panel nicht sichtbar → Frame überspringen, aber Loop fortsetzen
@@ -111,10 +113,13 @@ function makeScene(
           offscreen.height = H
           // Zustand bei Größenänderung neu initialisieren (z.B. Buffer-Arrays)
           stateRef.current = mkState(W, H)
+          img = null
         }
 
         const offCtx = offscreen.getContext('2d')!
-        const img = offCtx.createImageData(W, H)
+        if (!img) {
+          img = offCtx.createImageData(W, H)
+        }
 
         // Render-Callback füllt img.data mit RGBA-Pixeln
         draw(img.data, W, H, t, stateRef.current)
@@ -765,15 +770,8 @@ export function DotCloudScene() {
   )
 }
 
-// ── Effekt 7: Boing — klassischer Amiga-Demo-Ball mit Voll-3D-Rotation ────────
-// Verbesserungen gegenüber v0.9.3:
-//   - Ball rotiert um alle 3 Achsen gleichzeitig (separate Winkelgeschwindigkeiten
-//     für X, Y, Z, die sich langsam über die Zeit verändern)
-//   - Horizontales Abprallen (X-Richtung) zusätzlich zum vertikalen Hüpfen
-//   - Schachbrettmuster folgt der 3D-Rotation korrekt
-// Performance-Cap: max 200×150.
-
-type BoingBall = {
+// ── Effekt 7: Three Body Problem — klassische 3D-Kugeln mit Orbit-Vektoren ────
+type ThreeBodyBall = {
   bx:      number
   by:      number
   vbx:     number
@@ -786,56 +784,16 @@ type BoingBall = {
   omegaZ:  number
 }
 
-type BoingState = {
-  balls: BoingBall[]
+type ThreeBodyState = {
+  balls: ThreeBodyBall[]
   lastT: number
-  startTime: number
 }
 
-export const BoingScene = makeScene(
-  'OBJECT 7 // TRAJECTORY STABLE', 200, 150,
-  (W, H): BoingState => {
-    const angleX = Math.random() * Math.PI * 2
-    const angleY = Math.random() * Math.PI * 2
-    const angleZ = Math.random() * Math.PI * 2
-    const omegaX = 0.0005 + Math.random() * 0.001
-    const omegaY = 0.0005 + Math.random() * 0.001
-    const omegaZ = 0.0005 + Math.random() * 0.001
-    const angle = Math.random() * Math.PI * 2
-    const speed = 0.04 + Math.random() * 0.06
-
-    return {
-      balls: [
-        {
-          bx: W * 0.2 + Math.random() * W * 0.6,
-          by: H * 0.2 + Math.random() * H * 0.6,
-          vbx: Math.cos(angle) * speed,
-          vby: Math.sin(angle) * speed,
-          angleX,
-          angleY,
-          angleZ,
-          omegaX,
-          omegaY,
-          omegaZ,
-        }
-      ],
-      lastT: -1,
-      startTime: -1,
-    }
-  },
-  (buf, W, H, t, state: BoingState) => {
-    const dt = state.lastT < 0 ? 16 : Math.min(t - state.lastT, 50)
-    state.lastT = t
-
-    if (state.startTime === -1) {
-      state.startTime = t
-    }
-
-    const elapsed = t - state.startTime
-    const desiredCount = Math.min(5, 1 + Math.floor(elapsed / 10000))
-    const rad = Math.min(W, H) * 0.12
-
-    while (state.balls.length < desiredCount) {
+export const ThreeBodyScene = makeScene(
+  'THREE BODY PROBLEM // CHAOTIC RESONANCE', 200, 150,
+  (W, H): ThreeBodyState => {
+    const balls: ThreeBodyBall[] = []
+    for (let i = 0; i < 3; i++) {
       const angleX = Math.random() * Math.PI * 2
       const angleY = Math.random() * Math.PI * 2
       const angleZ = Math.random() * Math.PI * 2
@@ -844,7 +802,7 @@ export const BoingScene = makeScene(
       const omegaZ = 0.0005 + Math.random() * 0.001
       const angle = Math.random() * Math.PI * 2
       const speed = 0.04 + Math.random() * 0.06
-      state.balls.push({
+      balls.push({
         bx: W * 0.2 + Math.random() * W * 0.6,
         by: H * 0.2 + Math.random() * H * 0.6,
         vbx: Math.cos(angle) * speed,
@@ -857,6 +815,16 @@ export const BoingScene = makeScene(
         omegaZ,
       })
     }
+    return {
+      balls,
+      lastT: -1,
+    }
+  },
+  (buf, W, H, t, state: ThreeBodyState) => {
+    const dt = state.lastT < 0 ? 16 : Math.min(t - state.lastT, 50)
+    state.lastT = t
+
+    const rad = Math.min(W, H) * 0.12
 
     // 1. Move and bounce balls off boundaries
     for (const ball of state.balls) {
@@ -931,10 +899,26 @@ export const BoingScene = makeScene(
     buf.fill(0)
     for (let i = 3; i < buf.length; i += 4) buf[i] = 255
 
+    const rad2 = rad * rad
+    const invRad = 1 / rad
+
     for (const ball of state.balls) {
       const cX = Math.cos(ball.angleX), sX = Math.sin(ball.angleX)
       const cY = Math.cos(ball.angleY), sY = Math.sin(ball.angleY)
       const cZ = Math.cos(ball.angleZ), sZ = Math.sin(ball.angleZ)
+
+      // 3x3 rotation matrix coefficients
+      const m00 = cY * cZ
+      const m01 = sX * sY * cZ + cX * sZ
+      const m02 = -cX * sY * cZ + sX * sZ
+
+      const m10 = -cY * sZ
+      const m11 = -sX * sY * sZ + cX * cZ
+      const m12 = cX * sY * sZ + sX * cZ
+
+      const m20 = sY
+      const m21 = -sX * cY
+      const m22 = cX * cY
 
       const xMin = Math.max(0, Math.floor(ball.bx - rad))
       const xMax = Math.min(W - 1, Math.ceil(ball.bx + rad))
@@ -945,27 +929,41 @@ export const BoingScene = makeScene(
         for (let x = xMin; x <= xMax; x++) {
           const dx = x - ball.bx, dy = y - ball.by
           const d2 = dx * dx + dy * dy
-          if (d2 > rad * rad) continue
+          if (d2 > rad2) continue
 
-          // Sphere normal in camera space
-          const nz0 = Math.sqrt(Math.max(0, 1 - d2 / (rad * rad)))
-          const nx0 = dx / rad, ny0 = dy / rad
+          const nz_sqrt = Math.sqrt(rad2 - d2)
 
-          // Rotate normal back to get object-space coordinates
-          const ny1 = ny0 * cX + nz0 * sX
-          const nz1 = -ny0 * sX + nz0 * cX
-          const nx2 = nx0 * cY - nz1 * sY
-          const nz2 = nx0 * sY + nz1 * cY
-          const nx3 = nx2 * cZ + ny1 * sZ
-          const ny3 = -nx2 * sZ + ny1 * cZ
+          const nx3 = dx * m00 + dy * m01 + nz_sqrt * m02
+          const ny3 = dx * m10 + dy * m11 + nz_sqrt * m12
+          const nz2 = (dx * m20 + dy * m21 + nz_sqrt * m22) * invRad
 
-          // Checkerboard pattern
-          const ua = Math.atan2(ny3, nx3) / (Math.PI / 3)
-          const ub = Math.asin(Math.max(-1, Math.min(1, nz2))) / (Math.PI / 3)
-          const checker = ((Math.floor(ua) + Math.floor(ub)) & 1)
+          // Checkerboard pattern: Math.asin and Math.atan2 replacements
+          let floorUb = 0
+          if (nz2 < 0) {
+            floorUb = nz2 < -0.8660254 ? -2 : -1
+          } else {
+            floorUb = nz2 >= 0.8660254 ? 1 : 0
+          }
+
+          let floorUa = 0
+          const s1 = ny3 > 0
+          const s2 = ny3 > 1.7320508 * nx3
+          const s3 = ny3 > -1.7320508 * nx3
+
+          if (s1) {
+            if (!s2) floorUa = 0
+            else if (s3) floorUa = 1
+            else floorUa = 2
+          } else {
+            if (s2) floorUa = -3
+            else if (!s3) floorUa = -2
+            else floorUa = -1
+          }
+
+          const checker = (floorUa + floorUb) & 1
 
           // Light intensity
-          const light = Math.max(0.15, 0.4 * nx0 - 0.3 * ny0 + 0.85 * nz0)
+          const light = Math.max(0.15, (0.4 * dx - 0.3 * dy + 0.85 * nz_sqrt) * invRad)
           const c = Math.round(light * 255)
 
           const pi = (y * W + x) * 4
@@ -983,6 +981,28 @@ export const BoingScene = makeScene(
       }
     }
   },
+  (offCtx, _W, _H, _t, state: ThreeBodyState) => {
+    const { balls } = state
+    if (balls.length < 3) return
+
+    // Draw gravity connection vectors
+    offCtx.strokeStyle = 'rgba(74, 222, 128, 0.45)'
+    offCtx.lineWidth = 1.0
+    offCtx.beginPath()
+    offCtx.moveTo(balls[0].bx, balls[0].by)
+    offCtx.lineTo(balls[1].bx, balls[1].by)
+    offCtx.lineTo(balls[2].bx, balls[2].by)
+    offCtx.closePath()
+    offCtx.stroke()
+
+    // Draw dynamic labels showing center gravity index
+    offCtx.fillStyle = 'rgba(74, 222, 128, 0.85)'
+    offCtx.font = 'bold 7px monospace'
+    for (let i = 0; i < 3; i++) {
+      const b = balls[i]
+      offCtx.fillText(`M-${i+1}`, b.bx + 10, b.by - 10)
+    }
+  }
 )
 
 // ── Effekt 8: Lissajous — animierte Kurve mit Nachleucht-Spur ────────────────

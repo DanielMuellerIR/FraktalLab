@@ -93,6 +93,7 @@ export default function PlasmaDemo() {
 
     // Wiederverwendbares OffscreenCanvas für die interne Niedrig-Auflösung
     const offscreen = document.createElement('canvas')
+    let cachedImg: ImageData | null = null
 
     function loop(t: number) {
       if (!running) return
@@ -116,9 +117,13 @@ export default function PlasmaDemo() {
       if (offscreen.width !== W || offscreen.height !== H) {
         offscreen.width  = W
         offscreen.height = H
+        cachedImg = null
       }
       const offCtx = offscreen.getContext('2d')!
-      const img = offCtx.createImageData(W, H)
+      if (!cachedImg) {
+        cachedImg = offCtx.createImageData(W, H)
+      }
+      const img = cachedImg
       const d = img.data
 
       // Alle 10 Sekunden wechselt die Plasma-Wellenform (3 Modi)
