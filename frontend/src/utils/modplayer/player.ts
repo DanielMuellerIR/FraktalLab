@@ -42,7 +42,7 @@ export class ModPlayer {
   }
 
   /// Loads an Amiga ProTracker MOD file from a given url
-  async load(url: string, workletUrl: string = '/audio/mod-player-worklet.js') {
+  async load(url: string, workletUrl: string = 'audio/mod-player-worklet.js') {
     if (this[WORKLET]) this.unload(false);
 
     this.mod = await loadMod(url);
