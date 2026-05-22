@@ -1,5 +1,63 @@
 import { loadMod } from './loader';
 import { Mod } from './mod';
+import { FallbackModPlayerProcessor } from './fallback-processor';
+import { getSharedAudioContext } from '../shared-audio';
+
+class FallbackWorkletNode {
+  private scriptNode: ScriptProcessorNode;
+  private processor: FallbackModPlayerProcessor;
+  public port: {
+    postMessage: (data: any) => void;
+    onmessage: ((event: MessageEvent) => void) | null;
+  };
+
+  constructor(audioContext: AudioContext) {
+    this.processor = new FallbackModPlayerProcessor();
+    // 4096 provides a stable buffer on mobile devices to prevent stuttering
+    // We request 2 input channels as iOS WebKit can silence 0-input nodes.
+    this.scriptNode = audioContext.createScriptProcessor(4096, 2, 2);
+
+    const self = this;
+    let onMessageCallback: ((event: MessageEvent) => void) | null = null;
+
+    this.port = {
+      postMessage(data: any) {
+        self.processor.onmessage({ data });
+      },
+      set onmessage(callback: ((event: MessageEvent) => void) | null) {
+        onMessageCallback = callback;
+        if (callback) {
+          self.processor.onportmessage = (event: any) => {
+            callback({ data: event.data } as MessageEvent);
+          };
+        } else {
+          self.processor.onportmessage = null;
+        }
+      },
+      get onmessage() {
+        return onMessageCallback;
+      }
+    };
+
+    this.scriptNode.onaudioprocess = (event) => {
+      const outputBuffer = event.outputBuffer;
+      const left = outputBuffer.getChannelData(0);
+      const right = outputBuffer.getChannelData(1);
+      this.processor.process(null, [[left, right]]);
+    };
+  }
+
+  connect(destination: AudioNode): AudioNode {
+    this.scriptNode.connect(destination);
+    return destination;
+  }
+
+  disconnect() {
+    this.scriptNode.disconnect();
+    this.scriptNode.onaudioprocess = null;
+    this.processor.onportmessage = null;
+  }
+}
 
 const AUDIO = Symbol('audio');
 const GAIN = Symbol('gain');
@@ -31,11 +89,14 @@ export class ModPlayer {
   public playing: boolean = false;
   private [AUDIO]: AudioContext | null = null;
   private [GAIN]: GainNode | null = null;
-  private [WORKLET]: AudioWorkletNode | null = null;
+  private [WORKLET]: AudioWorkletNode | FallbackWorkletNode | null = null;
   private [ROW_CALLBACKS]: ((position: number, row: number) => void)[] = [];
   private [SINGLE_CALLBACKS]: Record<string, (() => void)[]> = {};
   private [STOP_CALLBACKS]: (() => void)[] = [];
   private [ALL_NOTES_CALLBACKS]: ((note: { channel: number; sample: number; volume: number; note: number | null }) => void)[] = [];
+
+  private volume: number = 0.3;
+  private workletUrl: string = 'audio/mod-player-worklet.js';
 
   constructor(audioContext?: AudioContext) {
     this[AUDIO] = audioContext || null;
@@ -43,31 +104,91 @@ export class ModPlayer {
 
   /// Loads an Amiga ProTracker MOD file from a given url
   async load(url: string, workletUrl: string = 'audio/mod-player-worklet.js') {
-    if (this[WORKLET]) this.unload(false);
+    this.unload(false);
 
+    this.workletUrl = workletUrl;
     this.mod = await loadMod(url);
-    if (!this[AUDIO]) this[AUDIO] = new AudioContext();
-    
+  }
+
+  private async setupAudio(workletUrl: string) {
+    if (this[WORKLET]) return; // Already setup
+
+    if (!this[AUDIO]) this[AUDIO] = getSharedAudioContext();
+    const ctx = this[AUDIO]!;
+
+    // Ensure the AudioContext is running
+    if (ctx.state === 'suspended') {
+      try {
+        await ctx.resume();
+      } catch (err) {
+        console.warn('Failed to resume AudioContext during setup:', err);
+      }
+    }
+
+    // Try iOS AudioContext unlock
+    try {
+      const buffer = ctx.createBuffer(1, 1, 22050);
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start(0);
+    } catch (e) {
+      console.warn('Failed to play dummy buffer for iOS unlock in setupAudio:', e);
+    }
+
     if (this[GAIN]) {
       try {
         this[GAIN].disconnect();
       } catch (_) {}
     }
-    this[GAIN] = this[AUDIO].createGain();
-    this[GAIN].gain.value = 0.3;
-    
-    // We add the AudioWorklet module using the local worklet path
-    const audioCtx = this[AUDIO] as any;
-    if (!audioCtx.__workletAdded) {
-      await audioCtx.audioWorklet.addModule(workletUrl);
-      audioCtx.__workletAdded = true;
-    }
-    this[WORKLET] = new AudioWorkletNode(this[AUDIO], 'mod-player-worklet', {
-      outputChannelCount: [2]
-    });
-    this[WORKLET].connect(this[GAIN]).connect(this[AUDIO].destination);
+    this[GAIN] = ctx.createGain();
+    this[GAIN].gain.value = this.volume;
 
-    this[WORKLET].port.onmessage = this.onmessage.bind(this);
+    // AudioWorklet-Verfügbarkeit prüfen
+    const audioCtx = ctx as any;
+    let useFallback = !audioCtx.audioWorklet;
+
+    if (!useFallback) {
+      try {
+        if (!audioCtx.__workletAdded) {
+          // iOS WebKit (inkl. Firefox/Chrome iOS) löst relative URLs in addModule() nicht korrekt auf.
+          // Daher immer eine absolute URL erzeugen — egal ob workletUrl relativ oder absolut übergeben wird.
+          const absoluteWorkletUrl = new URL(workletUrl, window.location.href).href;
+          await audioCtx.audioWorklet.addModule(absoluteWorkletUrl);
+          audioCtx.__workletAdded = true;
+        }
+        this[WORKLET] = new AudioWorkletNode(ctx, 'mod-player-worklet', {
+          outputChannelCount: [2]
+        });
+      } catch (err) {
+        console.warn('Failed to initialize AudioWorklet, falling back to ScriptProcessor:', err);
+        useFallback = true;
+      }
+    }
+
+    if (useFallback) {
+      this[WORKLET] = new FallbackWorkletNode(ctx);
+    }
+    this[WORKLET]!.connect(this[GAIN]!).connect(this[AUDIO]!.destination);
+
+    this[WORKLET]!.port.onmessage = this.onmessage.bind(this);
+
+    // Re-register subscriptions on the newly created worklet
+    if (this[ROW_CALLBACKS].length > 0 || Object.keys(this[SINGLE_CALLBACKS]).length > 0) {
+      this[WORKLET]!.port.postMessage({
+        type: 'enableRowSubscription'
+      });
+    }
+    if (this[STOP_CALLBACKS].length > 0) {
+      this[WORKLET]!.port.postMessage({
+        type: 'enableStopSubscription'
+      });
+    }
+    if (this[ALL_NOTES_CALLBACKS].length > 0) {
+      this[WORKLET]!.port.postMessage({
+        type: 'enableNoteSubscription'
+      });
+    }
   }
 
   onmessage(event: MessageEvent) {
@@ -151,27 +272,16 @@ export class ModPlayer {
   }
 
   /// Unloads a MOD file and removes all subscriptions
-  unload(closeContext: boolean = true) {
+  unload(_closeContext: boolean = false) {
     if (this.playing) this.stop();
-    if (!this[WORKLET]) {
-      if (closeContext && this[AUDIO]) {
-        this[AUDIO].close();
-        this[AUDIO] = null;
-      }
-      return;
+    if (this[WORKLET]) {
+      try {
+        this[WORKLET]!.disconnect();
+      } catch (_) {}
     }
-
-    this[WORKLET].disconnect();
     
-    if (closeContext && this[AUDIO]) {
-      this[AUDIO].close();
-    }
-
     this.mod = null;
     this[WORKLET] = null;
-    if (closeContext) {
-      this[AUDIO] = null;
-    }
     this[ROW_CALLBACKS] = [];
     this[SINGLE_CALLBACKS] = {};
     this[ALL_NOTES_CALLBACKS] = [];
@@ -180,19 +290,34 @@ export class ModPlayer {
 
   resumeContext() {
     if (!this[AUDIO]) {
-      this[AUDIO] = new AudioContext();
+      this[AUDIO] = getSharedAudioContext();
     }
-    if (this[AUDIO] && this[AUDIO].state === 'suspended') {
-      this[AUDIO].resume().catch(() => {});
+    if (this[AUDIO]) {
+      if (this[AUDIO].state === 'suspended') {
+        this[AUDIO].resume().catch(() => {});
+      }
+      // iOS Web Audio unlock: Play a silent dummy buffer source on user gesture.
+      try {
+        const ctx = this[AUDIO];
+        const buffer = ctx.createBuffer(1, 1, 22050);
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.start(0);
+      } catch (e) {
+        console.warn('Failed to play dummy buffer for iOS unlock:', e);
+      }
     }
   }
 
   /// Starts the playback of a MOD file from position 0, row 0
-  play() {
+  async play() {
     if (this.playing) return;
+    
+    await this.setupAudio(this.workletUrl);
     if (!this[WORKLET]) return;
 
-    this[AUDIO]?.resume();
+    this.resumeContext();
     this[WORKLET].port.postMessage({
       type: 'play',
       mod: this.mod,
@@ -215,8 +340,10 @@ export class ModPlayer {
   }
 
   /// Resumes the playback of a MOD file from the last stop() position
-  resume() {
+  async resume() {
     if (this.playing) return;
+    
+    await this.setupAudio(this.workletUrl);
     if (!this[WORKLET]) return;
 
     this[WORKLET].port.postMessage({
@@ -239,6 +366,7 @@ export class ModPlayer {
 
   /// Sets the playback volume
   setVolume(volume: number) {
+    this.volume = volume;
     if (this[GAIN]) {
       this[GAIN].gain.value = volume;
     }

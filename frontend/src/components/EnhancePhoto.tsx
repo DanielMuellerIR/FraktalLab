@@ -27,7 +27,9 @@ const HOLD_MS = 2000
 
 // Lokale Dateien (6 Fotos) + loremflickr ausschließlich mit Großstadt-Menschen-Keywords.
 // Kein Natur/Wald — nur urbane Settings mit Menschen in der Öffentlichkeit.
-const LOCAL = [0, 1, 2, 3, 4, 5].map(i => `/enhance/street-${i}.jpg`)
+// BASE_URL nötig für Unterordner-Deployment (z. B. /fraktallab/) — root-relative Pfade würden auf den Server-Root zeigen.
+const BASE = import.meta.env.BASE_URL
+const LOCAL = [0, 1, 2, 3, 4, 5].map(i => `${BASE}enhance/street-${i}.jpg`)
 const UNSPLASH_IDS = [
   '1477959858617-67f85cf4f1df', // Chicago skyline night
   '1480714378408-67cf0d13bc1b', // Detroit skyline

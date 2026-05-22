@@ -15,11 +15,12 @@
 </FilesMatch>
 
 <IfModule mod_rewrite.c>
-    # Falls du React/React-Router nutzt (SPA), leitet dies alle Anfragen auf die index.html um
+    # SPA-Routing: unbekannte Pfade auf index.html im selben Verzeichnis umleiten.
+    # Relativer Pfad "index.html" (kein führender Slash!) wird von Apache relativ
+    # zum Verzeichnis dieser .htaccess aufgelöst → funktioniert in jedem Unterordner.
     RewriteEngine On
-    RewriteBase /
     RewriteRule ^index\.html$ - [L]
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteRule . /index.html [L]
+    RewriteRule ^ index.html [L]
 </IfModule>

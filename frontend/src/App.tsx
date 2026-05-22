@@ -4,6 +4,7 @@ import FractalView   from './panels/FractalView'
 import GlitchOverlay from './ui/GlitchOverlay'
 import AmbientSound  from './ui/AmbientSound'
 import Panel         from './ui/Panel'
+import { getSharedAudioContext } from './utils/shared-audio'
 
 // ── Text-Panels ───────────────────────────────────────────────────────────────
 import SystemLog         from './panels/SystemLog'
@@ -496,6 +497,21 @@ export default function App() {
 
   const [mobileIndices, setMobileIndices] = useState(() => generateMobileIndices())
 
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 768
+    }
+    return false
+  })
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
   const handleSkipSlot = useCallback((slotIndex: number) => {
     setLayout(curr => {
       const cell = curr.cells[slotIndex]
@@ -737,12 +753,30 @@ export default function App() {
 
         {/* Ambient-Sound-Toggle */}
         <button
-          onClick={() => setSoundEnabled(e => !e)}
+          onClick={() => {
+            if (!soundEnabled) {
+              // AudioContext im User-Gesture-Callstack vorab aufwecken/erstellen
+              try {
+                const ctx = getSharedAudioContext()
+                if (ctx.state === 'suspended') {
+                  ctx.resume().catch(() => {})
+                }
+                const buffer = ctx.createBuffer(1, 1, 22050)
+                const source = ctx.createBufferSource()
+                source.buffer = buffer
+                source.connect(ctx.destination)
+                source.start(0)
+              } catch (e) {
+                console.warn('Failed to unlock AudioContext on click:', e)
+              }
+            }
+            setSoundEnabled(e => !e)
+          }}
           title="Ambient Sound umschalten"
           className="border border-green-800 text-green-600 text-xs px-2 py-0.5
                      hover:border-green-600 hover:text-green-200 transition-colors"
         >
-          {soundEnabled ? '[ AUDIO ON ]' : '[ AUDIO OFF ]'}
+          {soundEnabled ? 'AUDIO ON' : 'AUDIO OFF'}
         </button>
 
         {/* Layout-Wechsel-Button — nur auf Desktop, im Review-Modus ausgeblendet */}
@@ -753,28 +787,28 @@ export default function App() {
             className="hidden md:inline-flex border border-green-800 text-green-600 text-xs px-2 py-0.5
                        hover:border-green-600 hover:text-green-200 transition-colors"
           >
-            [ ⟳ LAYOUT ]
+            ⟳ LAYOUT
           </button>
         )}
 
-        {/* Review-Modus-Button — nur auf Desktop sichtbar, zeigt EXIT wenn aktiv, sonst [?] */}
+        {/* Review-Modus-Button — auf allen Geräten sichtbar, zeigt EXIT wenn aktiv, sonst [?] */}
         {reviewMode ? (
           <button
             onClick={() => setReviewMode(false)}
             title="Review-Modus beenden"
-            className="hidden md:inline-flex border border-red-800 text-red-600 text-xs px-2 py-0.5
-                       hover:border-red-500 hover:text-red-300 transition-colors"
+            className="inline-flex border border-red-800 text-red-600 text-xs px-2 py-0.5
+                       hover:border-red-500 hover:text-red-300 transition-colors cursor-pointer"
           >
-            [ ✕ EXIT REVIEW ]
+            ✕ EXIT REVIEW
           </button>
         ) : (
           <button
             onClick={enterReview}
             title="Panel Review-Modus öffnen"
-            className="hidden md:inline-flex border border-green-800 text-green-600 text-xs px-2 py-0.5
-                       hover:border-green-600 hover:text-green-200 transition-colors"
+            className="inline-flex border border-green-800 text-green-600 text-xs px-2 py-0.5
+                       hover:border-green-600 hover:text-green-200 transition-colors cursor-pointer"
           >
-            [ ? ]
+            ?
           </button>
         )}
       </header>
@@ -782,131 +816,106 @@ export default function App() {
       {/* Haupt-Content */}
       <main className="flex-1 min-h-0 overflow-hidden relative">
 
-        {/* ── Mobile Layout — nur unter 768px sichtbar ── */}
-        <div className="md:hidden flex flex-col gap-1 h-full p-1">
-          {/* Panel 1: gemischter Pool aus Text und GFX */}
-          <div className="flex-1 min-h-0">
-            <PanelSlot
-              pool={[...POOL_TEXT, ...POOL_GFX]}
-              activeIdx={mobileIndices.combinedIdx}
-              onSkip={() => handleSkipMobileSlot(0)}
-              className="h-full"
-            />
-          </div>
-          {/* Panel 2: Grafik-Panel */}
-          <div className="flex-1 min-h-0">
-            <PanelSlot
-              pool={POOL_GFX}
-              activeIdx={mobileIndices.gfxIdx}
-              onSkip={() => handleSkipMobileSlot(1)}
-              className="h-full"
-            />
-          </div>
-          {/* Panel 3: Text-Panel */}
-          <div className="flex-1 min-h-0">
-            <PanelSlot
-              pool={POOL_TEXT}
-              activeIdx={mobileIndices.textIdx}
-              onSkip={() => handleSkipMobileSlot(2)}
-              className="h-full"
-            />
-          </div>
-        </div>
-
-        {/* ── Desktop Layout — ab 768px sichtbar ── */}
-        <div className="hidden md:contents">
-
         {reviewMode ? (
-          /* ── Review-Modus: vier Panels gleichzeitig im 2x2 Grid + Bewertungsleiste ── */
+          /* ── Gemeinsamer Review-Modus für Desktop und Mobile ── */
           <div className="h-full flex flex-col p-1 gap-1">
 
-            {/* Panel-Container — nimmt ~85% der Höhe */}
-            <div className="flex-1 min-h-0 grid grid-cols-2 grid-rows-2 gap-1 bg-black">
-              {[0, 1, 2, 3].map(offset => {
-                const pageStartIdx = Math.floor(reviewIdx / 4) * 4
-                const idx = pageStartIdx + offset
-                if (idx < totalPanels) {
-                  const panel = ALL_PANELS[idx]
-                  const Comp = panel.Component
-                  const isActive = idx === reviewIdx
-                  return (
-                    <div
-                      key={panel.name}
-                      className={`min-h-0 min-w-0 relative flex flex-col transition-all duration-200 cursor-pointer ${
-                        isActive ? 'ring-2 ring-green-500 border border-green-500 z-10' : 'opacity-65 hover:opacity-95'
-                      }`}
-                      onClick={() => goToPanel(idx)}
-                    >
-                      <Panel
-                        title={`REVIEW // ${panel.name} [${idx + 1}/${totalPanels}]`}
-
-                        className={isActive ? 'border-green-500' : ''}
-                      >
+            {/* Panel-Container — nimmt den Hauptteil der Höhe ein */}
+            <div className="flex-1 min-h-0 bg-black">
+              {isMobile ? (
+                /* Auf Mobile (unter 768px) rendern wir NUR das eine aktive Panel */
+                <div className="h-full flex flex-col">
+                  {(() => {
+                    const panel = ALL_PANELS[reviewIdx]
+                    const Comp = panel.Component
+                    return (
+                      <Panel title={`REVIEW // ${panel.name} [${reviewIdx + 1}/${totalPanels}]`}>
                         <Comp />
                       </Panel>
-                    </div>
-                  )
-                } else {
-                  // Render empty placeholder panel to keep 2x2 grid balanced
-                  return (
-                    <div
-                      key={`empty-${offset}`}
-                      className="min-h-0 min-w-0 relative flex flex-col opacity-30 border border-dashed border-green-950"
-                    >
-                      <Panel title="REVIEW // EMPTY SLOT">
-                        <div className="h-full bg-black flex items-center justify-center text-xs text-green-900">
-                          [ NO SYSTEM INTEL ]
+                    )
+                  })()}
+                </div>
+              ) : (
+                /* Auf Desktop rendern wir das 2x2 Grid (4 Panels) */
+                <div className="grid h-full grid-cols-2 grid-rows-2 gap-1 bg-black">
+                  {[0, 1, 2, 3].map(offset => {
+                    const pageStartIdx = Math.floor(reviewIdx / 4) * 4
+                    const idx = pageStartIdx + offset
+                    if (idx < totalPanels) {
+                      const panel = ALL_PANELS[idx]
+                      const Comp = panel.Component
+                      const isActive = idx === reviewIdx
+                      return (
+                        <div
+                          key={panel.name}
+                          className={`min-h-0 min-w-0 relative flex flex-col transition-all duration-200 cursor-pointer ${
+                            isActive ? 'ring-2 ring-green-500 border border-green-500 z-10' : 'opacity-65 hover:opacity-95'
+                          }`}
+                          onClick={() => goToPanel(idx)}
+                        >
+                          <Panel
+                            title={`REVIEW // ${panel.name} [${idx + 1}/${totalPanels}]`}
+                            className={isActive ? 'border-green-500' : ''}
+                          >
+                            <Comp />
+                          </Panel>
                         </div>
-                      </Panel>
-                    </div>
-                  )
-                }
-              })}
+                      )
+                    } else {
+                      // Render empty placeholder panel to keep 2x2 grid balanced
+                      return (
+                        <div
+                          key={`empty-${offset}`}
+                          className="min-h-0 min-w-0 relative flex flex-col opacity-30 border border-dashed border-green-950"
+                        >
+                          <Panel title="REVIEW // EMPTY SLOT">
+                            <div className="h-full bg-black flex items-center justify-center text-xs text-green-900">
+                              [ NO SYSTEM INTEL ]
+                            </div>
+                          </Panel>
+                        </div>
+                      )
+                    }
+                  })}
+                </div>
+              )}
             </div>
 
-            {/* Bewertungsleiste — schmaler Streifen unten (~14%) */}
-            <div
-              className="border border-green-900 bg-black shrink-0 flex items-stretch gap-2 px-3 py-1"
-              style={{ height: '14%' }}
-            >
-              {/* Navigation */}
-              <div className="flex flex-col justify-center gap-1">
-                <div className="flex gap-1">
+            {/* Bewertungsleiste — schmaler Streifen unten, bricht auf Mobile um */}
+            <div className="border border-green-900 bg-black shrink-0 flex flex-col md:flex-row gap-2 p-2 text-xs">
+              {/* Erste Zeile: Navigation, Rating & Actions */}
+              <div className="flex flex-wrap items-center justify-between gap-2 w-full md:w-auto">
+                {/* Navigation */}
+                <div className="flex items-center gap-1">
                   <button
                     onClick={() => {
                       goToPanel((reviewIdx - 1 + totalPanels) % totalPanels)
                     }}
-                    className="border border-green-800 text-green-500 text-xs px-2 py-0.5
-                               hover:border-green-500 hover:text-green-200 transition-colors"
+                    className="border border-green-800 text-green-500 text-xs px-2 py-1
+                               hover:border-green-500 hover:text-green-200 transition-colors cursor-pointer"
                   >
                     ← PREV
                   </button>
+                  <span className="text-green-800 text-xs whitespace-nowrap min-w-[70px] text-center">
+                    {reviewIdx + 1} / {totalPanels}
+                  </span>
                   <button
                     onClick={() => {
                       goToPanel((reviewIdx + 1) % totalPanels)
                     }}
-                    className="border border-green-800 text-green-500 text-xs px-2 py-0.5
-                               hover:border-green-500 hover:text-green-200 transition-colors"
+                    className="border border-green-800 text-green-500 text-xs px-2 py-1
+                               hover:border-green-500 hover:text-green-200 transition-colors cursor-pointer"
                   >
                     NEXT →
                   </button>
                 </div>
-                <span className="text-green-800 text-xs text-center whitespace-nowrap">
-                  Panel {reviewIdx + 1} / {totalPanels}
-                </span>
-              </div>
 
-              {/* Trennlinie */}
-              <div className="border-l border-green-900 mx-1" />
-
-              {/* Daumen rauf / runter */}
-              <div className="flex flex-col justify-center gap-1">
-                <span className="text-green-800 text-xs uppercase tracking-widest">Rating</span>
-                <div className="flex gap-1">
+                {/* Daumen rauf / runter */}
+                <div className="flex items-center gap-1">
                   <button
                     onClick={() => handleRating('up')}
                     title="Daumen rauf"
-                    className={`border text-xs px-2 py-0.5 transition-colors
+                    className={`border text-xs px-2.5 py-1 transition-colors cursor-pointer
                       ${reviewRating === 'up'
                         ? 'border-green-400 text-green-200 bg-green-950'
                         : 'border-green-800 text-green-600 hover:border-green-500 hover:text-green-200'
@@ -917,7 +926,7 @@ export default function App() {
                   <button
                     onClick={() => handleRating('down')}
                     title="Daumen runter"
-                    className={`border text-xs px-2 py-0.5 transition-colors
+                    className={`border text-xs px-2.5 py-1 transition-colors cursor-pointer
                       ${reviewRating === 'down'
                         ? 'border-red-500 text-red-300 bg-red-950'
                         : 'border-green-800 text-green-600 hover:border-green-500 hover:text-green-200'
@@ -925,26 +934,48 @@ export default function App() {
                   >
                     👎
                   </button>
+                  {savedForCurrent && (
+                    <span className="text-green-900 text-xs ml-1 whitespace-nowrap">
+                      saved: {savedForCurrent.rating === 'up' ? '👍' : '👎'}
+                    </span>
+                  )}
                 </div>
-                {/* Gespeicherter Status */}
-                {savedForCurrent && (
-                  <span className="text-green-900 text-xs">
-                    saved: {savedForCurrent.rating === 'up' ? '👍' : '👎'}
-                  </span>
-                )}
+
+                {/* Action Buttons */}
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => {
+                      const data = loadReviews()
+                      navigator.clipboard.writeText(JSON.stringify(data, null, 2))
+                        .catch(() => {/* clipboard blocked */})
+                    }}
+                    title="Alle Bewertungen als JSON in Zwischenablage kopieren"
+                    className="border border-green-800 text-green-600 hover:border-green-500 hover:text-green-300 text-[10px] px-2 py-1 transition-colors cursor-pointer"
+                  >
+                    COPY
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (window.confirm("Alle Kommentare und Bewertungen zurücksetzen?")) {
+                        localStorage.removeItem(LS_KEY)
+                        window.location.reload()
+                      }
+                    }}
+                    title="Alle Bewertungen und Kommentare löschen"
+                    className="border border-red-800 text-red-600 hover:border-red-500 hover:text-red-300 text-[10px] px-2 py-1 transition-colors cursor-pointer"
+                  >
+                    RESET
+                  </button>
+                </div>
               </div>
 
-              {/* Trennlinie */}
-              <div className="border-l border-green-900 mx-1" />
-
-              {/* Kommentar-Textarea + SAVE */}
-              <div className="flex flex-col flex-1 min-w-0 gap-1 justify-center">
-                <span className="text-green-800 text-xs uppercase tracking-widest">Comment</span>
-                {/* ref statt value-State → kein Re-Render beim Tippen */}
+              {/* Zweite Zeile: Kommentar-Textarea */}
+              <div className="flex-1 flex items-center gap-2 w-full">
+                <span className="text-green-800 text-xs hidden md:inline whitespace-nowrap">COMMENT:</span>
                 <textarea
                   ref={commentRef}
-                  rows={2}
-                  placeholder="optional..."
+                  rows={1}
+                  placeholder="Optional review comment..."
                   onBlur={() => {
                     if (reviewRating) {
                       saveReview({
@@ -955,41 +986,11 @@ export default function App() {
                       })
                     }
                   }}
-                  className="flex-1 min-h-0 bg-black border border-green-900 text-green-400 text-xs
-                             font-mono resize-none px-1 py-0.5
+                  className="flex-1 bg-black border border-green-900 text-green-400 text-xs
+                             font-mono resize-none px-2 py-1
                              focus:outline-none focus:border-green-600
                              placeholder:text-green-900"
                 />
-              </div>
-
-              {/* Trennlinie */}
-              <div className="border-l border-green-900 mx-1" />
-
-              {/* Action Buttons */}
-              <div className="flex flex-col justify-center gap-1">
-                <button
-                  onClick={() => {
-                    const data = loadReviews()
-                    navigator.clipboard.writeText(JSON.stringify(data, null, 2))
-                      .catch(() => {/* clipboard blocked */})
-                  }}
-                  title="Alle Bewertungen als JSON in Zwischenablage kopieren"
-                  className="border border-green-800 text-green-600 hover:border-green-500 hover:text-green-300 text-xs px-3 py-1 transition-colors"
-                >
-                  [ COPY ]
-                </button>
-                <button
-                  onClick={() => {
-                    if (window.confirm("Alle Kommentare und Bewertungen zurücksetzen?")) {
-                      localStorage.removeItem(LS_KEY)
-                      window.location.reload()
-                    }
-                  }}
-                  title="Alle Bewertungen und Kommentare löschen"
-                  className="border border-red-800 text-red-600 hover:border-red-500 hover:text-red-300 text-xs px-3 py-1 transition-colors"
-                >
-                  [ RESET ]
-                </button>
               </div>
             </div>
 
@@ -997,28 +998,62 @@ export default function App() {
         ) : (
           /* ── Normaler Modus: Layout-Slides ── */
           <>
-            {/* Outgoing Layout — animiert nach links heraus */}
-            {sliding && prevLayout !== null && (
-              <div
-                key={`out-${prevLayout.id}`}
-                className="absolute inset-0 p-1 layout-slide-out"
-                aria-hidden="true"
-              >
-                <LayoutContent layout={prevLayout} onSkipSlot={() => {}} />
+            {isMobile ? (
+              /* ── Mobile Layout — nur unter 768px sichtbar ── */
+              <div className="flex flex-col gap-1 h-full p-1">
+                {/* Panel 1: gemischter Pool aus Text und GFX */}
+                <div className="flex-1 min-h-0">
+                  <PanelSlot
+                    pool={[...POOL_TEXT, ...POOL_GFX]}
+                    activeIdx={mobileIndices.combinedIdx}
+                    onSkip={() => handleSkipMobileSlot(0)}
+                    className="h-full"
+                  />
+                </div>
+                {/* Panel 2: Grafik-Panel */}
+                <div className="flex-1 min-h-0">
+                  <PanelSlot
+                    pool={POOL_GFX}
+                    activeIdx={mobileIndices.gfxIdx}
+                    onSkip={() => handleSkipMobileSlot(1)}
+                    className="h-full"
+                  />
+                </div>
+                {/* Panel 3: Text-Panel */}
+                <div className="flex-1 min-h-0">
+                  <PanelSlot
+                    pool={POOL_TEXT}
+                    activeIdx={mobileIndices.textIdx}
+                    onSkip={() => handleSkipMobileSlot(2)}
+                    className="h-full"
+                  />
+                </div>
+              </div>
+            ) : (
+              /* ── Desktop Layout — ab 768px sichtbar ── */
+              <div className="h-full relative">
+                {/* Outgoing Layout — animiert nach links heraus */}
+                {sliding && prevLayout !== null && (
+                  <div
+                    key={`out-${prevLayout.id}`}
+                    className="absolute inset-0 p-1 layout-slide-out"
+                    aria-hidden="true"
+                  >
+                    <LayoutContent layout={prevLayout} onSkipSlot={() => {}} />
+                  </div>
+                )}
+
+                {/* Aktuelles Layout — animiert von rechts herein (oder statisch beim ersten Render) */}
+                <div
+                  key={`in-${layout.id}`}
+                  className={sliding ? 'absolute inset-0 p-1 layout-slide-in' : 'h-full p-1'}
+                >
+                  <LayoutContent layout={layout} onSkipSlot={handleSkipSlot} />
+                </div>
               </div>
             )}
-
-            {/* Aktuelles Layout — animiert von rechts herein (oder statisch beim ersten Render) */}
-            <div
-              key={`in-${layout.id}`}
-              className={sliding ? 'absolute inset-0 p-1 layout-slide-in' : 'h-full p-1'}
-            >
-              <LayoutContent layout={layout} onSkipSlot={handleSkipSlot} />
-            </div>
           </>
         )}
-
-        </div>{/* Ende Desktop Layout */}
 
       </main>
     </div>

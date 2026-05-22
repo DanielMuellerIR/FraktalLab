@@ -184,6 +184,7 @@ export default function AmiModPanel() {
       setPlaying(false);
       (window as any).fraktallab_mod_playing = false;
     } else {
+      player.resumeContext();
       player.play();
       setPlaying(true);
       (window as any).fraktallab_mod_playing = true;

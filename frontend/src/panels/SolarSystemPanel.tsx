@@ -21,9 +21,9 @@ const PLANET_DATA = [
 type PlanetData = typeof PLANET_DATA[number]
 
 // ── Zeitskala ─────────────────────────────────────────────────────────────────
-// Erde soll in 180 Sekunden (3 Minuten) eine volle Runde drehen.
-// Erdperiode = 365.25 Tage → 365.25 / (180 * 1000) Tage pro Millisekunde
-const DAYS_PER_MS = 365.25 / (180 * 1000)   // ≈ 0.002029 Tage/ms
+// Erde soll in 12 Sekunden eine volle Runde drehen.
+// Erdperiode = 365.25 Tage → 365.25 / (12 * 1000) Tage pro Millisekunde
+const DAYS_PER_MS = 365.25 / (12 * 1000)   // ≈ 0.0304375 Tage/ms
 
 // ── Orbit-Radius berechnen (AU → Pixel, Wurzelskala) ─────────────────────────
 // Maximale AU der letzten Planeten bestimmt die Skala.
@@ -438,11 +438,11 @@ export default function SolarSystemPanel() {
       // ── Info-Overlay (unten links) ─────────────────────────────────────────
       const today = new Date().toLocaleDateString('en-GB')
       // Zeitskala in lesbarer Form
-      const secsPerYear = 180 / 1   // 180s = 1 Erdumlauf = 1 Erdjahr
+      const secsPerYear = 12   // 12s = 1 Erdumlauf = 1 Erdjahr
       const lines = [
         'HELIOCENTRIC ORBIT MODEL',
         `DATE: ${today}`,
-        `1 MIN = ${(secsPerYear / 60).toFixed(0)} EARTH YEARS`,
+        `1 MIN = ${(60 / secsPerYear).toFixed(0)} EARTH YEARS`,
       ]
       const fontSize = Math.max(8, Math.min(11, W * 0.018))
       const lineH    = fontSize + 4
