@@ -148,7 +148,7 @@ function makeFractalScene(
   return function FractalScene() {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const stateRef  = useRef({
-      zoom:       type === 'mandelbrot' ? 100 : 180,
+      zoom:       type === 'mandelbrot' ? 1.5 : 180,
       centerX:    type === 'mandelbrot' ? locs[0].cx : 0.0,
       centerY:    type === 'mandelbrot' ? locs[0].cy : 0.0,
       locIdx:     0,
@@ -162,7 +162,7 @@ function makeFractalScene(
       nextPixels: null as Uint8ClampedArray | null,
       
       nextLocIdx:  0,
-      nextZoom:    type === 'mandelbrot' ? 100 : 180,
+      nextZoom:    type === 'mandelbrot' ? 1.5 : 180,
       nextCenterX: 0.0,
       nextCenterY: 0.0,
     })
@@ -243,11 +243,11 @@ function makeFractalScene(
 
         // ── Normal Render ──────────────────────────────────────────────────
         // Zoom exponentially
-        s.zoom *= Math.pow(type === 'mandelbrot' ? 1.026 : 1.03, dt / 16.7)
+        s.zoom *= Math.pow(type === 'mandelbrot' ? 1.042 : 1.03, dt / 16.7)
 
         // Scaled drift
         s.driftAngle += 0.01 * (dt / 16.7)
-        const driftDist = (type === 'mandelbrot' ? 0.3 : 0.5) / s.zoom
+        const driftDist = (type === 'mandelbrot' ? 0.35 : 0.5) / s.zoom
         s.centerX += Math.cos(s.driftAngle) * driftDist
         s.centerY += Math.sin(s.driftAngle) * driftDist
 

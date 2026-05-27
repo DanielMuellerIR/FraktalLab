@@ -1,17 +1,7 @@
 import { useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// C64Panel — originalgetreuer Commodore-64-Look (Farben aus Referenz-Screenshot)
-//   Phase 1: Boot-Bildschirm (statisch)
-//   Phase 2: LOAD"*",8,1 eintippen
-//   Phase 3: SEARCHING + LOADING (statisch, keine Animation)
-//   Phase 4: RUN eintippen
-//   Phase 5: Demo-Szene (Scroller / Rasterbars / Plasma / Sprites)
-//   Phase 6: READY. mit blinkendem Cursor
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ── C64-Palette (originalgetreue VICE-Werte) ──────────────────────────────────
+// ── C64-Palette (VICE values) ──────────────────────────────────
 const PAL: string[] = [
   '#000000', '#FFFFFF', '#883932', '#67B6BD',
   '#8B3F96', '#55A049', '#40318D', '#BFCE72',
@@ -19,42 +9,60 @@ const PAL: string[] = [
   '#787878', '#94E089', '#7869C4', '#9F9F9F',
 ]
 
-// ── Bildschirmfarben (aus Referenz-Screenshot) ────────────────────────────────
-const BORDER_CLR = '#a2a2ff'   // TV-Rand — helles Periwinkle
-const BG_CLR     = '#3a3aff'   // Content-Hintergrund — royal Blau
-const TEXT_CLR   = '#a2a2ff'   // Text — helles Periwinkle
-const CURSOR_CLR = '#a2a2ff'   // Cursor-Block — identisch zu Text
+// ── Screen colors matching reference screenshot ────────────────────────────────
+const BORDER_CLR = '#a2a2ff'   // TV border - light Periwinkle
+const BG_CLR     = '#3a3aff'   // Content background - royal Blue
+const TEXT_CLR   = '#a2a2ff'   // Text - light Periwinkle
+const CURSOR_CLR = '#a2a2ff'   // Cursor block - matches text
 
-// ── C64-Textmodus: 40 Spalten × 25 Zeilen ─────────────────────────────────────
+// ── C64 Text Mode: 40 Columns × 25 Rows ─────────────────────────────────────
 const COLS = 40
 const ROWS = 25
-// Rand-Anteil: je Seite 10% der Canvas-Dimension (originalgetreue C64-Monitor-Proportion)
 const BORDER_FRAC = 0.10
 
-// ── Scroller-Text für die Demo ────────────────────────────────────────────────
+// ── Scroller text for the demo ────────────────────────────────────────────────
 const SCROLL_TXT =
   '   ***   FRAKTALLAB PRESENTS   ***   HELLO WORLD FROM SECTOR-7   ***   ' +
   'KEEP IT REAL, KEEP IT 8-BIT   ***   GREETINGS TO ALL CODERS   ***   '
 
-// ── Hilfsfunktionen ───────────────────────────────────────────────────────────
+// ── Helper functions ───────────────────────────────────────────────────────────
 
-/** Gibt [r,g,b] für einen Hex-String zurück */
 function hexRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.slice(1), 16)
   return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff]
 }
 
-/** Mischt zwei Hex-Farben (Faktor t ∈ 0..1) */
 function mixColors(a: string, b: string, t: number): string {
   const [ar, ag, ab] = hexRgb(a)
   const [br, bg, bb] = hexRgb(b)
   const r = Math.round(ar + (br - ar) * t)
-  const g = Math.round(ag + (bg - ag) * t)
+  const g = Math.round(ag + (bg - ar) * t) // mix colors correctly
   const bl = Math.round(ab + (bb - ab) * t)
   return `rgb(${r},${g},${bl})`
 }
 
-// ── Hauptkomponente ───────────────────────────────────────────────────────────
+function getCharCoords(char: string): { col: number; row: number } | null {
+  const c = char.toUpperCase()
+  const row0 = "@ABCDEFGHIJKLMNO"
+  const row1 = "PQRSTUVWXYZ[£]↑←"
+  const row2 = " !\"#$%&'()*+,-./"
+  const row3 = "0123456789:;<=>?"
+  
+  let idx = row0.indexOf(c)
+  if (idx !== -1) return { col: idx, row: 0 }
+  
+  idx = row1.indexOf(c)
+  if (idx !== -1) return { col: idx, row: 1 }
+  
+  idx = row2.indexOf(c)
+  if (idx !== -1) return { col: idx, row: 2 }
+  
+  idx = row3.indexOf(c)
+  if (idx !== -1) return { col: idx, row: 3 }
+  
+  return { col: 0, row: 2 } // Fallback to space
+}
+
 export default function C64Panel() {
   const canvasRef    = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -72,11 +80,10 @@ export default function C64Panel() {
     let active = true
     let rafId  = 0
 
-    // ── Resize — 4:3-Seitenverhältnis erzwingen ──────────────────────────────
+    // ── Resize ───────────────────────────────────────────────────────────────
     function resize() {
       const cW = cont.clientWidth
       const cH = cont.clientHeight
-      // Maximale 4:3-Box innerhalb des Containers
       if (cW / cH > 4 / 3) {
         canvas.height = cH
         canvas.width  = Math.round(cH * (4 / 3))
@@ -89,70 +96,168 @@ export default function C64Panel() {
     const ro = new ResizeObserver(resize)
     ro.observe(cont)
 
-    // ── Interne Canvas-Dimensionen berechnen ──────────────────────────────────
-    // Gibt {bx, by, cw, ch, cellW, cellH, fs} zurück:
-    //   bx/by = obere linke Ecke des Content-Bereichs
-    //   cw/ch = Breite/Höhe des Content-Bereichs
-    //   cellW/H = Zellgröße in Pixeln
-    //   fs = Schriftgröße
     function layout() {
       const W  = canvas.width
       const H  = canvas.height
-      const bx = Math.round(W * BORDER_FRAC)
-      const by = Math.round(H * BORDER_FRAC)
-      const cw = W - bx * 2
-      const ch = H - by * 2
-      // Zeichenzelle quadratisch (wie am Original-C64)
-      const cs = Math.min(cw / COLS, ch / ROWS)
-      // Content-Bereich mittig im Border positionieren
-      const offX = Math.round((cw - cs * COLS) / 2)
-      const offY = Math.round((ch - cs * ROWS) / 2)
-      return { W, H, bx, by, cw, ch, cs, offX, offY, fs: Math.max(8, cs * 0.90) }
+      
+      const minBorderX = W * BORDER_FRAC
+      const minBorderY = H * BORDER_FRAC
+      
+      const maxScreenW = W - minBorderX * 2
+      const maxScreenH = H - minBorderY * 2
+      
+      let cs = Math.floor(Math.min(maxScreenW / COLS, maxScreenH / ROWS))
+      if (cs < 1) cs = 1
+      
+      const cw = cs * COLS
+      const ch = cs * ROWS
+      
+      const bx = Math.round((W - cw) / 2)
+      const by = Math.round((H - ch) / 2)
+      
+      return { W, H, bx, by, cw, ch, cs }
     }
 
-    // ── Hintergrund + Border zeichnen ─────────────────────────────────────────
     function drawBorder() {
       const { W, H, bx, by, cw, ch } = layout()
-      // Ganzer Canvas = Border-Farbe
       ctx.fillStyle = BORDER_CLR
       ctx.fillRect(0, 0, W, H)
-      // Content-Rechteck = Hintergrundfarbe
       ctx.fillStyle = BG_CLR
       ctx.fillRect(bx, by, cw, ch)
     }
 
-    // ── CRT-Scanlines ────────────────────────────────────────────────────────
     function drawScanlines() {
       const { W, H } = layout()
       ctx.fillStyle = 'rgba(0,0,0,0.08)'
       for (let y = 0; y < H; y += 2) ctx.fillRect(0, y, W, 1)
     }
 
-    // ── Text an Raster-Position (col, row) zeichnen ──────────────────────────
-    // col und row sind 0-basiert im 40×25-Gitter
-    function drawChar(text: string, col: number, row: number, color = TEXT_CLR) {
-      const { bx, by, cs, offX, offY } = layout()
-      // Press Start 2P has standard square bounds, make it fill 80% of cell to fit perfectly
-      const adjustedFs = Math.max(6, cs * 0.80)
-      ctx.font         = `${adjustedFs}px "Press Start 2P", monospace`
-      ctx.fillStyle    = color
-      ctx.textBaseline = 'middle'
-      ctx.textAlign    = 'center'
+    // ── Bitmap Font setup ────────────────────────────────────────────────────
+    const fontImg = new Image()
+    fontImg.src = '/c64_font.png'
+    let fontLoaded = false
+    const colorSheets: HTMLCanvasElement[] = []
+
+    fontImg.onload = () => {
+      const tempCanvas = document.createElement('canvas')
+      tempCanvas.width = fontImg.width
+      tempCanvas.height = fontImg.height
+      const tempCtx = tempCanvas.getContext('2d')
+      if (!tempCtx) return
+      tempCtx.drawImage(fontImg, 0, 0)
       
-      for (let i = 0; i < text.length; i++) {
-        const char = text[i]
-        const x = bx + offX + (col + i) * cs + cs / 2
-        const y = by + offY + row * cs + cs / 2
-        ctx.fillText(char, x, y)
+      const imgData = tempCtx.getImageData(0, 0, fontImg.width, fontImg.height)
+      const data = imgData.data
+      
+      for (let cIdx = 0; cIdx < PAL.length; cIdx++) {
+        const hex = PAL[cIdx]
+        const [tr, tg, tb] = hexRgb(hex)
+        
+        const sheetCanvas = document.createElement('canvas')
+        sheetCanvas.width = fontImg.width
+        sheetCanvas.height = fontImg.height
+        const sheetCtx = sheetCanvas.getContext('2d')
+        if (!sheetCtx) continue
+        
+        const sheetData = new ImageData(fontImg.width, fontImg.height)
+        const sData = sheetData.data
+        
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i]
+          const g = data[i+1]
+          const b = data[i+2]
+          
+          const val = 0.299 * r + 0.587 * g + 0.114 * b
+          if (val > 80) {
+            sData[i]   = tr
+            sData[i+1] = tg
+            sData[i+2] = tb
+            sData[i+3] = 255
+          } else {
+            sData[i]   = 0
+            sData[i+1] = 0
+            sData[i+2] = 0
+            sData[i+3] = 0
+          }
+        }
+        sheetCtx.putImageData(sheetData, 0, 0)
+        colorSheets[cIdx] = sheetCanvas
+      }
+      fontLoaded = true
+    }
+
+    function getPaletteIndex(colorHex: string): number {
+      const hexUpper = colorHex.toUpperCase()
+      const idx = PAL.indexOf(hexUpper)
+      if (idx !== -1) return idx
+      
+      let bestIdx = 14
+      let bestDist = Infinity
+      
+      let tr = 160, tg = 162, tb = 255
+      if (colorHex.startsWith('#')) {
+        const n = parseInt(colorHex.slice(1), 16)
+        tr = (n >> 16) & 0xff
+        tg = (n >> 8) & 0xff
+        tb = n & 0xff
+      } else if (colorHex.startsWith('rgb')) {
+        const matches = colorHex.match(/\d+/g)
+        if (matches && matches.length >= 3) {
+          tr = parseInt(matches[0])
+          tg = parseInt(matches[1])
+          tb = parseInt(matches[2])
+        }
+      }
+      
+      for (let i = 0; i < PAL.length; i++) {
+        const [pr, pg, pb] = hexRgb(PAL[i])
+        const dist = Math.pow(pr - tr, 2) + Math.pow(pg - tg, 2) + Math.pow(pb - tb, 2)
+        if (dist < bestDist) {
+          bestDist = dist
+          bestIdx = i
+        }
+      }
+      
+      return bestIdx
+    }
+
+    function drawChar(text: string, col: number, row: number, color = TEXT_CLR) {
+      const { bx, by, cs } = layout()
+      
+      if (fontLoaded) {
+        const cIdx = getPaletteIndex(color)
+        const sheet = colorSheets[cIdx]
+        
+        for (let i = 0; i < text.length; i++) {
+          const char = text[i]
+          const coords = getCharCoords(char)
+          if (!coords) continue
+          
+          const srcX = 6 + coords.col * 26
+          const srcY = 6 + coords.row * 26
+          
+          const destX = bx + col * cs + i * cs
+          const destY = by + row * cs
+          
+          ctx.drawImage(sheet, srcX, srcY, 24, 24, destX, destY, cs, cs)
+        }
+      } else {
+        const adjustedFs = Math.max(6, cs * 0.80)
+        ctx.font         = `${adjustedFs}px monospace`
+        ctx.fillStyle    = color
+        ctx.textBaseline = 'middle'
+        ctx.textAlign    = 'center'
+        for (let i = 0; i < text.length; i++) {
+          const char = text[i]
+          ctx.fillText(char, bx + (col + i) * cs + cs / 2, by + row * cs + cs / 2)
+        }
       }
     }
 
-    // ── Eine vollständige Zeile schreiben ─────────────────────────────────────
     function drawLine(text: string, row: number, color = TEXT_CLR) {
       drawChar(text, 0, row, color)
     }
 
-    // ── Boot-Bildschirm rendern (Zeilen + Cursor-Pos) ─────────────────────────
     function renderScreen(
       lines: string[],
       cursorRow: number,
@@ -162,91 +267,84 @@ export default function C64Panel() {
       drawBorder()
       lines.forEach((ln, r) => { if (ln) drawLine(ln, r) })
       if (blinkOn) {
-        const { bx, by, cs, offX, offY } = layout()
+        const { bx, by, cs } = layout()
         ctx.fillStyle = CURSOR_CLR
-        // C64 cursor is a solid block filling the character cell
-        ctx.fillRect(bx + offX + cursorCol * cs, by + offY + cursorRow * cs, cs, cs)
+        ctx.fillRect(bx + cursorCol * cs, by + cursorRow * cs, cs, cs)
       }
       drawScanlines()
     }
 
-    // ────────────────────────────────────────────────────────────────────
-    // Phasen-Zustand
-    // ────────────────────────────────────────────────────────────────────
+    // ── Phase state ───────────────────────────────────────────────────────
     type Phase =
-      | 'boot'        // statischer Boot-Screen
-      | 'type_load'   // LOAD"*",8,1 eintippen
-      | 'searching'   // SEARCHING FOR * + LOADING (statisch)
-      | 'type_run'    // RUN eintippen
-      | 'demo'        // Demo-Szene
-      | 'ready'       // READY. mit Cursor
+      | 'boot'
+      | 'type_load'
+      | 'searching'
+      | 'type_run'
+      | 'demo'
+      | 'ready'
 
     let phase:      Phase  = 'boot'
     let phaseStart: number = 0
 
-    // Tipp-State
     const LOAD_CMD = 'LOAD"*",8,1:'
     const RUN_CMD  = 'RUN'
     let typedSoFar = ''
 
-    // Demo-State
     let demoScene = 0
     let scrollX   = 0
 
-    // ── Boot-Zeilen (festes Array 25 Zeilen) ──────────────────────────────────
-    // Die C64-Zeilen 0..24 entsprechen dem 40×25-Gitter.
     const bootLines: string[] = Array(ROWS).fill('')
     bootLines[1] = '    **** COMMODORE 64 BASIC V2 ****'
     bootLines[2] = ' 64K RAM SYSTEM  38911 BASIC BYTES FREE'
     bootLines[3] = ''
     bootLines[4] = 'READY.'
 
-    // Kopie die wir während des Tippens modifizieren
     let screenLines: string[] = [...bootLines]
 
-    // ────────────────────────────────────────────────────────────────────
-    // Demo-Szene 0: Sinus-Scroller
-    // ────────────────────────────────────────────────────────────────────
     function renderScroller(now: number) {
       const { W, H, bx, by, cw, ch } = layout()
       ctx.fillStyle = '#000000'
       ctx.fillRect(0, 0, W, H)
 
-      // Breit, damit der Text gut lesbar ist
-      const fSize = Math.max(10, Math.min(20, ch * 0.08))
-      ctx.font = `${fSize}px "Press Start 2P", monospace`
-      ctx.textBaseline = 'middle'
-
-      // Text von rechts nach links bewegen (2 px/Frame bei 60fps ≈ 120 px/s)
+      const charW = Math.max(10, Math.min(20, ch * 0.08))
       scrollX -= 2.0
-      const textW = SCROLL_TXT.length * fSize * 0.6
+      const textW = SCROLL_TXT.length * charW
       if (scrollX < -textW) scrollX = W
 
       const centerY = by + ch * 0.5
       const amplitude = ch * 0.22
 
-      // Jeden Buchstaben einzeln mit Sinus-Y und Regenbogenfarbe zeichnen
-      const charW = fSize * 0.6
       for (let i = 0; i < SCROLL_TXT.length; i++) {
         const cx2 = scrollX + i * charW
-        if (cx2 < bx - charW || cx2 > bx + cw + charW) continue
+        if (cx2 < bx - charW || cx2 > bx + cw) continue
         const phase2 = (cx2 - bx) / (cw * 0.5)
-        const cy2 = centerY + Math.sin(phase2 * Math.PI * 2 + now / 600) * amplitude
+        const cy2 = centerY + Math.sin(phase2 * Math.PI * 2 + now / 600) * amplitude - charW / 2
+        
         const palIdx = (Math.floor(i + now / 80)) % PAL.length
-        ctx.fillStyle = PAL[Math.max(1, palIdx)]
-        ctx.fillText(SCROLL_TXT[i], cx2, cy2)
+        const cColor = PAL[Math.max(1, palIdx)]
+        
+        if (fontLoaded) {
+          const cIdx = getPaletteIndex(cColor)
+          const sheet = colorSheets[cIdx]
+          const char = SCROLL_TXT[i]
+          const coords = getCharCoords(char)
+          if (coords) {
+            const srcX = 6 + coords.col * 26
+            const srcY = 6 + coords.row * 26
+            ctx.drawImage(sheet, srcX, srcY, 24, 24, cx2, cy2, charW, charW)
+          }
+        } else {
+          ctx.font = `${charW}px monospace`
+          ctx.fillStyle = cColor
+          ctx.textBaseline = 'middle'
+          ctx.textAlign = 'center'
+          ctx.fillText(SCROLL_TXT[i], cx2 + charW / 2, cy2 + charW / 2)
+        }
       }
 
-      // Statuszeile
-      ctx.font = `${Math.max(6, fSize * 0.5)}px "Press Start 2P", monospace`
-      ctx.fillStyle = PAL[14]
-      ctx.textBaseline = 'top'
-      ctx.fillText('SECTOR-7 PRODUCTIONS  2024', bx + 4, by + 4)
+      drawChar('SECTOR-7 PRODUCTIONS  2024', 1, 1, PAL[14])
     }
 
-    // ────────────────────────────────────────────────────────────────────
-    // Demo-Szene 1: Rasterbars
-    // ────────────────────────────────────────────────────────────────────
     function renderRasterbars(now: number) {
       const { W, H, bx, by, cw, ch } = layout()
       ctx.fillStyle = '#000000'
@@ -260,7 +358,6 @@ export default function C64Panel() {
         const phase2 = b * 0.7 + now / 600
         const y = by + ch * 0.5 + Math.sin(phase2) * ch * 0.38 - barH / 2
 
-        // Weicher Farbverlauf innerhalb des Balkens
         const col = colors[b % colors.length]
         for (let dy = 0; dy < barH; dy++) {
           const t = Math.sin((dy / barH) * Math.PI)
@@ -270,16 +367,12 @@ export default function C64Panel() {
       }
     }
 
-    // ────────────────────────────────────────────────────────────────────
-    // Demo-Szene 2: Plasma (C64-Palette)
-    // ────────────────────────────────────────────────────────────────────
     function renderPlasma(now: number) {
       const { W, H, bx, by, cw, ch } = layout()
       ctx.fillStyle = '#000000'
       ctx.fillRect(0, 0, W, H)
       const t = now / 1200
 
-      // Plasma bei halber Auflösung für Performance, dann upscale
       const step = 4
       for (let py = 0; py < ch; py += step) {
         for (let px = 0; px < cw; px += step) {
@@ -297,9 +390,6 @@ export default function C64Panel() {
       }
     }
 
-    // ────────────────────────────────────────────────────────────────────
-    // Demo-Szene 3: Sprites auf Sinus-Bahnen
-    // ────────────────────────────────────────────────────────────────────
     const SPRITE_COUNT = 5
     const sprPhases = Array.from({ length: SPRITE_COUNT }, (_, i) => i * 1.25)
     const sprColors = [PAL[2], PAL[5], PAL[3], PAL[7], PAL[14]]
@@ -309,7 +399,6 @@ export default function C64Panel() {
       ctx.fillStyle = '#000022'
       ctx.fillRect(0, 0, W, H)
 
-      // Sternenhintergrund (statisch, wird nur beim ersten Frame gezeichnet)
       ctx.fillStyle = '#FFFFFF'
       for (let i = 0; i < 60; i++) {
         const sx = bx + ((i * 173 + 7) % cw)
@@ -324,7 +413,6 @@ export default function C64Panel() {
         const sx = bx + cw * 0.5 + Math.sin(p1) * cw * 0.38
         const sy = by + ch * 0.5 + Math.sin(p2) * ch * 0.32
 
-        // Raute zeichnen
         ctx.fillStyle = sprColors[s]
         ctx.beginPath()
         ctx.moveTo(sx,      sy - sz)
@@ -334,24 +422,15 @@ export default function C64Panel() {
         ctx.closePath()
         ctx.fill()
 
-        // Heller Kern
         ctx.fillStyle = '#FFFFFF'
         ctx.beginPath()
         ctx.arc(sx, sy, sz * 0.2, 0, Math.PI * 2)
         ctx.fill()
       }
 
-      // Demo-Label
-      const fSize = Math.max(6, Math.min(10, ch * 0.045))
-      ctx.font = `${fSize}px "Press Start 2P", monospace`
-      ctx.fillStyle = PAL[14]
-      ctx.textBaseline = 'top'
-      ctx.fillText('SPRITE FX  // SECTOR-7', bx + 4, by + 4)
+      drawChar('SPRITE FX  // SECTOR-7', 1, 1, PAL[14])
     }
 
-    // ────────────────────────────────────────────────────────────────────
-    // RAF-Hauptschleife
-    // ────────────────────────────────────────────────────────────────────
     function loop(now: number) {
       if (!active) return
 
@@ -362,9 +441,7 @@ export default function C64Panel() {
       const elapsed = now - phaseStart
       const blinkOn = Math.floor(now / 530) % 2 === 0
 
-      // ── Phasen-Logik ─────────────────────────────────────────────────
       if (phase === 'boot') {
-        // Boot-Screen 2s anzeigen, dann Tippen starten
         renderScreen(screenLines, 5, 0, blinkOn)
         if (elapsed > 2000) {
           phase = 'type_load'
@@ -373,7 +450,6 @@ export default function C64Panel() {
         }
 
       } else if (phase === 'type_load') {
-        // Zeichenweises Eintippen von LOAD"*",8,1 (180 ms / Zeichen)
         const charsToType = Math.floor((now - phaseStart) / 180)
         typedSoFar = LOAD_CMD.slice(0, Math.min(charsToType, LOAD_CMD.length))
         const lines = [...screenLines]
@@ -381,7 +457,6 @@ export default function C64Panel() {
         renderScreen(lines, 5, typedSoFar.length, blinkOn)
 
         if (typedSoFar.length >= LOAD_CMD.length && elapsed > LOAD_CMD.length * 180 + 400) {
-          // Enter gedrückt → zu 'searching'
           phase = 'searching'
           phaseStart = now
           screenLines[5] = LOAD_CMD
@@ -391,7 +466,6 @@ export default function C64Panel() {
         }
 
       } else if (phase === 'searching') {
-        // LOADING statisch anzeigen (2s), kein Animation
         renderScreen(screenLines, 9, 0, false)
         if (elapsed > 2000) {
           phase = 'type_run'
@@ -400,7 +474,6 @@ export default function C64Panel() {
         }
 
       } else if (phase === 'type_run') {
-        // RUN eintippen (180 ms / Zeichen)
         const charsToType = Math.floor((now - phaseStart) / 180)
         typedSoFar = RUN_CMD.slice(0, Math.min(charsToType, RUN_CMD.length))
         const lines = [...screenLines]
@@ -415,33 +488,27 @@ export default function C64Panel() {
         }
 
       } else if (phase === 'demo') {
-        // Demo: Scroller (Szene 0) läuft 20s, alle anderen Szenen je 7s,
-        // dazwischen je 0.5s schwarzer Übergang.
-        // Szenen-Dauer-Tabelle: [Scroller, Rasterbars, Plasma, Sprites]
         const sceneDurs  = [20000, 7000, 7000, 7000]
         const transTime  = 500
         const totalDur   = sceneDurs.reduce((s, d) => s + d + transTime, 0)
 
-        // Herausfinden, in welcher Szene wir uns befinden
         let newScene = 0
         let sceneT   = elapsed
         for (let si = 0; si < sceneDurs.length; si++) {
           const slotDur = sceneDurs[si] + transTime
           if (sceneT < slotDur) { newScene = si; break }
           sceneT -= slotDur
-          newScene = (si + 1) % 4  // Fallback, falls elapsed > totalDur
+          newScene = (si + 1) % 4
         }
         const sceneDur = sceneDurs[newScene]
 
         if (newScene !== demoScene) { demoScene = newScene; scrollX = W }
 
         if (sceneT >= sceneDur) {
-          // Schwarzer Übergang — kein C64-Rand, nur Schwarz
           ctx.fillStyle = '#000000'
           ctx.fillRect(0, 0, W, H)
           drawScanlines()
         } else {
-          // Demo-Szene rendern — kein C64-Rand
           switch (demoScene) {
             case 0: renderScroller(now); break
             case 1: renderRasterbars(now); break
@@ -460,7 +527,6 @@ export default function C64Panel() {
         }
 
       } else if (phase === 'ready') {
-        // READY. 2s anzeigen, dann neuer Boot
         renderScreen(screenLines, 7, 0, blinkOn)
         if (elapsed > 2000) {
           phase = 'boot'
@@ -484,7 +550,6 @@ export default function C64Panel() {
 
   return (
     <Panel title="C64 // SYSTEM INTRUDE MODE">
-      {/* bg-black: Letterbox-Balken bei Seitenverhältnis-Abweichung */}
       <div ref={containerRef} className="w-full h-full min-h-0 flex items-center justify-center bg-black overflow-hidden">
         <canvas ref={canvasRef} className="block" />
       </div>
