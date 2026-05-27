@@ -49,7 +49,8 @@ import SolarSystemPanel  from './panels/SolarSystemPanel'
 import RadarSweepPanel   from './panels/RadarSweepPanel'
 import {
   FractalSeahorse, FractalSpiral, FractalLightning, FractalElephant,
-  FractalMini, FractalSatellite, FractalTendril,
+  FractalMini, FractalSatellite, FractalTendril, FractalDragon,
+  FractalDendrite, FractalSwirl,
 } from './panels/FractalScenes'
 import FractalJulia from './panels/FractalJulia'
 
@@ -69,8 +70,9 @@ const POOL_GFX: React.ComponentType[] = [
   /* OscilloscopePanel, */ TunnelScene, MetaballsScene, RotozoomScene, DotCloudScene,
   PlasmaDemo, DNAHelix, EnhanceView, AllYourBase,
   ParallaxPanel, ElitePanel, AmiModPanel, CADRobotPanel, C64Panel, RetroErrorPanel, SolarSystemPanel,
-  /* FractalSeahorse, FractalSpiral, FractalTendril, FractalLightning, */
-  /* FractalElephant, FractalMini, FractalSatellite, */
+  FractalSeahorse, FractalSpiral, FractalTendril, FractalLightning,
+  FractalElephant, FractalMini, FractalSatellite, FractalDragon,
+  FractalDendrite, FractalSwirl,
   FractalJulia, RadarSweepPanel,
 ]
 

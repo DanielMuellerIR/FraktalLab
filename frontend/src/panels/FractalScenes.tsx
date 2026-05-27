@@ -3,40 +3,33 @@ import Panel from '../ui/Panel'
 
 interface Location { cx: number; cy: number }
 
-// Farbkorrektur-Typen — jede Szene bekommt ihren eigenen Look
 type ColorTransform = 'mono' | 'cold' | 'hot' | 'neon' | 'invert'
 
-// Schnelle Pixel-Transformation: läuft nach dem WASM-Render auf dem Pixel-Buffer.
-// Schwarze Pixel (Fraktal-Inneres) werden übersprungen.
 function applyTransform(pixels: Uint8ClampedArray, t: ColorTransform) {
   for (let i = 0; i < pixels.length; i += 4) {
     const r = pixels[i], g = pixels[i+1], b = pixels[i+2]
     if ((r | g | b) === 0) continue
     switch (t) {
       case 'mono': {
-        // Grüner Phosphor (klassisches CRT-Terminal)
         const lum = Math.round(0.299*r + 0.587*g + 0.114*b)
         pixels[i] = 0; pixels[i+1] = lum; pixels[i+2] = 0
         break
       }
       case 'cold': {
-        // Kaltes Blau-Türkis — Mindesthelligkeit damit dunkle Regionen nicht rein schwarz werden
         const lum = (r + g + b) / 3
-        const boost = Math.max(0, 40 - lum)   // Grundhelligkeit auch bei dunklen Pixeln
+        const boost = Math.max(0, 40 - lum)
         pixels[i]   = Math.min(255, (r * 0.1 | 0) + boost * 0.3)
         pixels[i+1] = Math.min(255, (g * 0.5 | 0) + boost * 0.6)
         pixels[i+2] = Math.min(255, ((b * 1.5 + r * 0.4) | 0) + boost)
         break
       }
       case 'hot': {
-        // Magma: Rot-Orange-Glut
         pixels[i]   = Math.min(255, (r * 1.5 + g * 0.25) | 0)
         pixels[i+1] = Math.min(255, g * 0.45 | 0)
         pixels[i+2] = Math.min(255, b * 0.05 | 0)
         break
       }
       case 'neon': {
-        // Cyan-Magenta-Neon
         pixels[i]   = Math.min(255, r * 1.3 | 0)
         pixels[i+1] = Math.min(255, g * 0.15 | 0)
         pixels[i+2] = Math.min(255, b * 1.6 | 0)
@@ -50,50 +43,128 @@ function applyTransform(pixels: Uint8ClampedArray, t: ColorTransform) {
   }
 }
 
-// ── Schwarzraum-Detektor ──────────────────────────────────────────────────────
-// Gibt true zurück, wenn >75% der abgetasteten Pixel Mandelbrot-Inneres (schwarz) sind.
-// Abtastschritt 32 Byte (8 Pixel) → ~12% Stichprobe, schnell genug für 12-fps-Panels.
-function isMostlyBlack(pixels: Uint8ClampedArray): boolean {
-  let black = 0, total = 0
-  for (let i = 0; i < pixels.length; i += 32) {
-    if (pixels[i] === 0 && pixels[i + 1] === 0 && pixels[i + 2] === 0) black++
+function isLowDetail(pixels: Uint8ClampedArray): boolean {
+  let black = 0
+  const colorCounts = new Map<number, number>()
+  const sampleStep = 64
+  let total = 0
+  
+  for (let i = 0; i < pixels.length; i += sampleStep) {
+    const r = pixels[i]
+    const g = pixels[i + 1]
+    const b = pixels[i + 2]
+    
+    if (r === 0 && g === 0 && b === 0) {
+      black++
+    }
+    
+    const colorKey = (r << 16) | (g << 8) | b
+    colorCounts.set(colorKey, (colorCounts.get(colorKey) || 0) + 1)
     total++
   }
-  return total > 0 && black / total > 0.75
+  
+  if (total === 0) return true
+  if (black / total > 0.70) return true
+  
+  let maxCount = 0
+  for (const count of colorCounts.values()) {
+    if (count > maxCount) {
+      maxCount = count
+    }
+  }
+  
+  if (maxCount / total > 0.70) return true
+  return false
 }
 
-// ── Render-Fabrik ─────────────────────────────────────────────────────────────
+function findClosestBoundaryPixel(pixels: Uint8ClampedArray, W: number, H: number): { px: number, py: number } | null {
+  const cx = Math.floor(W / 2)
+  const cy = Math.floor(H / 2)
+  
+  const isBlack = (x: number, y: number) => {
+    const idx = (y * W + x) * 4
+    return pixels[idx] === 0 && pixels[idx + 1] === 0 && pixels[idx + 2] === 0
+  }
+  
+  const maxRadius = Math.min(cx, cy) - 2
+  for (let r = 1; r < maxRadius; r += 2) {
+    const numSamples = Math.min(64, 4 * r)
+    for (let s = 0; s < numSamples; s++) {
+      const angle = (s * 2 * Math.PI) / numSamples
+      const px = Math.round(cx + r * Math.cos(angle))
+      const py = Math.round(cy + r * Math.sin(angle))
+      
+      if (px < 1 || px >= W - 1 || py < 1 || py >= H - 1) continue
+      
+      const centerBlack = isBlack(px, py)
+      const leftBlack   = isBlack(px - 1, py)
+      const rightBlack  = isBlack(px + 1, py)
+      const topBlack    = isBlack(px, py - 1)
+      const bottomBlack = isBlack(px, py + 1)
+      
+      if (centerBlack !== leftBlack || centerBlack !== rightBlack || centerBlack !== topBlack || centerBlack !== bottomBlack) {
+        return { px, py }
+      }
+    }
+  }
+  return null
+}
+
+function pixelToComplex(
+  px: number,
+  py: number,
+  W: number,
+  H: number,
+  centerX: number,
+  centerY: number,
+  zoom: number,
+  type: 'mandelbrot' | 'julia'
+): { x: number; y: number } {
+  if (type === 'mandelbrot') {
+    return {
+      x: centerX + (px - W / 2) / (zoom * W / 4.0),
+      y: centerY + (py - H / 2) / (zoom * H / 4.0),
+    }
+  } else {
+    return {
+      x: centerX + (px - W / 2) / zoom,
+      y: centerY + (py - H / 2) / zoom,
+    }
+  }
+}
+
 function makeFractalScene(
   title:           string,
+  type:            'mandelbrot' | 'julia',
   locs:            Location[],
+  juliaC:          { cx: number; cy: number } | null,
   maxIter:         number,
   colorTransform?: ColorTransform,
-  // Zoom-Inkrement-Bereich pro 16.7ms (normiert).
-  // 0.015 = ruhig, 0.20 = sehr schnell
-  zoomRange:       [number, number] = [0.015, 0.15],
-  // Zoom-Startbereich: [min, spread] — Einstieg in [min .. min+spread]
-  zoomStart:       [number, number] = [80, 2000],
-  // Maximaler Zoom bevor Fade+Reset einsetzt
-  zoomMax:         number = 3e4,
+  zoomMax:         number = 1e9,
 ): () => React.JSX.Element {
-  const W = 160, H = 107
+  const W = 320
+  const H = 213
 
   return function FractalScene() {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const stateRef  = useRef({
-      // Zufälliger Einstieg mitten in interessantem Zoom-Bereich (nicht zoom~1 → zeigt schwarzes Inneres)
-      zoom:      zoomStart[0] + Math.random() * zoomStart[1],
-      locIdx:    Math.floor(Math.random() * locs.length),
-      fadeAlpha: 0,
-      fading:    false,
-      increment: zoomRange[0] + Math.random() * (zoomRange[1] - zoomRange[0]),
-      lastFrame: 0,
-      // Cross-Fade: Pixel-Snapshots des aktuellen und nächsten Frames
-      prevPixels:    null as Uint8ClampedArray | null,
-      nextPixels:    null as Uint8ClampedArray | null,
-      nextLocIdx:    0,
-      nextZoom:      zoomStart[0],
-      nextIncrement: zoomRange[0],
+      zoom:       type === 'mandelbrot' ? 100 : 180,
+      centerX:    type === 'mandelbrot' ? locs[0].cx : 0.0,
+      centerY:    type === 'mandelbrot' ? locs[0].cy : 0.0,
+      locIdx:     0,
+      
+      fadeAlpha:  0,
+      fading:     false,
+      driftAngle: Math.random() * Math.PI * 2,
+      lastFrame:  0,
+
+      prevPixels: null as Uint8ClampedArray | null,
+      nextPixels: null as Uint8ClampedArray | null,
+      
+      nextLocIdx:  0,
+      nextZoom:    type === 'mandelbrot' ? 100 : 180,
+      nextCenterX: 0.0,
+      nextCenterY: 0.0,
     })
 
     useEffect(() => {
@@ -104,99 +175,174 @@ function makeFractalScene(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let wasmMod: any = null
 
+      let isVisible = true
+      const io = new IntersectionObserver(([e]) => {
+        isVisible = e.isIntersecting
+      })
+      io.observe(canvas)
+
       import('@wasm/fraktallab_wasm.js').then(async (wasm) => {
         await wasm.default()
         if (alive) wasmMod = wasm
       })
+
+      const buf = new Uint8Array(W * H * 4)
+      const pixels = new Uint8ClampedArray(buf.buffer, buf.byteOffset, buf.byteLength)
+      const imgData = new ImageData(pixels, W, H)
 
       function loop(t: number) {
         if (!alive) return
         raf = requestAnimationFrame(loop)
 
         const s = stateRef.current
-        // Throttle: ~12 fps statt 60 → WASM-Last auf ~20% senken
-        if (t - s.lastFrame < 82) return
-        const dt = Math.min(50, t - s.lastFrame)
+
+        if (s.lastFrame === 0) {
+          s.lastFrame = t
+          return
+        }
+
+        // Throttle to 30 FPS
+        if (t - s.lastFrame < 33) return
+        const dt = t - s.lastFrame
         s.lastFrame = t
+
+        if (!isVisible) return
         if (!wasmMod) return
 
-        // ── Cross-Fade läuft: nur Pixel blenden, kein WASM-Render ───────────
+        // ── Fading/Transition is active ──────────────────────────────────────
         if (s.fading && s.prevPixels && s.nextPixels) {
-          s.fadeAlpha = Math.min(1, s.fadeAlpha + 0.06)
+          s.fadeAlpha = Math.min(1, s.fadeAlpha + 0.05 * (dt / 16.7))
 
-          const prev    = s.prevPixels
-          const next    = s.nextPixels
+          const prev = s.prevPixels
+          const next = s.nextPixels
           const blended = new Uint8ClampedArray(W * H * 4)
-          const a       = s.fadeAlpha
+          const a = s.fadeAlpha
+          const oneMinusA = 1 - a
 
-          // Pixel-genaues Blend: prev*(1-a) + next*a
           for (let i = 0; i < blended.length; i += 4) {
-            blended[i]   = (prev[i]   * (1 - a) + next[i]   * a) | 0
-            blended[i+1] = (prev[i+1] * (1 - a) + next[i+1] * a) | 0
-            blended[i+2] = (prev[i+2] * (1 - a) + next[i+2] * a) | 0
+            blended[i]   = (prev[i]   * oneMinusA + next[i]   * a) | 0
+            blended[i+1] = (prev[i+1] * oneMinusA + next[i+1] * a) | 0
+            blended[i+2] = (prev[i+2] * oneMinusA + next[i+2] * a) | 0
             blended[i+3] = 255
           }
+
           ctx.putImageData(new ImageData(blended, W, H), 0, 0)
 
-          // Cross-Fade abgeschlossen: zu nächster Location wechseln
           if (s.fadeAlpha >= 1) {
-            s.locIdx       = s.nextLocIdx
-            s.zoom         = s.nextZoom
-            s.increment    = s.nextIncrement
-            s.fading       = false
-            s.fadeAlpha    = 0
-            s.prevPixels   = null
-            s.nextPixels   = null
+            s.locIdx     = s.nextLocIdx
+            s.zoom       = s.nextZoom
+            s.centerX    = s.nextCenterX
+            s.centerY    = s.nextCenterY
+            s.fading     = false
+            s.fadeAlpha  = 0
+            s.prevPixels = null
+            s.nextPixels = null
           }
           return
         }
 
-        // ── Normaler Live-Render ──────────────────────────────────────────────
-        const loc = locs[s.locIdx]
-        s.zoom *= Math.pow(1 + s.increment, dt / 16.7)
+        // ── Normal Render ──────────────────────────────────────────────────
+        // Zoom exponentially
+        s.zoom *= Math.pow(type === 'mandelbrot' ? 1.026 : 1.03, dt / 16.7)
 
-        if (s.zoom > zoomMax && !s.fading) s.fading = true
+        // Scaled drift
+        s.driftAngle += 0.01 * (dt / 16.7)
+        const driftDist = (type === 'mandelbrot' ? 0.3 : 0.5) / s.zoom
+        s.centerX += Math.cos(s.driftAngle) * driftDist
+        s.centerY += Math.sin(s.driftAngle) * driftDist
 
         try {
-          const params = new wasmMod.RenderParams(loc.cx, loc.cy, s.zoom, maxIter)
-          const pixels = new Uint8ClampedArray(wasmMod.render(W, H, params))
+          if (type === 'mandelbrot') {
+            const params = new wasmMod.RenderParams(s.centerX, s.centerY, s.zoom, maxIter)
+            const mandelPixels = new Uint8ClampedArray(wasmMod.render(W, H, params))
+            pixels.set(mandelPixels)
+          } else {
+            wasmMod.render_julia(
+              buf,
+              W,
+              H,
+              juliaC!.cx,
+              juliaC!.cy,
+              s.centerX,
+              s.centerY,
+              s.zoom,
+              maxIter
+            )
+          }
 
-          // Schwarzraum-Früherkennung: zu viel Inneres → Übergang sofort auslösen.
-          // Zoom-Guard 150: darunter ist ein großer Innen-Anteil normal.
-          if (!s.fading && s.zoom > 150 && isMostlyBlack(pixels)) s.fading = true
+          // Apply boundary feedback correction
+          const boundary = findClosestBoundaryPixel(pixels, W, H)
+          if (boundary) {
+            const target = pixelToComplex(boundary.px, boundary.py, W, H, s.centerX, s.centerY, s.zoom, type)
+            const lerpFactor = 1 - Math.pow(0.95, dt / 16.7)
+            s.centerX = s.centerX * (1 - lerpFactor) + target.x * lerpFactor
+            s.centerY = s.centerY * (1 - lerpFactor) + target.y * lerpFactor
+          }
 
-          // Farb-Transformation auf aktuellen Frame anwenden
+          // Transform colors
           if (colorTransform) applyTransform(pixels, colorTransform)
 
-          // Aktuellen Frame auf Canvas ausgeben
-          ctx.putImageData(new ImageData(pixels, W, H), 0, 0)
-
-          // Übergang starten: Snapshot beider Frames vorbereiten
-          if (s.fading && !s.prevPixels) {
-            // Snapshot des gerade gerenderten (und ggf. farbkorrigierten) Frames
-            s.prevPixels = pixels.slice()
-
-            // Nächste Location, Zoom und Inkrement bestimmen
-            s.nextLocIdx    = (s.locIdx + 1) % locs.length
-            s.nextZoom      = zoomStart[0] + Math.random() * zoomStart[1]
-            s.nextIncrement = zoomRange[0] + Math.random() * (zoomRange[1] - zoomRange[0])
-
-            // Einen WASM-Frame der Ziel-Location rendern
-            const nextLoc    = locs[s.nextLocIdx]
-            const nextParams = new wasmMod.RenderParams(nextLoc.cx, nextLoc.cy, s.nextZoom, maxIter)
-            const nextPixels = new Uint8ClampedArray(wasmMod.render(W, H, nextParams))
-
-            // Gleiche Farb-Transformation auch auf den Ziel-Frame anwenden
-            if (colorTransform) applyTransform(nextPixels, colorTransform)
-
-            s.nextPixels = nextPixels
-            s.fadeAlpha  = 0
-          }
+          // Put to screen
+          ctx.putImageData(imgData, 0, 0)
         } catch { return }
+
+        // Transition detection
+        const maxZoomReached = s.zoom > zoomMax
+        const lowDetail = isLowDetail(pixels)
+
+        if ((maxZoomReached || lowDetail) && !s.fading) {
+          s.fading = true
+          s.fadeAlpha = 0
+          s.prevPixels = pixels.slice()
+
+          if (type === 'mandelbrot') {
+            s.nextLocIdx = (s.locIdx + 1) % locs.length
+            s.nextZoom = 100
+            s.nextCenterX = locs[s.nextLocIdx].cx
+            s.nextCenterY = locs[s.nextLocIdx].cy
+          } else {
+            s.nextZoom = 180
+            s.nextCenterX = 0.0
+            s.nextCenterY = 0.0
+          }
+
+          try {
+            const nextTarget = new Uint8ClampedArray(W * H * 4)
+            if (type === 'mandelbrot') {
+              const nextParams = new wasmMod.RenderParams(s.nextCenterX, s.nextCenterY, s.nextZoom, maxIter)
+              const nextMandel = new Uint8ClampedArray(wasmMod.render(W, H, nextParams))
+              nextTarget.set(nextMandel)
+            } else {
+              const nextTargetBuf = new Uint8Array(W * H * 4)
+              const nextTargetPixels = new Uint8ClampedArray(nextTargetBuf.buffer, nextTargetBuf.byteOffset, nextTargetBuf.byteLength)
+              wasmMod.render_julia(
+                nextTargetBuf,
+                W,
+                H,
+                juliaC!.cx,
+                juliaC!.cy,
+                s.nextCenterX,
+                s.nextCenterY,
+                s.nextZoom,
+                maxIter
+              )
+              nextTarget.set(nextTargetPixels)
+            }
+
+            if (colorTransform) applyTransform(nextTarget, colorTransform)
+            s.nextPixels = nextTarget
+          } catch {
+            s.fading = false
+          }
+        }
       }
 
       raf = requestAnimationFrame(loop)
-      return () => { alive = false; cancelAnimationFrame(raf) }
+      return () => {
+        alive = false
+        cancelAnimationFrame(raf)
+        io.disconnect()
+      }
     }, [])
 
     return (
@@ -211,129 +357,130 @@ function makeFractalScene(
   }
 }
 
-// ── 10 Fraktal-Szenen — verschiedene Koordinaten, Farb-Looks und Tempi ──────
+// ── 10 Overhauled Fractal Scenes ──
 
-// Volle Farben, mittelschnell
-// Koordinaten leicht herausgezoomt, damit die farbigen Seepferdchen-Strukturen sichtbar sind.
-// maxIter erhöht auf 150 → mehr Iterationstiefe → weniger schwarz, feinere Farbbänder.
-// Zoom-Einstieg niedrig (20..200) statt (80..2080), Max-Zoom-Schwelle auf 2500 reduziert,
-// sodass der bunte Außenbereich der Seahorse Valley gut sichtbar bleibt.
 export const FractalSeahorse = makeFractalScene(
   'SEAHORSE VALLEY // DEPTH ∞',
+  'mandelbrot',
   [
-    { cx: -0.7435, cy: 0.1314 },  // Seahorse Valley — Zentrum mit Farb-Wirbeln
-    { cx: -0.7269, cy: 0.1889 },  // leicht verschoben, mehr Außenstruktur
-    { cx: -0.7269, cy: 0.1314 },  // drittes Fenster — untere Seahorse-Region
+    { cx: -0.7435, cy: 0.1314 },
+    { cx: -0.7269, cy: 0.1889 },
+    { cx: -0.7269, cy: 0.1314 },
   ],
-  150,            // war 72 — mehr Iterationen → weniger schwarz, feinere Farbbänder
+  null,
+  180,
   undefined,
-  [0.018, 0.06],  // langsamer als vorher → länger im bunten Bereich
-  [20, 180],      // Zoom-Start: 20..200 statt 80..2080 → startet im bunten Außenbereich
-  2500,           // Max-Zoom vor Reset: 2500 statt 30000 → kehrt früher zum Außenbereich zurück
+  1e9
 )
 
-// Grüner Phosphor, mittelschnell — tiefer Zoom in einen anderen Spiralarm als Seahorse.
-// Koordinaten: real=0.36, imag=0.1 — reich strukturierter Spiralbereich im rechten Bulb-Übergang.
-// Zoom-Start hoch (200..8000) → startet bereits tief in der Spiralstruktur.
 export const FractalSpiral = makeFractalScene(
   'TRIPLE SPIRAL // SECTOR 3',
+  'mandelbrot',
   [
-    { cx: 0.36,  cy: 0.1  },  // rechter Bulb-Übergang — dicht strukturierte Spiralarme
-    { cx: 0.355, cy: 0.108 }, // leicht verschoben für Abwechslung
+    { cx: 0.36,  cy: 0.1  },
+    { cx: 0.355, cy: 0.108 },
   ],
-  100,            // mehr Iterationen als vorher (war 72) → weniger schwarze Flächen
+  null,
+  130,
   'mono',
-  [0.015, 0.065], // etwas schneller als vorher
-  [200, 7800],    // Zoom-Start: 200..8000 — direkt tief in der Struktur
-  40000,          // Max-Zoom vor Reset
+  1e9
 )
 
-// Kaltes Blau-Türkis, schnell
 export const FractalLightning = makeFractalScene(
   'LIGHTNING FORK // VECTOR FIELD',
-  [{ cx:-0.0630, cy:0.6748 }, { cx:-0.0621, cy:0.7140 }],
-  80,
+  'mandelbrot',
+  [
+    { cx: -0.0630, cy: 0.6748 },
+    { cx: -0.0621, cy: 0.7140 },
+  ],
+  null,
+  120,
   'cold',
-  [0.06, 0.20],
+  1e9
 )
 
-// Magma-Rot, mittel — Julia-artige Grenz-Spiralen nahe dem kritischen Punkt
-// Koordinaten: real=-0.16, imag=1.0405 — hoch bunte Spiralstrukturen auf der Mandelbrot-Grenze
-// Zoom-Start niedrig (50..5000) damit die farbigen Außenstrukturen sichtbar sind,
-// Max-Zoom höher (50000) für tiefen Einblick in Spiralarme.
 export const FractalElephant = makeFractalScene(
   'ELEPHANT VALLEY // SCANNING',
+  'mandelbrot',
   [
-    { cx: -0.16,   cy: 1.0405 },  // Julia-artige Spiralen auf der Mandelbrot-Grenze
-    { cx: -0.1701, cy: 1.0365 },  // leicht verschoben — andere Spiralstruktur
+    { cx: -0.16,   cy: 1.0405 },
+    { cx: -0.1701, cy: 1.0365 },
   ],
-  120,            // mehr Iterationen → feinere Farbbänder in den Spiralarmen
+  null,
+  140,
   'hot',
-  [0.012, 0.055], // mittleres Tempo — nicht zu schnell durch die Spiralen
-  [50, 4950],     // Einstieg: 50..5000 — startet im bunten Außenbereich
-  50000,          // tiefer Zoom bis 50 000 bevor Reset
+  1e9
 )
 
-// Volle Farben, mittel
 export const FractalMini = makeFractalScene(
   'MINI-MANDELBROT // DEEP FIELD',
-  [{ cx:-1.7534, cy:0.0016 }, { cx:-1.6256, cy:0.0019 }],
-  80,
-  undefined,
-  [0.015, 0.07],
-)
-
-// Cyan-Magenta-Neon, mittelschnell
-export const FractalDendrite = makeFractalScene(
-  'DENDRITE // FRACTAL GROWTH',
-  [{ cx:-1.4012, cy:0.0001 }, { cx:-1.1544, cy:0.2411 }],
-  72,
-  'neon',
-  [0.05, 0.16],
-)
-
-// Grüner Phosphor, sehr schnell
-export const FractalAntenna = makeFractalScene(
-  'ANTENNA // SIGNAL LOCKED',
-  [{ cx:-0.1230, cy:0.7448 }, { cx:-0.1354, cy:0.6491 }],
-  80,
-  'mono',
-  [0.08, 0.22],
-)
-
-// Invertiert (psychedelisch), sehr langsam — das visuell beeindruckendste Fraktal-Panel.
-// Koordinaten: real=-0.0986, imag=0.6517 — "Double Spiral" Region mit extrem feinen
-// selbstähnlichen Strukturen. Zoom bis 100 000 für maximale Tiefenwirkung.
-// maxIter=200 → deutlich feinere Farbbänder und weniger schwarze Fehlstellen.
-// Zoom-Start hoch (500..15000) damit man sofort in der interessanten Tiefenstruktur landet.
-export const FractalSwirl = makeFractalScene(
-  'DEEP SWIRL // PATTERN LOCK',
+  'mandelbrot',
   [
-    { cx: -0.0986, cy: 0.6517 },  // Double-Spiral-Region — maximale Strukturdichte
-    { cx: -0.0986, cy: 0.6519 },  // minimal verschoben — anderer Spiraleingang
-    { cx:  0.295,  cy: 0.555  },  // zweite Double-Spiral-Region — andere Farbcharakteristik
+    { cx: -1.7534, cy: 0.0016 },
+    { cx: -1.6256, cy: 0.0019 },
   ],
-  200,            // war 72 — 3× mehr Iterationen → viel feinere, reichere Farbbänder
-  'invert',
-  [0.008, 0.030], // langsam, damit die feinen Strukturen sichtbar bleiben
-  [500, 14500],   // Einstieg: 500..15000 — direkt in der tiefen Spiralstruktur
-  100000,         // Max-Zoom 100 000 — der tiefste Zoom aller Panels
+  null,
+  120,
+  undefined,
+  1e9
 )
 
-// Kaltes Blau, langsam-mittel
+export const FractalDragon = makeFractalScene(
+  'NEON DRAGON // JULIA SECTOR',
+  'julia',
+  [],
+  { cx: 0.285, cy: 0.01 },
+  200,
+  'neon',
+  1e10
+)
+
 export const FractalSatellite = makeFractalScene(
-  'SATELLITE BULB // ORBIT Ω',
-  [{ cx:-1.2560, cy:0.3818 }, { cx:-0.7326, cy:0.2312 }],
-  80,
+  'SATELLITE ORBIT // DATASTREAM',
+  'mandelbrot',
+  [
+    { cx: -1.2560, cy: 0.3818 },
+    { cx: -0.7326, cy: 0.2312 },
+  ],
+  null,
+  130,
   'cold',
-  [0.02, 0.08],
+  1e9
 )
 
-// Magma-Rot, extrem langsam (hypnotisch)
+export const FractalDendrite = makeFractalScene(
+  'DENDRITE HYPHA // GROWTH',
+  'julia',
+  [],
+  { cx: -0.7, cy: 0.27015 },
+  220,
+  'invert',
+  1e10
+)
+
+export const FractalSwirl = makeFractalScene(
+  'DEEP SWIRL // NEURAL SYNC',
+  'mandelbrot',
+  [
+    { cx: -0.0986, cy: 0.6517 },
+    { cx: -0.0986, cy: 0.6519 },
+    { cx:  0.295,  cy: 0.555  },
+  ],
+  null,
+  220,
+  'invert',
+  1e10
+)
+
 export const FractalTendril = makeFractalScene(
   'TENDRIL CLUSTER // CRAWLING',
-  [{ cx:-0.7490, cy:0.0585 }, { cx:-0.7080, cy:0.2492 }],
-  72,
+  'mandelbrot',
+  [
+    { cx: -0.7490, cy: 0.0585 },
+    { cx: -0.7080, cy: 0.2492 },
+  ],
+  null,
+  120,
   'hot',
-  [0.004, 0.022],
+  1e9
 )
