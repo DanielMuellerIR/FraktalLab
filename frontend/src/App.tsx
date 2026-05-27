@@ -849,8 +849,12 @@ export default function App() {
                   {(() => {
                     const panel = ALL_PANELS[reviewIdx]
                     const Comp = panel.Component
+                    const labelText = `${String(reviewIdx + 1).padStart(2, '0')} ${panel.name}`
                     return (
-                      <Panel title={`REVIEW // ${panel.name} [${reviewIdx + 1}/${totalPanels}]`}>
+                      <Panel
+                        title={`REVIEW // ${panel.name} [${reviewIdx + 1}/${totalPanels}]`}
+                        rightLabel={labelText}
+                      >
                         <Comp />
                       </Panel>
                     )
@@ -866,6 +870,7 @@ export default function App() {
                       const panel = ALL_PANELS[idx]
                       const Comp = panel.Component
                       const isActive = idx === reviewIdx
+                      const labelText = `${String(idx + 1).padStart(2, '0')} ${panel.name}`
                       return (
                         <div
                           key={panel.name}
@@ -877,6 +882,7 @@ export default function App() {
                           <Panel
                             title={`REVIEW // ${panel.name} [${idx + 1}/${totalPanels}]`}
                             className={isActive ? 'border-green-500' : ''}
+                            rightLabel={labelText}
                           >
                             <Comp />
                           </Panel>

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { getWasmModule } from '../utils/wasm-loader'
 
 // 6 klassische Julia-Parametersätze
 const JULIA_PARAMS = [
@@ -124,9 +125,8 @@ export default function FractalJulia() {
     })
     io.observe(canvas)
 
-    import('@wasm/fraktallab_wasm.js')
-      .then(async (wasm) => {
-        await wasm.default()
+    getWasmModule()
+      .then((wasm) => {
         if (cancelled) return
 
         const { render_julia } = wasm

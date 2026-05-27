@@ -10,6 +10,7 @@ export default defineConfig({
     baseURL: process.env.VITE_URL ?? 'http://localhost:5174',
     headless: true,
     viewport: { width: 1280, height: 900 },
+    bypassCSP: true,
   },
   projects: [
     {

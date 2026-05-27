@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { getWasmModule } from '../utils/wasm-loader'
 
 // Interessante Mandelbrot-Koordinaten — werden zyklisch durchgezoomt.
 // Wenn die Float-Präzisionsgrenze erreicht wird, Cross-Fade → nächste Location.
@@ -63,9 +64,8 @@ export default function FractalCanvas() {
     const ro = new ResizeObserver(syncSize)
     ro.observe(container)
 
-    import('@wasm/fraktallab_wasm.js')
-      .then(async (wasm) => {
-        await wasm.default()
+    getWasmModule()
+      .then((wasm) => {
         if (cancelled) return
 
         const { RenderParams, render } = wasm

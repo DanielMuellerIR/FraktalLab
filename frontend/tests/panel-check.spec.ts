@@ -44,12 +44,14 @@ async function canvasMaxStdDev(
     const ctx = canvas.getContext('2d')
     if (!ctx) return { stddev: 0, width: w, height: h, testId }
 
-    // 3 Regionen samplen: top-left / Mitte / bottom-right
+    // 5 Regionen samplen: Ecken und Mitte
     const sw = Math.min(w, 80)
     const sh = Math.min(h, 80)
     const regions = [
       { x: 0,                         y: 0 },
+      { x: Math.max(0, w - sw),        y: 0 },
       { x: Math.floor((w - sw) / 2),  y: Math.floor((h - sh) / 2) },
+      { x: 0,                         y: Math.max(0, h - sh) },
       { x: Math.max(0, w - sw),        y: Math.max(0, h - sh) },
     ]
 

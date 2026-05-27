@@ -1,9 +1,11 @@
 import React, { useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
+import { getWasmModule } from '../utils/wasm-loader'
 
 interface Location { cx: number; cy: number }
 
 type ColorTransform = 'mono' | 'cold' | 'hot' | 'neon' | 'invert'
+
 
 function applyTransform(pixels: Uint8ClampedArray, t: ColorTransform) {
   for (let i = 0; i < pixels.length; i += 4) {
@@ -141,6 +143,7 @@ function makeFractalScene(
   maxIter:         number,
   colorTransform?: ColorTransform,
   zoomMax:         number = 1e9,
+  zoomStart?:      number,
 ): () => React.JSX.Element {
   const W = 320
   const H = 213
@@ -148,7 +151,7 @@ function makeFractalScene(
   return function FractalScene() {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const stateRef  = useRef({
-      zoom:       type === 'mandelbrot' ? 1.5 : 180,
+      zoom:       zoomStart ?? (type === 'mandelbrot' ? 1.5 : 180),
       centerX:    type === 'mandelbrot' ? locs[0].cx : 0.0,
       centerY:    type === 'mandelbrot' ? locs[0].cy : 0.0,
       locIdx:     0,
@@ -162,7 +165,7 @@ function makeFractalScene(
       nextPixels: null as Uint8ClampedArray | null,
       
       nextLocIdx:  0,
-      nextZoom:    type === 'mandelbrot' ? 1.5 : 180,
+      nextZoom:    zoomStart ?? (type === 'mandelbrot' ? 1.5 : 180),
       nextCenterX: 0.0,
       nextCenterY: 0.0,
     })
@@ -181,9 +184,10 @@ function makeFractalScene(
       })
       io.observe(canvas)
 
-      import('@wasm/fraktallab_wasm.js').then(async (wasm) => {
-        await wasm.default()
+      getWasmModule().then((wasm) => {
         if (alive) wasmMod = wasm
+      }).catch((err) => {
+        console.error('[FractalScenes] WASM-Fehler (import):', err)
       })
 
       const buf = new Uint8Array(W * H * 4)
@@ -284,7 +288,10 @@ function makeFractalScene(
 
           // Put to screen
           ctx.putImageData(imgData, 0, 0)
-        } catch { return }
+        } catch (err) {
+          console.error('[FractalScenes] Render error:', err)
+          return
+        }
 
         // Transition detection
         const maxZoomReached = s.zoom > zoomMax
@@ -331,7 +338,8 @@ function makeFractalScene(
 
             if (colorTransform) applyTransform(nextTarget, colorTransform)
             s.nextPixels = nextTarget
-          } catch {
+          } catch (err) {
+            console.error('[FractalScenes] Next frame render error:', err)
             s.fading = false
           }
         }
@@ -370,7 +378,8 @@ export const FractalSeahorse = makeFractalScene(
   null,
   180,
   undefined,
-  1e9
+  1e9,
+  30
 )
 
 export const FractalSpiral = makeFractalScene(
@@ -383,7 +392,8 @@ export const FractalSpiral = makeFractalScene(
   null,
   130,
   'mono',
-  1e9
+  1e9,
+  100
 )
 
 export const FractalLightning = makeFractalScene(
@@ -396,7 +406,8 @@ export const FractalLightning = makeFractalScene(
   null,
   120,
   'cold',
-  1e9
+  1e9,
+  100
 )
 
 export const FractalElephant = makeFractalScene(
@@ -409,7 +420,8 @@ export const FractalElephant = makeFractalScene(
   null,
   140,
   'hot',
-  1e9
+  1e9,
+  100
 )
 
 export const FractalMini = makeFractalScene(
@@ -422,7 +434,8 @@ export const FractalMini = makeFractalScene(
   null,
   120,
   undefined,
-  1e9
+  1e9,
+  1000
 )
 
 export const FractalDragon = makeFractalScene(
@@ -432,7 +445,8 @@ export const FractalDragon = makeFractalScene(
   { cx: 0.285, cy: 0.01 },
   200,
   'neon',
-  1e10
+  1e10,
+  200
 )
 
 export const FractalSatellite = makeFractalScene(
@@ -445,7 +459,8 @@ export const FractalSatellite = makeFractalScene(
   null,
   130,
   'cold',
-  1e9
+  1e9,
+  1000
 )
 
 export const FractalDendrite = makeFractalScene(
@@ -455,7 +470,8 @@ export const FractalDendrite = makeFractalScene(
   { cx: -0.7, cy: 0.27015 },
   220,
   'invert',
-  1e10
+  1e10,
+  300
 )
 
 export const FractalSwirl = makeFractalScene(
@@ -469,7 +485,8 @@ export const FractalSwirl = makeFractalScene(
   null,
   220,
   'invert',
-  1e10
+  1e10,
+  200
 )
 
 export const FractalTendril = makeFractalScene(
@@ -482,5 +499,6 @@ export const FractalTendril = makeFractalScene(
   null,
   120,
   'hot',
-  1e9
+  1e9,
+  200
 )
