@@ -21,46 +21,43 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)]
 }
 
-// ── Dunkle Paletten ────────────────────────────────────────────────────────────
-// Jede Palette nimmt den rohen Plasma-Wert v (ca. −4..+4) und die Zeit ts für kontinuierlichen Farbwechsel.
-// Die Formeln nutzen abs/sin, damit Luminanz immer positiv bleibt.
-
-// Palette 0 — Dark Nebula: tiefes Blau/Lila, nur an Peaks elektrisch hell
+// Palette 0 — Dark Nebula: tiefes Blau/Lila, an Peaks strahlend hell
 function paletteNebula(v: number, ts: number): [number, number, number] {
-  const h = (240 + Math.sin(v) * 30 + ts * 25) % 360          // 210..270 mit Drift
-  const s = 0.70
-  const l = 0.05 + Math.abs(Math.sin(v * 2)) * 0.20   // 0.05..0.25 — fast schwarz
+  const h = (240 + Math.sin(v) * 35 + ts * 35) % 360
+  const s = 0.90
+  const l = 0.01 + Math.abs(Math.sin(v * 2.2)) * 0.48
   return hslToRgb(h, s, l)
 }
 
-// Palette 1 — Infrared: Dunkelrot/Orange wie Wärmebildkamera
+// Palette 1 — Infrared: Dunkelrot/Orange/Gelb wie glühende Kohle
 function paletteInfrared(v: number, ts: number): [number, number, number] {
-  const h = (Math.abs(v) * 20 + ts * 25) % 360            // 0..80 mit Drift
-  const s = 0.80
-  const l = 0.03 + Math.abs(Math.sin(v)) * 0.25       // 0.03..0.28 — sehr dunkel
+  const h = (Math.abs(v) * 22 + ts * 35) % 360
+  const s = 0.95
+  const l = 0.01 + Math.abs(Math.sin(v * 1.5)) * 0.52
   return hslToRgb(h, s, l)
 }
 
 // Palette 2 — Acidic Dark: Dunkelgrün mit grellen Lime-Spitzen
 function paletteAcidic(v: number, ts: number): [number, number, number] {
-  const h = (120 + Math.sin(v * 3) * 40 + ts * 25) % 360      // 80..160 mit Drift
-  const s = 0.90
-  const l = 0.03 + Math.abs(Math.sin(v * 2)) * 0.20   // 0.03..0.23 — fast schwarz
+  const h = (120 + Math.sin(v * 2.8) * 45 + ts * 35) % 360
+  const s = 0.95
+  const l = 0.01 + Math.abs(Math.sin(v * 2.0)) * 0.48
   return hslToRgb(h, s, l)
 }
 
-// Palette 3 — Void: fast monochromes Dunkelcyan, kurze weiße Funken
+// Palette 3 — Void: fast monochromes Dunkelcyan, helle weisse Entladungen
 function paletteVoid(v: number, ts: number): [number, number, number] {
-  const h = (180 + ts * 25) % 360                             // Cyan mit Drift
-  const s = 0.60
-  const l = 0.03 + Math.abs(Math.sin(v * 4)) * 0.18   // 0.03..0.21 — fast schwarz
+  const h = (180 + ts * 35) % 360
+  const s = 0.85
+  const l = 0.01 + Math.abs(Math.sin(v * 3.2)) * 0.45
   return hslToRgb(h, s, l)
 }
 
 // Array aller Paletten zur Indizierung
 const PALETTES = [paletteNebula, paletteInfrared, paletteAcidic, paletteVoid]
-const PALETTE_DURATION = 20   // Sekunden pro Palette
-const CROSSFADE_DURATION = 10  // Sekunden Überblendung (10 Sekunden transition)
+const PALETTE_DURATION = 10   // Sekunden pro Palette (10s Szenenwechsel)
+const CROSSFADE_DURATION = 4  // Sekunden Überblendung
+
 
 export default function PlasmaDemo() {
   const canvasRef = useRef<HTMLCanvasElement>(null)

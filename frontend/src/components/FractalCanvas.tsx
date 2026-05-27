@@ -118,12 +118,19 @@ export default function FractalCanvas() {
           // ── Normaler Live-Render ────────────────────────────────────────────
           const loc = LOCATIONS[s.locIdx]
           s.zoom *= 1.015
+          
+          // Rotate background fractal slowly
+          if (!s.fading) {
+            if (!(s as any).angle) (s as any).angle = 0
+            ;(s as any).angle += 0.002
+          }
+          const angle = (s as any).angle || 0
 
           // Übergang auslösen bevor Floating-Point-Artefakte sichtbar werden
           if (s.zoom > 3e4 && !s.fading) s.fading = true
 
           try {
-            const params = new RenderParams(loc.cx, loc.cy, s.zoom, 128)
+            const params = new RenderParams(loc.cx, loc.cy, s.zoom, 128, angle)
             const pixels = new Uint8ClampedArray(render(canvas.width, canvas.height, params))
 
             // Schwarzraum-Früherkennung: wenn >75% der Pixel Mandelbrot-Inneres sind,
@@ -152,7 +159,7 @@ export default function FractalCanvas() {
 
               // Einen WASM-Frame der Ziel-Location rendern
               const nextLoc    = LOCATIONS[s.nextLocIdx]
-              const nextParams = new RenderParams(nextLoc.cx, nextLoc.cy, s.nextZoom, 128)
+              const nextParams = new RenderParams(nextLoc.cx, nextLoc.cy, s.nextZoom, 128, 0.0)
               const nextPixels = new Uint8ClampedArray(render(canvas.width, canvas.height, nextParams))
               s.nextImageData  = new ImageData(nextPixels, canvas.width, canvas.height)
 

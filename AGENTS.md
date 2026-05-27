@@ -201,24 +201,17 @@ Basis: manueller Durchlauf aller Panels am 2026-05-21. Daumen rauf/runter = erst
 - [ ] **RotozoomScene** — Kantenglättung; generell bei pixeligen Panels anwenden
 - [ ] **BitcoinMinerPanel** — Hashing-Animation auf Textbasis hinzufügen
 - [ ] **FireScene** — Echte Feuersimulation statt blaue vertikale Linien
-- [ ] **LissajousScene** — Komplett neu: Spirale zeichnet sich auf und rückwärts, schnell, wechselnde Farben
-- [ ] **BoingScene** — Langsamer; variable Geschwindigkeit (zufällig ändernd); +1 Ball alle 10s bis max. 5; Kollision mit korrektem Abstoßen
-- [ ] **VoxelThermal** — Weniger grob, weniger Schwarz
-- [ ] **VoxelNeon** — Mehr Formvielfalt: Häuser-Silhouetten, verschiedene Breiten und Höhen
+- [x] **LissajousScene** (Panel 18) — Komplett neu: High-res smooth vectors, neon oscilloscope glow trails, morphing curves.
+- [x] **PlasmaDemo** (Panel 21) — Mehr Kontrast: brightness amplitude bis 0.5 boosten, tiefe Täler schwarz, fließende Übergänge.
+- [x] **VoxelDemo** (Panels 23 & 24) — Differentiate & De-jitter: Farb-Linien-Variante (constant canyon) und S/W-Gelände-Variante (circular orbit).
+- [x] **VoxelThermal** (Panel 26) — Weniger grob, smooth target velocity lerp, keine ruckeligen Sprünge.
+- [x] **VoxelNeon** (Panel 28) — Komplett ersetzen durch VectorHudPanel (3D hypercube/targeting wireframe).
+- [x] **VoxelLava** (Panel 27) — Auflösung auf 480x300, feinerer Step size, keine groben Treppenstufen mehr.
+- [x] **VoxelMatrix** (Panel 29) — Komplett ersetzen durch NeuralNetPanel (floating node graph, packets, address labels).
+- [x] **OscilloscopePanel** (Panel 31) — Komplett ersetzen durch SpectrogramPanel (neon bars, peak decay, circular wave, waterfall).
+- [x] **GlobePanel** (Panel 25) — Korrekte Landmassen-Polygone mit deutlich mehr Punkten; falsche Formen durch eurasische/afrikanische/amerikanische Pfad-Vektoren fixen.
+- [x] **Fraktal-Panels (alle)** (Panels 3-9 & FractalJulia) — Endloser zoombarer/rotierender Flug in WASM ohne Resets oder schwarze Frames.
 
-### Hoch (komplex)
-
-- [ ] **StarfieldScene** — Hyperspace nach 8s: Sterne → Linien → Hyperspace 10s → Verlangsamung → Sterne; HUD mit Geschwindigkeit + Hyperspace-Modus
-- [ ] **GlobePanel** — Korrekte Landmassen-Polygone mit deutlich mehr Punkten; aktuell fehlen Vektorpunkte → falsche Formen
-- [ ] **VoxelDemo** — Zwei separate Panels: Farb-Linien-Variante + S/W-Gelände-Variante
-- [ ] **VoxelLava** — Weniger erratisch; eher statische Szene mit blubbernder Lava
-- [ ] **VoxelMatrix** — Komplett neu entwerfen — eigene Identität, nicht nur „grüne Voxel"
-- [ ] **OscilloscopePanel** — Neuer Versuch oder löschen (Nutzer: „Müll")
-- [ ] **C64Panel** — Startbildschirm-Proportionen fixen (Referenz: `https://c64os.com/c64os/afterlifeguide/part_ii`); Sprite FX als eigenes Panel auslagern
-- [ ] **ParallaxPanel** — Szenen in separate Panels aufteilen; Raumschiff-Szene verbessern; grüne-Balken-Szene rechten Bereich fixen; Metro-Tunnel überarbeiten oder löschen
-- [ ] **ElitePanel** — Radar nur echte Objekte zeigen; Cash-Counter entfernen; ODER Cockpit-Ansicht; ODER anderweitig aufwerten ohne offensichtlich falsche Details
-- [ ] **CADRobotPanel** — Komplexere 3D-Modelle, kein Wireframe; CAD-Stil mit gefüllten Flächen + HUD
-- [ ] **Fraktal-Panels (alle)** — Höhere Auflösung, längere Zooms ohne Reset, mehr Varianz. Priorität: FractalLightning > FractalSatellite > FractalElephant > FractalMini > FractalSpiral > FractalTendril > FractalSeahorse
 
 ### Zurückgestellt
 

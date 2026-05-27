@@ -87,7 +87,7 @@ function renderVoxelColor(
       const fog = z / FAR
       // Dynamic height-dependent coloring
       const hue = (th * 1.5 + t * 0.005) % 360
-      const [r, g, b] = hslToRgb(hue, 0.9, 0.4)
+      const [r, g, b] = hslToRgb(hue, 0.95, 0.6)
 
       const yStart = Math.max(0, projY)
       const yEnd   = Math.min(H, maxY)
@@ -264,29 +264,18 @@ export function VoxelDemoColor() {
         return
       }
 
-      if (t - c.lastImpulse > 2500 + Math.random() * 2000) {
-        c.vx += (Math.random() - 0.5) * 3
-        c.vy += (Math.random() - 0.5) * 3
-        c.va += (Math.random() - 0.5) * 0.005
-        c.lastImpulse = t
-      }
-
-      c.vx *= 0.992
-      c.vy *= 0.992
-      c.va *= 0.995
-
-      const speed = Math.sqrt(c.vx*c.vx + c.vy*c.vy)
-      if (speed < 0.8) { c.vx += (Math.random()-0.5)*1.5; c.vy += (Math.random()-0.5)*1.5 }
-      if (speed > 5) { c.vx *= 5/speed; c.vy *= 5/speed }
+      // Smooth serpentine canyon flight
+      c.vx = 2.2
+      c.vy = 1.4 * Math.sin(t * 0.0004)
+      c.angle = t * 0.0002 + 0.3 * Math.cos(t * 0.0004)
 
       c.x = ((c.x + c.vx * dt/16) % HMAP + HMAP) % HMAP
       c.y = ((c.y + c.vy * dt/16) % HMAP + HMAP) % HMAP
-      c.angle += c.va * dt/16
 
       const tx = Math.floor(c.x) & (HMAP - 1)
       const ty = Math.floor(c.y) & (HMAP - 1)
       const terrainAtCam = heightmap[ty * HMAP + tx]
-      const camH = Math.max(terrainAtCam + 70, 110 + 30 * Math.sin(t * 0.0004))
+      const camH = Math.max(terrainAtCam + 68, 108 + 25 * Math.sin(t * 0.0003))
 
       renderVoxelColor(ctx, canvas!, c.x, c.y, c.angle, camH, t, offscreen, cache)
       rafId = requestAnimationFrame(loop)
@@ -332,7 +321,6 @@ export function VoxelDemoBW() {
 
     let rafId: number
     let running = true
-    let lastT = 0
     let isVisible = true
 
     const io = new IntersectionObserver(
@@ -354,8 +342,6 @@ export function VoxelDemoBW() {
       if (!running) return
       if (!isVisible) { rafId = requestAnimationFrame(loop); return }
 
-      const dt = Math.min(t - lastT, 50)
-      lastT = t
       const c = cam.current
 
       if (canvas!.width === 0 || canvas!.height === 0) {
@@ -363,29 +349,17 @@ export function VoxelDemoBW() {
         return
       }
 
-      if (t - c.lastImpulse > 2500 + Math.random() * 2000) {
-        c.vx += (Math.random() - 0.5) * 3
-        c.vy += (Math.random() - 0.5) * 3
-        c.va += (Math.random() - 0.5) * 0.005
-        c.lastImpulse = t
-      }
-
-      c.vx *= 0.992
-      c.vy *= 0.992
-      c.va *= 0.995
-
-      const speed = Math.sqrt(c.vx*c.vx + c.vy*c.vy)
-      if (speed < 0.8) { c.vx += (Math.random()-0.5)*1.5; c.vy += (Math.random()-0.5)*1.5 }
-      if (speed > 5) { c.vx *= 5/speed; c.vy *= 5/speed }
-
-      c.x = ((c.x + c.vx * dt/16) % HMAP + HMAP) % HMAP
-      c.y = ((c.y + c.vy * dt/16) % HMAP + HMAP) % HMAP
-      c.angle += c.va * dt/16
+      // Smooth circular orbit path around map center (256, 256)
+      const orbitRadius = 160
+      const orbitSpeed = t * 0.00015
+      c.x = 256 + Math.cos(orbitSpeed) * orbitRadius
+      c.y = 256 + Math.sin(orbitSpeed) * orbitRadius
+      c.angle = orbitSpeed + Math.PI / 2 + 0.2 * Math.sin(t * 0.0005)
 
       const tx = Math.floor(c.x) & (HMAP - 1)
       const ty = Math.floor(c.y) & (HMAP - 1)
       const terrainAtCam = heightmap[ty * HMAP + tx]
-      const camH = Math.max(terrainAtCam + 75, 115 + 25 * Math.cos(t * 0.0003))
+      const camH = Math.max(terrainAtCam + 72, 115 + 20 * Math.cos(t * 0.0002))
 
       renderVoxelBW(ctx, canvas!, c.x, c.y, c.angle, camH, offscreen, cache)
       rafId = requestAnimationFrame(loop)

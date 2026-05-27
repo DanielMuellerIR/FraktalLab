@@ -407,8 +407,11 @@ function makeVoxelScene(
       y: 200 + Math.random() * 200,
       vx: camCfg.vx * (0.8 + Math.random() * 0.4),
       vy: camCfg.vy * (0.8 + Math.random() * 0.4),
+      targetVx: camCfg.vx * (0.8 + Math.random() * 0.4),
+      targetVy: camCfg.vy * (0.8 + Math.random() * 0.4),
       angle: Math.random() * Math.PI * 2,
       va: camCfg.va,
+      targetVa: camCfg.va,
       lastImpulse: -5000,
     })
 
@@ -479,33 +482,36 @@ function makeVoxelScene(
         // Horizon dynamisch aus H berechnen (opts.horizon ignoriert für dynamischen H)
         const horizon = H * 0.42
 
-        // Zufälliger Geschwindigkeits-Impuls alle 2.5–4.5 Sekunden
-        if (t - c.lastImpulse > 2500 + Math.random() * 2000) {
+        // Zufälliger Geschwindigkeits-Impuls alle 3.0–6.0 Sekunden
+        if (t - c.lastImpulse > 3000 + Math.random() * 3000) {
           if (camCfg.lateralDrift) {
-            // Lateraler Drift: Impuls nur senkrecht zur aktuellen Blickrichtung,
-            // damit die Kamera das Terrain seitlich abtastet statt vorwärts zu fliegen.
-            // Seitwärtsrichtung = Blickwinkel + 90°
+            // Lateraler Drift: Impuls nur senkrecht zur aktuellen Blickrichtung
             const perpAngle = c.angle + Math.PI / 2
-            const impMag = speedMin + Math.random() * (speedMax - speedMin) * 0.6
-            c.vx = Math.cos(perpAngle) * impMag
-            c.vy = Math.sin(perpAngle) * impMag
+            const impMag = speedMin + Math.random() * (speedMax - speedMin) * 0.5
+            c.targetVx = Math.cos(perpAngle) * impMag
+            c.targetVy = Math.sin(perpAngle) * impMag
           } else {
-            c.vx += (Math.random() - 0.5) * impulseScale
-            c.vy += (Math.random() - 0.5) * impulseScale
+            c.targetVx += (Math.random() - 0.5) * impulseScale
+            c.targetVy += (Math.random() - 0.5) * impulseScale
           }
-          c.va += (Math.random() - 0.5) * 0.005
+          c.targetVa += (Math.random() - 0.5) * 0.003
           c.lastImpulse = t
         }
 
-        // Exponentielles Dämpfen
+        // Smoothly interpolate current velocity to target velocity to prevent jitter/jumps
+        const lerpVal = 1 - Math.pow(0.94, dt / 16.7)
+        c.vx = c.vx + (c.targetVx - c.vx) * lerpVal
+        c.vy = c.vy + (c.targetVy - c.vy) * lerpVal
+        c.va = c.va + (c.targetVa - c.va) * lerpVal
+
         c.vx *= 0.992
         c.vy *= 0.992
         c.va *= 0.995
 
-        // Mindest- und Höchstgeschwindigkeit erzwingen
-        const speed = Math.sqrt(c.vx*c.vx + c.vy*c.vy)
-        if (speed < speedMin) { c.vx += (Math.random()-0.5)*1.5; c.vy += (Math.random()-0.5)*1.5 }
-        if (speed > speedMax) { c.vx *= speedMax/speed; c.vy *= speedMax/speed }
+        // Mindest- und Höchstgeschwindigkeit erzwingen auf den targets
+        const targetSpeed = Math.sqrt(c.targetVx*c.targetVx + c.targetVy*c.targetVy)
+        if (targetSpeed < speedMin) { c.targetVx += (Math.random()-0.5)*1.0; c.targetVy += (Math.random()-0.5)*1.0 }
+        if (targetSpeed > speedMax) { c.targetVx *= speedMax/targetSpeed; c.targetVy *= speedMax/targetSpeed }
 
         // Position aktualisieren — Terrain wrapp nahtlos durch Bit-Maske
         c.x = ((c.x + c.vx * dt/16) % HMAP + HMAP) % HMAP
@@ -879,18 +885,11 @@ const hmLava = buildHeightmap([
   { sx: 0.22,  sy: 0.166, amp: 9,  px: 3.1, py: 2.4 }, // Hochfrequenz-Oktave 2 (4×, 0.5× amp)
 ])
 
-// Matrix: mittelgroße Hügel, ausgewogen für grünen Raster-Look
-const hmMatrix = buildHeightmap([
-  { sx: 0.019, sy: 0.015, amp: 38, px: 1.1, py: 2.4 },
-  { sx: 0.041, sy: 0.033, amp: 32, px: 3.7, py: 0.9 },
-  { sx: 0.093, sy: 0.076, amp: 28, px: 0.3, py: 1.8 },
-  { sx: 0.17,  sy: 0.14,  amp: 18, px: 2.1, py: 3.5 },
-])
+
 
 // ── Variante: NEON GRID ───────────────────────────────────────────────────────
-// Re-Export: VoxelNeon zeigt auf den neuen eigenständigen Flat-Grid-Renderer.
-// (VoxelNeonGrid ist am Anfang dieser Datei definiert.)
-export const VoxelNeon = VoxelNeonGrid
+import VectorHudPanel from './VectorHudPanel'
+export const VoxelNeon = VectorHudPanel
 
 // ── Variante: LAVA FLOW ───────────────────────────────────────────────────────
 // Vulkanische Lava-Ästhetik: sehr dunkle Basis (#0a0000, #1a0000) → tiefes Rot →
@@ -899,7 +898,7 @@ export const VoxelNeon = VoxelNeonGrid
 // Performance-Cap: max 320×200.
 export const VoxelLava = makeVoxelScene(
   'LAVA FLOW // VOLCANIC HAZARD',
-  320, 200,
+  480, 300,
   hmLava,
   (th, fog) => {
     // Palette: fast schwarz → dunkelrot → orange-rot → leuchtendes orange → gelb-weiß
@@ -945,31 +944,6 @@ export const VoxelLava = makeVoxelScene(
 )
 
 // ── Variante: PHOSPHOR TERRAIN ────────────────────────────────────────────────
-// Echter Phosphor-Monitor-Look: nur Grün, vier Helligkeitsstufen.
-// Palette: #005511 (dunkel) → #009922 → #00cc33 → #00ff41 (Gipfel).
-// Post-Processing: Phosphor-Bloom (vier Kopien bei ±1px, 8% Opazität, lighter-Modus)
-//                 + CRT-Scanlines alle 3px bei 12% Opazität schwarz.
-// Performance-Cap: max 200×120.
-export const VoxelMatrix = makeVoxelScene(
-  'MATRIX DIGITAL RAIN // 3D CODESPACE',
-  200, 120,
-  hmMatrix,
-  (th, fog) => {
-    // Fallback color scheme in case matrixMode is toggled off
-    const t = th / 255
-    const f = Math.max(0, 1 - fog * 0.68)
-    let r: number, g: number, b: number
-    if (t < 0.25) {
-      r = 0x00; g = 0x55; b = 0x11
-    } else if (t < 0.5) {
-      r = 0x00; g = 0x99; b = 0x22
-    } else if (t < 0.75) {
-      r = 0x00; g = 0xcc; b = 0x33
-    } else {
-      r = 0x00; g = 0xff; b = 0x41
-    }
-    return [Math.round(r * f), Math.round(g * f), Math.round(b * f)]
-  },
-  { vx: 1.5, vy: 1.0, va: 0.001, speedMin: 1.0, speedMax: 4.0 },
-  { far: 120, camHBase: 82, camHAmp: 14, camHFloor: 38, scanlines: 'phosphor', matrixMode: false },
-)
+import NeuralNetPanel from './NeuralNetPanel'
+export const VoxelMatrix = NeuralNetPanel
+

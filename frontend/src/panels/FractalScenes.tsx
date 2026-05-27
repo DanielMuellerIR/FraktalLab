@@ -66,7 +66,7 @@ function isLowDetail(pixels: Uint8ClampedArray): boolean {
   }
   
   if (total === 0) return true
-  if (black / total > 0.70) return true
+  if (black / total > 0.95) return true
   
   let maxCount = 0
   for (const count of colorCounts.values()) {
@@ -75,7 +75,7 @@ function isLowDetail(pixels: Uint8ClampedArray): boolean {
     }
   }
   
-  if (maxCount / total > 0.70) return true
+  if (maxCount / total > 0.95) return true
   return false
 }
 
@@ -120,30 +120,35 @@ function pixelToComplex(
   centerX: number,
   centerY: number,
   zoom: number,
-  type: 'mandelbrot' | 'julia'
+  type: 'mandelbrot' | 'julia',
+  angle: number
 ): { x: number; y: number } {
-  if (type === 'mandelbrot') {
-    return {
-      x: centerX + (px - W / 2) / (zoom * W / 4.0),
-      y: centerY + (py - H / 2) / (zoom * H / 4.0),
-    }
-  } else {
-    return {
-      x: centerX + (px - W / 2) / zoom,
-      y: centerY + (py - H / 2) / zoom,
-    }
+  const dx = type === 'mandelbrot'
+    ? (px - W / 2) / (zoom * W / 4.0)
+    : (px - W / 2) / zoom
+  const dy = type === 'mandelbrot'
+    ? (py - H / 2) / (zoom * H / 4.0)
+    : (py - H / 2) / zoom
+
+  const cos_a = Math.cos(angle)
+  const sin_a = Math.sin(angle)
+  const rx = dx * cos_a - dy * sin_a
+  const ry = dx * sin_a + dy * cos_a
+
+  return {
+    x: centerX + rx,
+    y: centerY + ry,
   }
 }
 
 function makeFractalScene(
   title:           string,
   type:            'mandelbrot' | 'julia',
-  locs:            Location[],
+  _locs:           Location[],
   juliaC:          { cx: number; cy: number } | null,
   maxIter:         number,
   colorTransform?: ColorTransform,
-  zoomMax:         number = 1e9,
-  zoomStart?:      number,
+  _zoomMax:         number = 1e9,
 ): () => React.JSX.Element {
   const W = 320
   const H = 213
@@ -151,23 +156,14 @@ function makeFractalScene(
   return function FractalScene() {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const stateRef  = useRef({
-      zoom:       zoomStart ?? (type === 'mandelbrot' ? 1.5 : 180),
-      centerX:    type === 'mandelbrot' ? locs[0].cx : 0.0,
-      centerY:    type === 'mandelbrot' ? locs[0].cy : 0.0,
+      zoom:       type === 'mandelbrot' ? 1.5 : 180,
+      centerX:    type === 'mandelbrot' ? -0.5 : 0.0,
+      centerY:    0.0,
       locIdx:     0,
-      
-      fadeAlpha:  0,
-      fading:     false,
+      zoomDirection: 1, // 1 = zoom in, -1 = zoom out
+      angle:      0,
       driftAngle: Math.random() * Math.PI * 2,
       lastFrame:  0,
-
-      prevPixels: null as Uint8ClampedArray | null,
-      nextPixels: null as Uint8ClampedArray | null,
-      
-      nextLocIdx:  0,
-      nextZoom:    zoomStart ?? (type === 'mandelbrot' ? 1.5 : 180),
-      nextCenterX: 0.0,
-      nextCenterY: 0.0,
     })
 
     useEffect(() => {
@@ -213,51 +209,36 @@ function makeFractalScene(
         if (!isVisible) return
         if (!wasmMod) return
 
-        // ── Fading/Transition is active ──────────────────────────────────────
-        if (s.fading && s.prevPixels && s.nextPixels) {
-          s.fadeAlpha = Math.min(1, s.fadeAlpha + 0.05 * (dt / 16.7))
-
-          const prev = s.prevPixels
-          const next = s.nextPixels
-          const blended = new Uint8ClampedArray(W * H * 4)
-          const a = s.fadeAlpha
-          const oneMinusA = 1 - a
-
-          for (let i = 0; i < blended.length; i += 4) {
-            blended[i]   = (prev[i]   * oneMinusA + next[i]   * a) | 0
-            blended[i+1] = (prev[i+1] * oneMinusA + next[i+1] * a) | 0
-            blended[i+2] = (prev[i+2] * oneMinusA + next[i+2] * a) | 0
-            blended[i+3] = 255
-          }
-
-          ctx.putImageData(new ImageData(blended, W, H), 0, 0)
-
-          if (s.fadeAlpha >= 1) {
-            s.locIdx     = s.nextLocIdx
-            s.zoom       = s.nextZoom
-            s.centerX    = s.nextCenterX
-            s.centerY    = s.nextCenterY
-            s.fading     = false
-            s.fadeAlpha  = 0
-            s.prevPixels = null
-            s.nextPixels = null
-          }
-          return
+        // ── Normal Render ──
+        // Zoom exponentially based on direction
+        const zoomRate = Math.pow(type === 'mandelbrot' ? 1.038 : 1.026, dt / 16.7)
+        if (s.zoomDirection === 1) {
+          s.zoom *= zoomRate
+        } else {
+          s.zoom /= zoomRate
         }
 
-        // ── Normal Render ──────────────────────────────────────────────────
-        // Zoom exponentially
-        s.zoom *= Math.pow(type === 'mandelbrot' ? 1.042 : 1.03, dt / 16.7)
+        // Slow rotation
+        s.angle += 0.0055 * (dt / 16.7) * s.zoomDirection
 
-        // Scaled drift
-        s.driftAngle += 0.01 * (dt / 16.7)
-        const driftDist = (type === 'mandelbrot' ? 0.35 : 0.5) / s.zoom
-        s.centerX += Math.cos(s.driftAngle) * driftDist
-        s.centerY += Math.sin(s.driftAngle) * driftDist
+        // Only drift/tumble once zoomed in enough (zoom > 30 for Mandelbrot, > 600 for Julia)
+        const minZoomForDrift = type === 'mandelbrot' ? 30 : 600
+        if (s.zoom > minZoomForDrift) {
+          // Tumbling: shift center slightly with sine waves
+          const tumbleAmp = 0.04 / s.zoom
+          s.centerX += Math.sin(t * 0.0006) * tumbleAmp
+          s.centerY += Math.cos(t * 0.0008) * tumbleAmp
+
+          // Scaled drift – capped to prevent wild jumps
+          s.driftAngle += 0.008 * (dt / 16.7)
+          const maxDrift = (type === 'mandelbrot' ? 0.28 : 0.4) / s.zoom
+          s.centerX += Math.cos(s.driftAngle) * maxDrift
+          s.centerY += Math.sin(s.driftAngle) * maxDrift
+        }
 
         try {
           if (type === 'mandelbrot') {
-            const params = new wasmMod.RenderParams(s.centerX, s.centerY, s.zoom, maxIter)
+            const params = new wasmMod.RenderParams(s.centerX, s.centerY, s.zoom, maxIter, s.angle)
             const mandelPixels = new Uint8ClampedArray(wasmMod.render(W, H, params))
             pixels.set(mandelPixels)
           } else {
@@ -270,17 +251,20 @@ function makeFractalScene(
               s.centerX,
               s.centerY,
               s.zoom,
-              maxIter
+              maxIter,
+              s.angle
             )
           }
 
-          // Apply boundary feedback correction
-          const boundary = findClosestBoundaryPixel(pixels, W, H)
-          if (boundary) {
-            const target = pixelToComplex(boundary.px, boundary.py, W, H, s.centerX, s.centerY, s.zoom, type)
-            const lerpFactor = 1 - Math.pow(0.95, dt / 16.7)
-            s.centerX = s.centerX * (1 - lerpFactor) + target.x * lerpFactor
-            s.centerY = s.centerY * (1 - lerpFactor) + target.y * lerpFactor
+          // Apply boundary feedback correction (only when zooming in to stay centered on detail and zoom is high enough)
+          if (s.zoomDirection === 1 && s.zoom > 45) {
+            const boundary = findClosestBoundaryPixel(pixels, W, H)
+            if (boundary) {
+              const target = pixelToComplex(boundary.px, boundary.py, W, H, s.centerX, s.centerY, s.zoom, type, s.angle)
+              const lerpFactor = 1 - Math.pow(0.93, dt / 16.7)
+              s.centerX = s.centerX * (1 - lerpFactor) + target.x * lerpFactor
+              s.centerY = s.centerY * (1 - lerpFactor) + target.y * lerpFactor
+            }
           }
 
           // Transform colors
@@ -293,54 +277,35 @@ function makeFractalScene(
           return
         }
 
-        // Transition detection
-        const maxZoomReached = s.zoom > zoomMax
+        // Bidirectional Zoom Transition Logic
         const lowDetail = isLowDetail(pixels)
+        const absoluteMinZoom = type === 'mandelbrot' ? 1.5 : 180
+        const maxZoomLimit = type === 'mandelbrot' ? 2e12 : 2e9
 
-        if ((maxZoomReached || lowDetail) && !s.fading) {
-          s.fading = true
-          s.fadeAlpha = 0
-          s.prevPixels = pixels.slice()
-
-          if (type === 'mandelbrot') {
-            s.nextLocIdx = (s.locIdx + 1) % locs.length
-            s.nextZoom = 100
-            s.nextCenterX = locs[s.nextLocIdx].cx
-            s.nextCenterY = locs[s.nextLocIdx].cy
-          } else {
-            s.nextZoom = 180
-            s.nextCenterX = 0.0
-            s.nextCenterY = 0.0
+        if (s.zoomDirection === 1) {
+          // Switch to zoom-out if detail is low or zoom limit is reached
+          if (lowDetail && s.zoom > absoluteMinZoom * 4) {
+            s.zoomDirection = -1
+          } else if (s.zoom > maxZoomLimit) {
+            s.zoomDirection = -1
           }
+        } else {
+          // Switch to zoom-in if zoomed out too far
+          if (s.zoom <= absoluteMinZoom) {
+            s.zoomDirection = 1
+            s.zoom = absoluteMinZoom
 
-          try {
-            const nextTarget = new Uint8ClampedArray(W * H * 4)
+            // Always reset to standard Mandelbrot overview - boundary tracking navigates from there
             if (type === 'mandelbrot') {
-              const nextParams = new wasmMod.RenderParams(s.nextCenterX, s.nextCenterY, s.nextZoom, maxIter)
-              const nextMandel = new Uint8ClampedArray(wasmMod.render(W, H, nextParams))
-              nextTarget.set(nextMandel)
+              s.centerX = -0.5 + (Math.random() - 0.5) * 0.3
+              s.centerY = (Math.random() - 0.5) * 0.3
             } else {
-              const nextTargetBuf = new Uint8Array(W * H * 4)
-              const nextTargetPixels = new Uint8ClampedArray(nextTargetBuf.buffer, nextTargetBuf.byteOffset, nextTargetBuf.byteLength)
-              wasmMod.render_julia(
-                nextTargetBuf,
-                W,
-                H,
-                juliaC!.cx,
-                juliaC!.cy,
-                s.nextCenterX,
-                s.nextCenterY,
-                s.nextZoom,
-                maxIter
-              )
-              nextTarget.set(nextTargetPixels)
+              // Julia: return to center with slight offset
+              s.centerX = (Math.random() - 0.5) * 0.05
+              s.centerY = (Math.random() - 0.5) * 0.05
             }
-
-            if (colorTransform) applyTransform(nextTarget, colorTransform)
-            s.nextPixels = nextTarget
-          } catch (err) {
-            console.error('[FractalScenes] Next frame render error:', err)
-            s.fading = false
+            s.driftAngle = Math.random() * Math.PI * 2
+            s.angle = 0
           }
         }
       }
@@ -378,8 +343,7 @@ export const FractalSeahorse = makeFractalScene(
   null,
   180,
   undefined,
-  1e9,
-  30
+  1e9
 )
 
 export const FractalSpiral = makeFractalScene(
@@ -392,8 +356,7 @@ export const FractalSpiral = makeFractalScene(
   null,
   130,
   'mono',
-  1e9,
-  100
+  1e9
 )
 
 export const FractalLightning = makeFractalScene(
@@ -406,8 +369,7 @@ export const FractalLightning = makeFractalScene(
   null,
   120,
   'cold',
-  1e9,
-  100
+  1e9
 )
 
 export const FractalElephant = makeFractalScene(
@@ -420,8 +382,7 @@ export const FractalElephant = makeFractalScene(
   null,
   140,
   'hot',
-  1e9,
-  100
+  1e9
 )
 
 export const FractalMini = makeFractalScene(
@@ -434,8 +395,7 @@ export const FractalMini = makeFractalScene(
   null,
   120,
   undefined,
-  1e9,
-  1000
+  1e9
 )
 
 export const FractalDragon = makeFractalScene(
@@ -445,22 +405,21 @@ export const FractalDragon = makeFractalScene(
   { cx: 0.285, cy: 0.01 },
   200,
   'neon',
-  1e10,
-  200
+  1e10
 )
 
 export const FractalSatellite = makeFractalScene(
   'SATELLITE ORBIT // DATASTREAM',
   'mandelbrot',
   [
-    { cx: -1.2560, cy: 0.3818 },
-    { cx: -0.7326, cy: 0.2312 },
+    { cx: -0.5,    cy: 0.0    },  // start: full view with guaranteed variance
+    { cx: -1.2560, cy: 0.3818 },  // satellite bulb
+    { cx: -0.7326, cy: 0.2312 },  // seahorse-adjacent
   ],
   null,
   130,
   'cold',
-  1e9,
-  1000
+  1e9
 )
 
 export const FractalDendrite = makeFractalScene(
@@ -470,8 +429,7 @@ export const FractalDendrite = makeFractalScene(
   { cx: -0.7, cy: 0.27015 },
   220,
   'invert',
-  1e10,
-  300
+  1e10
 )
 
 export const FractalSwirl = makeFractalScene(
@@ -485,8 +443,7 @@ export const FractalSwirl = makeFractalScene(
   null,
   220,
   'invert',
-  1e10,
-  200
+  1e10
 )
 
 export const FractalTendril = makeFractalScene(
@@ -499,6 +456,5 @@ export const FractalTendril = makeFractalScene(
   null,
   120,
   'hot',
-  1e9,
-  200
+  1e9
 )

@@ -12,13 +12,15 @@ pub struct RenderParams {
     pub zoom: f64,
     /// Maximale Iterationstiefe (Default: 256)
     pub max_iter: u32,
+    /// Rotation angle in radians
+    pub angle: f64,
 }
 
 #[wasm_bindgen]
 impl RenderParams {
     #[wasm_bindgen(constructor)]
-    pub fn new(center_x: f64, center_y: f64, zoom: f64, max_iter: u32) -> Self {
-        Self { center_x, center_y, zoom, max_iter }
+    pub fn new(center_x: f64, center_y: f64, zoom: f64, max_iter: u32, angle: f64) -> Self {
+        Self { center_x, center_y, zoom, max_iter, angle }
     }
 }
 
@@ -29,12 +31,20 @@ impl RenderParams {
 #[wasm_bindgen]
 pub fn render(width: u32, height: u32, params: &RenderParams) -> Vec<u8> {
     let mut buffer = vec![0u8; (width * height * 4) as usize];
+    let cos_a = params.angle.cos();
+    let sin_a = params.angle.sin();
 
     for py in 0..height {
         for px in 0..width {
-            // Pixel-Koordinate → Position in der komplexen Ebene
-            let cx = params.center_x + (px as f64 - width as f64 / 2.0) / (params.zoom * width as f64 / 4.0);
-            let cy = params.center_y + (py as f64 - height as f64 / 2.0) / (params.zoom * height as f64 / 4.0);
+            // Pixel-Koordinate → Position in der komplexen Ebene mit Rotation
+            let dx = (px as f64 - width as f64 / 2.0) / (params.zoom * width as f64 / 4.0);
+            let dy = (py as f64 - height as f64 / 2.0) / (params.zoom * height as f64 / 4.0);
+            
+            let rx = dx * cos_a - dy * sin_a;
+            let ry = dx * sin_a + dy * cos_a;
+
+            let cx = params.center_x + rx;
+            let cy = params.center_y + ry;
 
             let iter = mandelbrot_iter(cx, cy, params.max_iter);
             let color = iter_to_color(iter, params.max_iter);
@@ -83,12 +93,22 @@ pub fn render_julia(
     center_y: f64,    // Viewport-Mittelpunkt (Imaginärteil)
     zoom: f64,        // Pixel pro Einheit in der komplexen Ebene
     max_iter: u32,
+    angle: f64,       // Rotation angle in radians
 ) {
+    let cos_a = angle.cos();
+    let sin_a = angle.sin();
+
     for py in 0..height {
         for px in 0..width {
-            // Pixel → komplexe Koordinate z₀
-            let mut zx = center_x + (px as f64 - width  as f64 / 2.0) / zoom;
-            let mut zy = center_y + (py as f64 - height as f64 / 2.0) / zoom;
+            // Pixel → komplexe Koordinate z₀ mit Rotation
+            let dx = (px as f64 - width  as f64 / 2.0) / zoom;
+            let dy = (py as f64 - height as f64 / 2.0) / zoom;
+
+            let rx = dx * cos_a - dy * sin_a;
+            let ry = dx * sin_a + dy * cos_a;
+
+            let mut zx = center_x + rx;
+            let mut zy = center_y + ry;
 
             // Julia-Iteration: z ← z² + c  (c ist fest, z ist der Startpunkt)
             let mut iter = 0u32;
@@ -102,6 +122,7 @@ pub fn render_julia(
                 zx = zx2 - zy2 + cx;
                 iter += 1;
             }
+
 
             let color = iter_to_color(iter, max_iter);
             let idx = ((py * width + px) * 4) as usize;

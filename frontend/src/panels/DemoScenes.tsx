@@ -1020,69 +1020,112 @@ export const ThreeBodyScene = makeScene(
 
 // ── Effekt 8: Lissajous — animierte Kurve mit Nachleucht-Spur ────────────────
 // Performance-Cap: max 200×150.
-export const LissajousScene = makeScene(
-  'SIGNAL TRACE // LISSAJOUS Ω', 200, 150,
-  () => null,
-  (buf, W, H, t) => {
-    // Clear background to black
-    buf.fill(0)
-    for (let i = 3; i < buf.length; i += 4) buf[i] = 255
+export const LissajousScene = () => {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
 
-    const ts = t * 0.001
-    const freqX = 3 + 0.5 * Math.sin(ts * 0.2)
-    const freqY = 4 + 0.5 * Math.cos(ts * 0.3)
-    const phase = ts * 1.5
+  useEffect(() => {
+    const canvas = canvasRef.current!
+    const ctx = canvas.getContext('2d')!
+    let raf: number
+    let alive = true
 
-    const maxSegments = 300
-    // Traces forward and backward: progress goes from 0 to 1 and back
-    const progress = 0.5 + 0.5 * Math.sin(ts * 1.0)
-    const activeSegments = Math.max(1, Math.floor(progress * maxSegments))
+    let isVisible = true
+    const io = new IntersectionObserver(([e]) => {
+      isVisible = e.isIntersecting
+    })
+    io.observe(canvas)
 
-    const getPoint = (segIdx: number) => {
-      const theta = (segIdx / maxSegments) * Math.PI * 6
-      const x = Math.round((0.45 * Math.sin(freqX * theta + phase) + 0.5) * (W - 1))
-      const y = Math.round((0.45 * Math.cos(freqY * theta) + 0.5) * (H - 1))
-      return { x, y }
+    const resize = () => {
+      canvas.width = canvas.clientWidth
+      canvas.height = canvas.clientHeight
     }
+    resize()
+    const ro = new ResizeObserver(resize)
+    ro.observe(canvas)
 
-    let prev = getPoint(0)
-    for (let i = 1; i <= activeSegments; i++) {
-      const curr = getPoint(i)
-      const hue = (ts * 60 + (i / maxSegments) * 360) % 360
-      const [r, g, b] = hsl(hue, 1.0, 0.5)
+    let phi1 = 0
+    let phi2 = Math.PI / 4
 
-      // Draw line from prev to curr using Bresenham's line algorithm
-      let x0 = prev.x
-      let y0 = prev.y
-      const x1 = curr.x
-      const y1 = curr.y
+    function loop(t: number) {
+      if (!alive) return
+      raf = requestAnimationFrame(loop)
+      if (!isVisible) return
 
-      const dx = Math.abs(x1 - x0)
-      const dy = Math.abs(y1 - y0)
-      const sx = x0 < x1 ? 1 : -1
-      const sy = y0 < y1 ? 1 : -1
-      let err = dx - dy
+      const W = canvas.width
+      const H = canvas.height
+      if (W === 0 || H === 0) return
 
-      while (true) {
-        if (x0 >= 0 && x0 < W && y0 >= 0 && y0 < H) {
-          const pi = (y0 * W + x0) * 4
-          buf[pi] = r
-          buf[pi+1] = g
-          buf[pi+2] = b
-          buf[pi+3] = 255
-        }
-        if (x0 === x1 && y0 === y1) break
-        const e2 = 2 * err
-        if (e2 > -dy) {
-          err -= dy
-          x0 += sx
-        }
-        if (e2 < dx) {
-          err += dx
-          y0 += sy
-        }
+      // Phosphor decay trail
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)'
+      ctx.fillRect(0, 0, W, H)
+
+      // Oscilloscope background grid
+      ctx.strokeStyle = 'rgba(0, 60, 20, 0.25)'
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(W / 2, 0); ctx.lineTo(W / 2, H)
+      ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2)
+      ctx.stroke()
+
+      const ts = t * 0.001
+      const freqX = 3 + 0.5 * Math.sin(ts * 0.25)
+      const freqY = 4 + 0.5 * Math.cos(ts * 0.35)
+
+      phi1 += 0.012
+      phi2 += 0.008
+
+      const maxSegments = 400
+      const progress = 0.5 + 0.5 * Math.sin(ts * 0.8)
+      const activeSegments = Math.max(2, Math.floor(progress * maxSegments))
+
+      ctx.lineWidth = 2.2
+      ctx.shadowBlur = 8
+      ctx.lineCap = 'round'
+
+      for (let i = 1; i < activeSegments; i++) {
+        const theta1 = ((i - 1) / maxSegments) * Math.PI * 6
+        const theta2 = (i / maxSegments) * Math.PI * 6
+
+        const x1 = (0.43 * Math.sin(freqX * theta1 + phi1) + 0.5) * W
+        const y1 = (0.43 * Math.cos(freqY * theta1 + phi2) + 0.5) * H
+        const x2 = (0.43 * Math.sin(freqX * theta2 + phi1) + 0.5) * W
+        const y2 = (0.43 * Math.cos(freqY * theta2 + phi2) + 0.5) * H
+
+        const hue = (ts * 80 + (i / maxSegments) * 360) % 360
+        const color = `hsla(${hue}, 100%, 60%, 0.85)`
+        ctx.strokeStyle = color
+        ctx.shadowColor = color
+
+        ctx.beginPath()
+        ctx.moveTo(x1, y1)
+        ctx.lineTo(x2, y2)
+        ctx.stroke()
       }
-      prev = curr
+
+      ctx.shadowBlur = 0 // Reset
+
+      // HUD Label
+      ctx.font = '10px monospace'
+      ctx.fillStyle = 'rgba(74, 222, 128, 0.7)'
+      ctx.fillText(`SIGNAL TRACE // LISSAJOUS Ω // FREQ_X: ${freqX.toFixed(2)} // FREQ_Y: ${freqY.toFixed(2)}`, 10, H - 10)
     }
-  },
-)
+
+    raf = requestAnimationFrame(loop)
+    return () => {
+      alive = false
+      cancelAnimationFrame(raf)
+      ro.disconnect()
+      io.disconnect()
+    }
+  }, [])
+
+  return (
+    <Panel title="SIGNAL TRACE // LISSAJOUS Ω">
+      <canvas
+        ref={canvasRef}
+        style={{ width: '100%', height: '100%', display: 'block' }}
+      />
+    </Panel>
+  )
+}
+

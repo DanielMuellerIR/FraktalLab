@@ -32,7 +32,7 @@ function isLowDetail(pixels: Uint8ClampedArray): boolean {
   }
   
   if (total === 0) return true
-  if (black / total > 0.70) return true
+  if (black / total > 0.95) return true
   
   let maxCount = 0
   for (const count of colorCounts.values()) {
@@ -41,7 +41,7 @@ function isLowDetail(pixels: Uint8ClampedArray): boolean {
     }
   }
   
-  if (maxCount / total > 0.70) return true
+  if (maxCount / total > 0.95) return true
   return false
 }
 
@@ -101,21 +101,15 @@ export default function FractalJulia() {
       if (canvas.height !== RENDER_H) canvas.height = RENDER_H
     }
     setSize()
-    window.addEventListener('resize', setSize)
-
     const s = {
       paramIdx:   0,
       zoom:       180,
       centerX:    0.0,
       centerY:    0.0,
+      zoomDirection: 1, // 1 = zoom in, -1 = zoom out
+      angle:      Math.random() * Math.PI * 2,
       driftAngle: Math.random() * Math.PI * 2,
       lastFrame:  performance.now(),
-      
-      fading:     false,
-      fadeAlpha:  0,
-      prevPixels: null as Uint8ClampedArray | null,
-      nextPixels: null as Uint8ClampedArray | null,
-      nextParamIdx: 0,
     }
 
     let isVisible = true
@@ -134,10 +128,6 @@ export default function FractalJulia() {
         const buf = new Uint8Array(RENDER_W * RENDER_H * 4)
         const pixels = new Uint8ClampedArray(buf.buffer, buf.byteOffset, buf.byteLength)
         const imgData = new ImageData(pixels, RENDER_W, RENDER_H)
-
-        // Pixelbuffer for the transition targets
-        const nextBuf = new Uint8Array(RENDER_W * RENDER_H * 4)
-        const nextPixels = new Uint8ClampedArray(nextBuf.buffer, nextBuf.byteOffset, nextBuf.byteLength)
 
         const frame = (now: number) => {
           if (cancelled) return
@@ -158,57 +148,26 @@ export default function FractalJulia() {
           const dt = Math.max(1, Math.min(100, now - s.lastFrame))
           s.lastFrame = now
 
-          // ── Fading/Transition is active ────────────────────────────────────
-          if (s.fading && s.prevPixels && s.nextPixels) {
-            s.fadeAlpha = Math.min(1, s.fadeAlpha + 0.02 * (dt / 16.7))
-
-            const prev = s.prevPixels
-            const next = s.nextPixels
-            const blended = new Uint8ClampedArray(RENDER_W * RENDER_H * 4)
-            const a = s.fadeAlpha
-
-            for (let i = 0; i < blended.length; i += 4) {
-              blended[i]   = (prev[i]   * (1 - a) + next[i]   * a) | 0
-              blended[i+1] = (prev[i+1] * (1 - a) + next[i+1] * a) | 0
-              blended[i+2] = (prev[i+2] * (1 - a) + next[i+2] * a) | 0
-              blended[i+3] = 255
-            }
-
-            ctx.putImageData(new ImageData(blended, RENDER_W, RENDER_H), 0, 0)
-
-            // Render text overlay during fade
-            ctx.save()
-            ctx.font         = '11px monospace'
-            ctx.textAlign    = 'right'
-            ctx.textBaseline = 'bottom'
-            ctx.fillStyle    = 'rgba(74,222,128,0.9)'
-            const currentLabel = JULIA_PARAMS[s.paramIdx].label
-            const nextLabel = JULIA_PARAMS[s.nextParamIdx].label
-            ctx.fillText(`TRANSITION // ${currentLabel} -> ${nextLabel} (${Math.round(a * 100)}%)`, RENDER_W - 6, RENDER_H - 4)
-            ctx.restore()
-
-            if (s.fadeAlpha >= 1) {
-              s.paramIdx = s.nextParamIdx
-              s.zoom = 180
-              s.centerX = 0.0
-              s.centerY = 0.0
-              s.fading = false
-              s.fadeAlpha = 0
-              s.prevPixels = null
-              s.nextPixels = null
-            }
-
-            rafRef.current = requestAnimationFrame(frame)
-            return
+          // ── Normal Render ──
+          // Exponential zoom
+          const zoomRate = Math.pow(1.026, dt / 16.7)
+          if (s.zoomDirection === 1) {
+            s.zoom *= zoomRate
+          } else {
+            s.zoom /= zoomRate
           }
 
-          // ── Normal Render ──────────────────────────────────────────────────
-          // Exponential zoom
-          s.zoom *= Math.pow(1.032, dt / 16.7)
+          // Slow rotation and tumbling
+          s.angle += 0.004 * (dt / 16.7) * s.zoomDirection
+          
+          // Tumbling
+          const tumbleAmp = 0.03 / s.zoom
+          s.centerX += Math.sin(now * 0.0005) * tumbleAmp
+          s.centerY += Math.cos(now * 0.0007) * tumbleAmp
 
           // Constant scaled drift
-          s.driftAngle += 0.01 * (dt / 16.7)
-          const driftDist = 0.55 / s.zoom // Pan slightly relative to viewport
+          s.driftAngle += 0.008 * (dt / 16.7)
+          const driftDist = 0.42 / s.zoom
           s.centerX += Math.cos(s.driftAngle) * driftDist
           s.centerY += Math.sin(s.driftAngle) * driftDist
 
@@ -224,54 +183,59 @@ export default function FractalJulia() {
               s.centerX,
               s.centerY,
               s.zoom,
-              250 // Higher iterations for deeper zoom details
+              250, // Higher iterations for deeper zoom details
+              s.angle
             )
 
-            // Apply feedback correction using current pixels
-            const boundary = findClosestBoundaryPixel(pixels, RENDER_W, RENDER_H)
-            if (boundary) {
-              // Convert pixel coordinate back to complex coordinate
-              const targetX = s.centerX + (boundary.px - RENDER_W / 2) / s.zoom
-              const targetY = s.centerY + (boundary.py - RENDER_H / 2) / s.zoom
+            // Apply feedback correction (only when zooming in)
+            if (s.zoomDirection === 1) {
+              const boundary = findClosestBoundaryPixel(pixels, RENDER_W, RENDER_H)
+              if (boundary) {
+                // Convert boundary pixel to complex coordinate
+                const cos_a = Math.cos(s.angle)
+                const sin_a = Math.sin(s.angle)
+                const dx = (boundary.px - RENDER_W / 2) / s.zoom
+                const dy = (boundary.py - RENDER_H / 2) / s.zoom
+                
+                const rx = dx * cos_a - dy * sin_a
+                const ry = dx * sin_a + dy * cos_a
 
-              // Smoothly nudge center towards boundary
-              const lerpFactor = 1 - Math.pow(0.95, dt / 16.7)
-              s.centerX = s.centerX * (1 - lerpFactor) + targetX * lerpFactor
-              s.centerY = s.centerY * (1 - lerpFactor) + targetY * lerpFactor
+                const targetX = s.centerX + rx
+                const targetY = s.centerY + ry
+
+                // Smoothly nudge center towards boundary
+                const lerpFactor = 1 - Math.pow(0.92, dt / 16.7)
+                s.centerX = s.centerX * (1 - lerpFactor) + targetX * lerpFactor
+                s.centerY = s.centerY * (1 - lerpFactor) + targetY * lerpFactor
+              }
             }
 
             // Put image data to canvas
             ctx.putImageData(imgData, 0, 0)
-          } catch { /* ignore WASM error */ }
+          } catch (err) {
+            console.error('[FractalJulia] WASM error:', err)
+          }
 
-          // Check if we need to transition (too deep or low detail)
-          const maxZoomReached = s.zoom > 1e11
+          // Bidirectional Zoom Transition Logic
           const lowDetail = isLowDetail(pixels)
+          const maxZoomLimit = 1.5e10
 
-          if ((maxZoomReached || lowDetail) && !s.fading) {
-            s.fading = true
-            s.fadeAlpha = 0
-            s.prevPixels = pixels.slice()
-
-            s.nextParamIdx = (s.paramIdx + 1) % JULIA_PARAMS.length
-            
-            // Render first frame of the next parameter set at default zoom and center
-            const nextParam = JULIA_PARAMS[s.nextParamIdx]
-            try {
-              render_julia(
-                nextBuf,
-                RENDER_W,
-                RENDER_H,
-                nextParam.cx,
-                nextParam.cy,
-                0.0,
-                0.0,
-                180,
-                250
-              )
-              s.nextPixels = nextPixels.slice()
-            } catch {
-              s.fading = false // abort if error
+          if (s.zoomDirection === 1) {
+            if (lowDetail && s.zoom > 1000) {
+              s.zoomDirection = -1
+            } else if (s.zoom > maxZoomLimit) {
+              s.zoomDirection = -1
+            }
+          } else {
+            if (s.zoom <= 180) {
+              s.zoomDirection = 1
+              s.zoom = 180
+              
+              // Switch to next param set to keep things interesting
+              s.paramIdx = (s.paramIdx + 1) % JULIA_PARAMS.length
+              s.centerX = 0.0
+              s.centerY = 0.0
+              s.driftAngle = Math.random() * Math.PI * 2
             }
           }
 
@@ -281,7 +245,7 @@ export default function FractalJulia() {
           ctx.textAlign    = 'right'
           ctx.textBaseline = 'bottom'
           ctx.fillStyle    = 'rgba(74,222,128,0.9)'
-          const infoText = `JULIA // ${currentParam.label} // ZOOM 10^${Math.log10(s.zoom).toFixed(1)} // RES ${RENDER_W}x${RENDER_H}`
+          const infoText = `JULIA // ${currentParam.label} // ZOOM 10^${Math.max(0, Math.log10(s.zoom)).toFixed(1)} // RES ${RENDER_W}x${RENDER_H}`
           ctx.fillText(infoText, RENDER_W - 6, RENDER_H - 4)
           ctx.restore()
 
@@ -308,3 +272,4 @@ export default function FractalJulia() {
     />
   )
 }
+
