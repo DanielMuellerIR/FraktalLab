@@ -20,16 +20,16 @@ const PAL: string[] = [
 ]
 
 // ── Bildschirmfarben (aus Referenz-Screenshot) ────────────────────────────────
-const BORDER_CLR = '#6C68C8'   // TV-Rand — mittleres Periwinkle
-const BG_CLR     = '#2E2994'   // Content-Hintergrund — dunkles Blau
-const TEXT_CLR   = '#8880D0'   // Text — helles Periwinkle
-const CURSOR_CLR = '#9890E0'   // Cursor-Block — etwas heller als Text
+const BORDER_CLR = '#a2a2ff'   // TV-Rand — helles Periwinkle
+const BG_CLR     = '#3a3aff'   // Content-Hintergrund — royal Blau
+const TEXT_CLR   = '#a2a2ff'   // Text — helles Periwinkle
+const CURSOR_CLR = '#a2a2ff'   // Cursor-Block — identisch zu Text
 
 // ── C64-Textmodus: 40 Spalten × 25 Zeilen ─────────────────────────────────────
 const COLS = 40
 const ROWS = 25
-// Rand-Anteil: je Seite 7% der Canvas-Dimension (originalgetreue C64-Monitor-Proportion)
-const BORDER_FRAC = 0.07
+// Rand-Anteil: je Seite 10% der Canvas-Dimension (originalgetreue C64-Monitor-Proportion)
+const BORDER_FRAC = 0.10
 
 // ── Scroller-Text für die Demo ────────────────────────────────────────────────
 const SCROLL_TXT =
@@ -131,11 +131,20 @@ export default function C64Panel() {
     // ── Text an Raster-Position (col, row) zeichnen ──────────────────────────
     // col und row sind 0-basiert im 40×25-Gitter
     function drawChar(text: string, col: number, row: number, color = TEXT_CLR) {
-      const { bx, by, cs, offX, offY, fs } = layout()
-      ctx.font         = `${fs}px monospace`
+      const { bx, by, cs, offX, offY } = layout()
+      // Press Start 2P has standard square bounds, make it fill 80% of cell to fit perfectly
+      const adjustedFs = Math.max(6, cs * 0.80)
+      ctx.font         = `${adjustedFs}px "Press Start 2P", monospace`
       ctx.fillStyle    = color
-      ctx.textBaseline = 'top'
-      ctx.fillText(text, bx + offX + col * cs, by + offY + row * cs)
+      ctx.textBaseline = 'middle'
+      ctx.textAlign    = 'center'
+      
+      for (let i = 0; i < text.length; i++) {
+        const char = text[i]
+        const x = bx + offX + (col + i) * cs + cs / 2
+        const y = by + offY + row * cs + cs / 2
+        ctx.fillText(char, x, y)
+      }
     }
 
     // ── Eine vollständige Zeile schreiben ─────────────────────────────────────
@@ -144,26 +153,19 @@ export default function C64Panel() {
     }
 
     // ── Boot-Bildschirm rendern (Zeilen + Cursor-Pos) ─────────────────────────
-    // cursorLineText: wenn angegeben, wird die Cursor-X-Position per measureText
-    // berechnet, damit der Cursor exakt am Ende des getippten Textes steht.
     function renderScreen(
       lines: string[],
       cursorRow: number,
       cursorCol: number,
       blinkOn: boolean,
-      cursorLineText?: string,
     ) {
       drawBorder()
       lines.forEach((ln, r) => { if (ln) drawLine(ln, r) })
       if (blinkOn) {
-        const { bx, by, cs, offX, offY, fs } = layout()
-        ctx.font = `${fs}px monospace`
-        // Exakte Pixel-Breite des getippten Textes messen, damit Cursor direkt dahinter sitzt
-        const xOff = cursorLineText !== undefined
-          ? ctx.measureText(cursorLineText.slice(0, cursorCol)).width
-          : cursorCol * cs
+        const { bx, by, cs, offX, offY } = layout()
         ctx.fillStyle = CURSOR_CLR
-        ctx.fillRect(bx + offX + xOff, by + offY + cursorRow * cs, Math.max(3, cs * 0.8), cs)
+        // C64 cursor is a solid block filling the character cell
+        ctx.fillRect(bx + offX + cursorCol * cs, by + offY + cursorRow * cs, cs, cs)
       }
       drawScanlines()
     }
@@ -183,7 +185,7 @@ export default function C64Panel() {
     let phaseStart: number = 0
 
     // Tipp-State
-    const LOAD_CMD = 'LOAD"*",8,1'
+    const LOAD_CMD = 'LOAD"*",8,1:'
     const RUN_CMD  = 'RUN'
     let typedSoFar = ''
 
@@ -211,8 +213,8 @@ export default function C64Panel() {
       ctx.fillRect(0, 0, W, H)
 
       // Breit, damit der Text gut lesbar ist
-      const fSize = Math.max(12, Math.min(24, ch * 0.12))
-      ctx.font = `bold ${fSize}px monospace`
+      const fSize = Math.max(10, Math.min(20, ch * 0.08))
+      ctx.font = `${fSize}px "Press Start 2P", monospace`
       ctx.textBaseline = 'middle'
 
       // Text von rechts nach links bewegen (2 px/Frame bei 60fps ≈ 120 px/s)
@@ -236,7 +238,7 @@ export default function C64Panel() {
       }
 
       // Statuszeile
-      ctx.font = `${Math.max(8, fSize * 0.5)}px monospace`
+      ctx.font = `${Math.max(6, fSize * 0.5)}px "Press Start 2P", monospace`
       ctx.fillStyle = PAL[14]
       ctx.textBaseline = 'top'
       ctx.fillText('SECTOR-7 PRODUCTIONS  2024', bx + 4, by + 4)
@@ -340,8 +342,8 @@ export default function C64Panel() {
       }
 
       // Demo-Label
-      const fSize = Math.max(8, Math.min(14, ch * 0.055))
-      ctx.font = `${fSize}px monospace`
+      const fSize = Math.max(6, Math.min(10, ch * 0.045))
+      ctx.font = `${fSize}px "Press Start 2P", monospace`
       ctx.fillStyle = PAL[14]
       ctx.textBaseline = 'top'
       ctx.fillText('SPRITE FX  // SECTOR-7', bx + 4, by + 4)
@@ -376,7 +378,7 @@ export default function C64Panel() {
         typedSoFar = LOAD_CMD.slice(0, Math.min(charsToType, LOAD_CMD.length))
         const lines = [...screenLines]
         lines[5] = typedSoFar
-        renderScreen(lines, 5, typedSoFar.length, blinkOn, typedSoFar)
+        renderScreen(lines, 5, typedSoFar.length, blinkOn)
 
         if (typedSoFar.length >= LOAD_CMD.length && elapsed > LOAD_CMD.length * 180 + 400) {
           // Enter gedrückt → zu 'searching'
@@ -403,7 +405,7 @@ export default function C64Panel() {
         typedSoFar = RUN_CMD.slice(0, Math.min(charsToType, RUN_CMD.length))
         const lines = [...screenLines]
         lines[9] = typedSoFar
-        renderScreen(lines, 9, typedSoFar.length, blinkOn, typedSoFar)
+        renderScreen(lines, 9, typedSoFar.length, blinkOn)
 
         if (typedSoFar.length >= RUN_CMD.length && elapsed > RUN_CMD.length * 180 + 400) {
           phase = 'demo'

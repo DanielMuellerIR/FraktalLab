@@ -333,25 +333,51 @@ function generateLayout(id: number): GeneratedLayout {
 // ── Review-Modus: alle Panels als geordnete Liste ─────────────────────────────
 // Jeder Eintrag hat einen stabilen Namen (Funktionsname) als ID für localStorage.
 const ALL_PANELS: { name: string; Component: React.ComponentType }[] = [
-  // --- Recently Modified/Improved Panels (Page 1) ---
+  // --- Recently Worked-On / Overhauled Panels (First in list) ---
+  { name: 'FractalJulia',       Component: FractalJulia },
+  { name: 'C64Panel',           Component: C64Panel },
+  { name: 'FractalSeahorse',    Component: FractalSeahorse },
+  { name: 'FractalSpiral',      Component: FractalSpiral },
+  { name: 'FractalTendril',     Component: FractalTendril },
+  { name: 'FractalLightning',   Component: FractalLightning },
+  { name: 'FractalElephant',    Component: FractalElephant },
+  { name: 'FractalMini',        Component: FractalMini },
+  { name: 'FractalSatellite',   Component: FractalSatellite },
+  { name: 'FractalDragon',      Component: FractalDragon },
+  { name: 'FractalDendrite',    Component: FractalDendrite },
+  { name: 'FractalSwirl',       Component: FractalSwirl },
   { name: 'AmiModPanel',        Component: AmiModPanel },
+  { name: 'SolarSystemPanel',   Component: SolarSystemPanel },
+  { name: 'FractalView',        Component: FractalView },
+
+  // --- Other Graphics Panels ---
   { name: 'ThreeBodyScene',     Component: ThreeBodyScene },
   { name: 'FireScene',          Component: FireScene },
   { name: 'LissajousScene',     Component: LissajousScene },
-
-  // --- Next Recently Modified/Improved Panels (Page 2) ---
-  { name: 'SolarSystemPanel',   Component: SolarSystemPanel },
-  { name: 'DNAHelix',           Component: DNAHelix },
-  { name: 'FractalJulia',       Component: FractalJulia },
   { name: 'TunnelScene',        Component: TunnelScene },
-
-  // --- Other Recently Modified/Improved Panels (Page 3) ---
   { name: 'RotozoomScene',      Component: RotozoomScene },
   { name: 'PlasmaDemo',         Component: PlasmaDemo },
   { name: 'EnhanceView',        Component: EnhanceView },
-  { name: 'AgentCodePanel',     Component: AgentCodePanel },
+  { name: 'VoxelDemoColor',     Component: VoxelDemoColor },
+  { name: 'VoxelDemoBW',        Component: VoxelDemoBW },
+  { name: 'GlobePanel',         Component: GlobePanel },
+  { name: 'VoxelThermal',       Component: VoxelThermal },
+  { name: 'VoxelLava',          Component: VoxelLava },
+  { name: 'VoxelNeon',          Component: VoxelNeon },
+  { name: 'VoxelMatrix',        Component: VoxelMatrix },
+  { name: 'StarfieldScene',     Component: StarfieldScene },
+  { name: 'OscilloscopePanel',  Component: OscilloscopePanel },
+  { name: 'MetaballsScene',     Component: MetaballsScene },
+  { name: 'DotCloudScene',      Component: DotCloudScene },
+  { name: 'AllYourBase',        Component: AllYourBase },
+  { name: 'ParallaxPanel',      Component: ParallaxPanel },
+  { name: 'ElitePanel',         Component: ElitePanel },
+  { name: 'CADRobotPanel',      Component: CADRobotPanel },
+  { name: 'RetroErrorPanel',    Component: RetroErrorPanel },
+  { name: 'RadarSweepPanel',    Component: RadarSweepPanel },
+  { name: 'DNAHelix',           Component: DNAHelix },
 
-  // --- Other Text Panels ---
+  // --- Text Panels ---
   { name: 'ICQChatPanel',       Component: ICQChatPanel },
   { name: 'VisitorProfilePanel',Component: VisitorProfilePanel },
   { name: 'SatellitePanel',     Component: SatellitePanel },
@@ -365,37 +391,10 @@ const ALL_PANELS: { name: string; Component: React.ComponentType }[] = [
   { name: 'PwdCracker',         Component: PwdCracker },
   { name: 'PortScanner',        Component: PortScanner },
   { name: 'PseudoCode',         Component: PseudoCode },
+  { name: 'AgentCodePanel',     Component: AgentCodePanel },
   { name: 'DiskCleanupPanel',   Component: DiskCleanupPanel },
   { name: 'StockTickerPanel',   Component: StockTickerPanel },
   { name: 'ClassifiedPanel',    Component: ClassifiedPanel },
-
-  // --- Other Graphics Panels ---
-  { name: 'VoxelDemoColor',     Component: VoxelDemoColor },
-  { name: 'VoxelDemoBW',        Component: VoxelDemoBW },
-  { name: 'GlobePanel',         Component: GlobePanel },
-
-  { name: 'VoxelThermal',       Component: VoxelThermal },
-  { name: 'VoxelLava',          Component: VoxelLava },
-  { name: 'VoxelNeon',          Component: VoxelNeon },
-  { name: 'VoxelMatrix',        Component: VoxelMatrix },
-  { name: 'StarfieldScene',     Component: StarfieldScene },
-  { name: 'OscilloscopePanel',  Component: OscilloscopePanel },
-  { name: 'MetaballsScene',     Component: MetaballsScene },
-  { name: 'DotCloudScene',      Component: DotCloudScene },
-  { name: 'AllYourBase',        Component: AllYourBase },
-  { name: 'ParallaxPanel',      Component: ParallaxPanel },
-  { name: 'ElitePanel',         Component: ElitePanel },
-  { name: 'CADRobotPanel',      Component: CADRobotPanel },
-  { name: 'C64Panel',           Component: C64Panel },
-  { name: 'RetroErrorPanel',    Component: RetroErrorPanel },
-  { name: 'FractalSeahorse',    Component: FractalSeahorse },
-  { name: 'FractalSpiral',      Component: FractalSpiral },
-  { name: 'FractalTendril',     Component: FractalTendril },
-  { name: 'FractalLightning',   Component: FractalLightning },
-  { name: 'FractalElephant',    Component: FractalElephant },
-  { name: 'FractalMini',        Component: FractalMini },
-  { name: 'FractalSatellite',   Component: FractalSatellite },
-  { name: 'RadarSweepPanel',    Component: RadarSweepPanel },
 ]
 
 // ── localStorage-Helfer für Reviews ──────────────────────────────────────────
@@ -727,6 +726,26 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [doSwitch, reviewMode])
+
+  // ── Cursortasten / Arrow keys → switch panels in review mode ────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!reviewMode) return
+      
+      const tag = (e.target as HTMLElement).tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault()
+        goToPanel((reviewIdx + 1) % ALL_PANELS.length)
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        goToPanel((reviewIdx - 1 + ALL_PANELS.length) % ALL_PANELS.length)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [reviewMode, reviewIdx, goToPanel])
 
   // ── abgeleitete Variablen für den Review-Modus ─────────────────────────────
   const totalPanels    = ALL_PANELS.length
