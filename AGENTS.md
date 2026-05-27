@@ -14,7 +14,7 @@ Thematischer Rahmen: Ein fiktives „Neural Intrusion Dashboard", das Hacker-Kli
 
 **Speed-first-Regel:** Jedes Feature muss in einer einzigen Session vollständig lauffähig implementiert werden können. Features, die das nicht schaffen, werden auf kleineres Scope reduziert oder verschoben. Keine halbfertigen Implementierungen.
 
-Aktueller Stand: **v1.0.0**. Deployment auf Netcup-Webspace (Apache).
+Aktueller Stand: **v1.1.0**. Deployment auf Netcup-Webspace (Apache).
 
 ---
 
@@ -170,7 +170,7 @@ Desktop: `[LAYOUT x/3]`-Button + Leertaste. Mobile: ausgeblendet.
    - `modarchive.org/index.php?request=view_player&query=164194`
    - `modarchive.org/index.php?request=view_player&query=138950`
    - `modarchive.org/index.php?request=view_player&query=87180`
-2. **Fraktal-Endloszoom** — statt Fade+Reset nahtlosen Endloszoom implementieren (kein schwarzes Bild je)
+2. ~~**Fraktal-Endloszoom**~~ — **erledigt**: nahtloser Endloszoom ohne schwarze Frames, Boundary-Tracking, bidirektionaler Zoom
 3. **Grid-Überarbeitung (GRID-01)** — vollständig zufälliger Grid-Generator statt fixer Layouts
 4. **Archivierte Panels** — DaggerfallPanel, FractalDendrite, FractalSwirl bei Gelegenheit überarbeiten
 
@@ -211,6 +211,11 @@ Basis: manueller Durchlauf aller Panels am 2026-05-21. Daumen rauf/runter = erst
 - [x] **OscilloscopePanel** (Panel 31) — Komplett ersetzen durch SpectrogramPanel (neon bars, peak decay, circular wave, waterfall).
 - [x] **GlobePanel** (Panel 25) — Korrekte Landmassen-Polygone mit deutlich mehr Punkten; falsche Formen durch eurasische/afrikanische/amerikanische Pfad-Vektoren fixen.
 - [x] **Fraktal-Panels (alle)** (Panels 3-9 & FractalJulia) — Endloser zoombarer/rotierender Flug in WASM ohne Resets oder schwarze Frames.
+  - Start immer bei Standard-Mandelbrot-Center (-0.5, 0) mit garantierter Varianz
+  - Drift/Tumble erst ab zoom > 30 aktiv (verhindert Drift-Away am Anfang)
+  - Boundary-Tracking erst ab zoom > 45 (verhindert Fehlnavigation)
+  - isLowDetail-Schwellwert auf 95% erhöht (war 70%)
+  - Alle 57 Panels bestehen Playwright-Visualtest (stddev > 5)
 
 
 ### Zurückgestellt
