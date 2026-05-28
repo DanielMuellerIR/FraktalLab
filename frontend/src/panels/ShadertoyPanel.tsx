@@ -253,7 +253,7 @@ const RETRO_WAVE_SHADER = `
     
     // 3. Raymarched Ground Terrain
     if (uv.y <= horizon) {
-      vec3 ro = vec3(0.0, 0.22, time * 0.72);
+      vec3 ro = vec3(0.0, 0.38, time * 0.72);
       // Ray direction looking slightly down
       vec3 rd = normalize(vec3(uv.x, uv.y - 0.04, 0.65));
       
