@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 import { getWasmModule } from '../utils/wasm-loader'
+import { subscribe } from '../utils/raf-coordinator'
 
 interface Location { cx: number; cy: number }
 
@@ -141,14 +142,24 @@ function makeFractalScene(
       const container = containerRef.current!
       const canvas = canvasRef.current!
       const ctx    = canvas.getContext('2d')!
-      let raf: number
       let alive = true
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let wasmMod: any = null
+      let unsubscribe: (() => void) | null = null
 
       let isVisible = true
       const io = new IntersectionObserver(([e]) => {
         isVisible = e.isIntersecting
+        if (isVisible) {
+          if (!unsubscribe && alive) {
+            unsubscribe = subscribe(loop)
+          }
+        } else {
+          if (unsubscribe) {
+            unsubscribe()
+            unsubscribe = null
+          }
+        }
       })
       io.observe(canvas)
 
@@ -198,7 +209,6 @@ function makeFractalScene(
 
       function loop(t: number) {
         if (!alive) return
-        raf = requestAnimationFrame(loop)
 
         const s = stateRef.current
 
@@ -322,10 +332,11 @@ function makeFractalScene(
         }
       }
 
-      raf = requestAnimationFrame(loop)
       return () => {
         alive = false
-        cancelAnimationFrame(raf)
+        if (unsubscribe) {
+          unsubscribe()
+        }
         io.disconnect()
         ro.disconnect()
       }

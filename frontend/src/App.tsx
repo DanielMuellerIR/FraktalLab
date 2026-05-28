@@ -5,6 +5,7 @@ import GlitchOverlay from './ui/GlitchOverlay'
 import AmbientSound  from './ui/AmbientSound'
 import Panel         from './ui/Panel'
 import { getSharedAudioContext } from './utils/shared-audio'
+import { setPaused } from './utils/raf-coordinator'
 
 // ── Text-Panels ───────────────────────────────────────────────────────────────
 import SystemLog         from './panels/SystemLog'
@@ -694,12 +695,14 @@ export default function App() {
 
     setPrevLayout(current)
     setSliding(true)
+    setPaused(true)
     setLayout(next)
 
     // Animation nach 520 ms beenden (etwas länger als die 500 ms CSS-Animation)
     setTimeout(() => {
       setPrevLayout(null)
       setSliding(false)
+      setPaused(false)
     }, 520)
   }, [])
 

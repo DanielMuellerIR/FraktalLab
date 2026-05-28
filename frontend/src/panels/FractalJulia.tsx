@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { getWasmModule } from '../utils/wasm-loader'
+import { subscribe } from '../utils/raf-coordinator'
 
 // 6 klassische Julia-Parametersätze
 const JULIA_PARAMS = [
@@ -86,7 +87,6 @@ function findBoundaryNonBlack(pixels: Uint8ClampedArray, W: number, H: number): 
 export default function FractalJulia() {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const rafRef    = useRef<number>(0)
 
   useEffect(() => {
     const _canvas = canvasRef.current
@@ -99,9 +99,21 @@ export default function FractalJulia() {
 
     let cancelled = false
     let isVisible = true
+    let unsubscribe: (() => void) | null = null
+    let activeFrame: ((t: number) => void) | null = null
 
     const io = new IntersectionObserver(([e]) => {
       isVisible = e.isIntersecting
+      if (isVisible) {
+        if (!unsubscribe && activeFrame && !cancelled) {
+          unsubscribe = subscribe(activeFrame)
+        }
+      } else {
+        if (unsubscribe) {
+          unsubscribe()
+          unsubscribe = null
+        }
+      }
     })
     io.observe(canvas)
 
@@ -158,16 +170,9 @@ export default function FractalJulia() {
         const frame = (now: number) => {
           if (cancelled) return
 
-          if (!isVisible) {
-            s.lastFrame = now
-            rafRef.current = requestAnimationFrame(frame)
-            return
-          }
-
           if (canvas.width === 0 || canvas.height === 0) {
             syncSize()
             s.lastFrame = now
-            rafRef.current = requestAnimationFrame(frame)
             return
           }
 
@@ -288,17 +293,20 @@ export default function FractalJulia() {
           const infoText = `JULIA // ${currentParam.label} // ZOOM 10^${Math.max(0, Math.log10(s.zoom)).toFixed(1)} // RES ${RENDER_W}x${RENDER_H}`
           ctx.fillText(infoText, RENDER_W - 6, RENDER_H - 4)
           ctx.restore()
-
-          rafRef.current = requestAnimationFrame(frame)
         }
 
-        rafRef.current = requestAnimationFrame(frame)
+        activeFrame = frame
+        if (isVisible && !unsubscribe && !cancelled) {
+          unsubscribe = subscribe(activeFrame)
+        }
       })
       .catch((err) => console.error('[FraktalLab] WASM-Fehler (Julia):', err))
 
     return () => {
       cancelled = true
-      cancelAnimationFrame(rafRef.current)
+      if (unsubscribe) {
+        unsubscribe()
+      }
       ro.disconnect()
       io.disconnect()
     }

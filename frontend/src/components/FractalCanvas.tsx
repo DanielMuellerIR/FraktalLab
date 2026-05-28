@@ -1,5 +1,6 @@
 import { useEffect, useRef, memo } from 'react'
 import { getWasmModule } from '../utils/wasm-loader'
+import { subscribe } from '../utils/raf-coordinator'
 
 // Interessante Mandelbrot-Koordinaten — werden zyklisch durchgezoomt.
 // Wenn die Float-Präzisionsgrenze erreicht wird, Cross-Fade → nächste Location.
@@ -47,9 +48,21 @@ export default memo(function FractalCanvas() {
 
     let cancelled = false
     let isVisible = true
+    let unsubscribe: (() => void) | null = null
+    let activeFrame: (() => void) | null = null
 
     const io = new IntersectionObserver(([e]) => {
       isVisible = e.isIntersecting
+      if (isVisible) {
+        if (!unsubscribe && activeFrame && !cancelled) {
+          unsubscribe = subscribe(activeFrame)
+        }
+      } else {
+        if (unsubscribe) {
+          unsubscribe()
+          unsubscribe = null
+        }
+      }
     })
     io.observe(canvas)
 
@@ -115,14 +128,8 @@ export default memo(function FractalCanvas() {
         const frame = () => {
           if (cancelled) return
 
-          if (!isVisible) {
-            rafRef.current = requestAnimationFrame(frame)
-            return
-          }
-
           syncSize()
           if (canvas.width === 0 || canvas.height === 0) {
-            rafRef.current = requestAnimationFrame(frame)
             return
           }
 
@@ -226,17 +233,20 @@ export default memo(function FractalCanvas() {
               s.fadeAlpha = 0
             }
           } catch (err) { console.error('[FractalCanvas] render error:', err) }
-
-          rafRef.current = requestAnimationFrame(frame)
         }
 
-        rafRef.current = requestAnimationFrame(frame)
+        activeFrame = frame
+        if (isVisible && !unsubscribe && !cancelled) {
+          unsubscribe = subscribe(activeFrame)
+        }
       })
       .catch((err) => console.error('[FraktalLab] WASM-Fehler:', err))
 
     return () => {
       cancelled = true
-      cancelAnimationFrame(rafRef.current)
+      if (unsubscribe) {
+        unsubscribe()
+      }
       ro.disconnect()
       io.disconnect()
     }

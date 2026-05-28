@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
+import { subscribe } from '../utils/raf-coordinator'
 
 // ── Neon-Grid-Renderer (eigenständige Komponente, kein Voxel-Engine) ───────────
 // Zeichnet ein flaches TRON-artiges Perspektiv-Gitter, das sich vorwärts bewegt.
@@ -421,9 +422,9 @@ function makeVoxelScene(
       const ctx = canvas.getContext('2d')!
       if (!ctx) return
 
-      let rafId: number
       let running = true
       let lastT = 0
+      let unsubscribe: (() => void) | null = null
       const speedMin     = camCfg.speedMin     ?? 0.8
       const speedMax     = camCfg.speedMax     ?? 5
       const impulseScale = camCfg.impulseScale ?? 3
@@ -431,7 +432,19 @@ function makeVoxelScene(
       // IntersectionObserver: Animation pausieren wenn Panel nicht sichtbar ist
       let isVisible = true
       const io = new IntersectionObserver(
-        ([entry]) => { isVisible = entry.isIntersecting },
+        ([entry]) => {
+          isVisible = entry.isIntersecting
+          if (isVisible) {
+            if (!unsubscribe && running) {
+              unsubscribe = subscribe(loop)
+            }
+          } else {
+            if (unsubscribe) {
+              unsubscribe()
+              unsubscribe = null
+            }
+          }
+        },
         { threshold: 0.1 },
       )
       io.observe(canvas)
@@ -451,12 +464,8 @@ function makeVoxelScene(
 
       function loop(t: number) {
         if (!running) return
-        // Panel nicht sichtbar → Frame überspringen, aber Loop fortsetzen
-        if (!isVisible) { rafId = requestAnimationFrame(loop); return }
-
         // Sicherheitscheck: Canvas muss eine Größe haben
         if (canvas!.width === 0 || canvas!.height === 0) {
-          rafId = requestAnimationFrame(loop)
           return
         }
 
@@ -638,7 +647,6 @@ function makeVoxelScene(
             postFn(ctx, mainW, mainH)
           }
 
-          rafId = requestAnimationFrame(loop)
           return
         }
 
@@ -751,14 +759,13 @@ function makeVoxelScene(
         if (postFn) {
           postFn(ctx, canvas!.width, canvas!.height)
         }
-
-        rafId = requestAnimationFrame(loop)
       }
 
-      rafId = requestAnimationFrame(loop)
       return () => {
         running = false
-        cancelAnimationFrame(rafId)
+        if (unsubscribe) {
+          unsubscribe()
+        }
         ro.disconnect()
         io.disconnect()
       }

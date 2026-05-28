@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
+import { subscribe } from '../utils/raf-coordinator'
 
 // ── HSL→RGB Helfer ───────────────────────────────────────────────────────────
 function hsl(h: number, s: number, l: number): [number, number, number] {
@@ -51,13 +52,25 @@ function makeScene(
     useEffect(() => {
       const canvas = canvasRef.current!
       const ctx = canvas.getContext('2d')!
-      let raf: number
       let alive = true
+      let unsubscribe: (() => void) | null = null
 
       // IntersectionObserver: Animation pausieren wenn Panel nicht sichtbar ist
       let isVisible = true
       const io = new IntersectionObserver(
-        ([entry]) => { isVisible = entry.isIntersecting },
+        ([entry]) => {
+          isVisible = entry.isIntersecting
+          if (isVisible) {
+            if (!unsubscribe && alive) {
+              unsubscribe = subscribe(loop)
+            }
+          } else {
+            if (unsubscribe) {
+              unsubscribe()
+              unsubscribe = null
+            }
+          }
+        },
         { threshold: 0.1 },
       )
       io.observe(canvas)
@@ -97,12 +110,9 @@ function makeScene(
 
       function loop(t: number) {
         if (!alive) return
-        // Panel nicht sichtbar → Frame überspringen, aber Loop fortsetzen
-        if (!isVisible) { raf = requestAnimationFrame(loop); return }
 
         // Sicherheitscheck: Canvas muss eine Größe haben
         if (canvas.width === 0 || canvas.height === 0) {
-          raf = requestAnimationFrame(loop)
           return
         }
 
@@ -135,14 +145,13 @@ function makeScene(
 
         // ... dann auf volle Canvas-Größe hochskalieren
         ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height)
-
-        raf = requestAnimationFrame(loop)
       }
 
-      raf = requestAnimationFrame(loop)
       return () => {
         alive = false
-        cancelAnimationFrame(raf)
+        if (unsubscribe) {
+          unsubscribe()
+        }
         ro.disconnect()
         io.disconnect()
       }
