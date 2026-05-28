@@ -446,8 +446,8 @@ export const FractalElephant = makeFractalScene(
   'ELEPHANT VALLEY // SCANNING',
   'mandelbrot',
   [
-    { cx: 0.275,   cy: 0.0 },
-    { cx: 0.275,   cy: 0.001 },
+    { cx: 0.272050335, cy: 0.006118039 },
+    { cx: 0.2894,      cy: 0.01258 },
   ],
   null,
   140,
@@ -505,9 +505,8 @@ export const FractalSwirl = makeFractalScene(
   'DEEP SWIRL // NEURAL SYNC',
   'mandelbrot',
   [
-    { cx: -0.0986, cy: 0.6517 },
-    { cx: -0.0986, cy: 0.6519 },
-    { cx:  0.295,  cy: 0.555  },
+    { cx: -0.743643, cy: 0.1318259 },
+    { cx: -0.7453,   cy: 0.113 },
   ],
   null,
   220,
