@@ -323,9 +323,9 @@ function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData
       }
     })
 
-    const canvasEl = canvasRef.current
-    if (canvasEl) {
-      io.observe(canvasEl)
+    const containerEl = containerRef.current
+    if (containerEl) {
+      io.observe(containerEl)
     }
 
     // Initial activation
@@ -336,8 +336,8 @@ function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData
       if (unsubscribeRaf) {
         unsubscribeRaf()
       }
-      if (canvasEl) {
-        io.unobserve(canvasEl)
+      if (containerEl) {
+        io.unobserve(containerEl)
       }
       releaseWebGLSlot(panelId)
       try {
@@ -394,10 +394,12 @@ function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
-        <canvas
-          ref={canvasRef}
-          style={{ width: '100%', height: '100%', display: 'block' }}
-        />
+        {hasContext && (
+          <canvas
+            ref={canvasRef}
+            style={{ width: '100%', height: '100%', display: 'block' }}
+          />
+        )}
         {attribution && hasContext && (
           <div className="absolute bottom-1 left-2 px-1 bg-black/60 border border-green-950/20 text-[8px] font-mono text-green-700/60 rounded select-none pointer-events-none uppercase tracking-wider">
             {attribution}
