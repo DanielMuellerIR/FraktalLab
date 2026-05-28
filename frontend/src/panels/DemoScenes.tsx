@@ -693,7 +693,7 @@ const METABALLS_SHADER = `
       finalCol = min(vec3(1.0), colorSum / sum);
     }
     
-    fragColor = vec4(col, 1.0);
+    fragColor = vec4(finalCol, 1.0);
   }
 `
 

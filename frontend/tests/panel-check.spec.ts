@@ -41,8 +41,15 @@ async function canvasMaxStdDev(
 
     if (w < 4 || h < 4) return { stddev: 0, width: w, height: h, testId }
 
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return { stddev: 0, width: w, height: h, testId }
+    let ctx = canvas.getContext('2d')
+    let isWebGL = false
+    let gl: any = null
+    
+    if (!ctx) {
+      gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+      if (!gl) return { stddev: 0, width: w, height: h, testId }
+      isWebGL = true
+    }
 
     // 5 Regionen samplen: Ecken und Mitte
     const sw = Math.min(w, 80)
@@ -68,7 +75,16 @@ async function canvasMaxStdDev(
     let maxStddev = 0
     for (const r of regions) {
       try {
-        const data = ctx.getImageData(r.x, r.y, sw, sh).data
+        let data: Uint8ClampedArray
+        if (isWebGL && gl) {
+          const pixels = new Uint8Array(sw * sh * 4)
+          gl.readPixels(r.x, r.y, sw, sh, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
+          data = new Uint8ClampedArray(pixels.buffer)
+        } else if (ctx) {
+          data = ctx.getImageData(r.x, r.y, sw, sh).data
+        } else {
+          return { stddev: 0, width: w, height: h, testId }
+        }
         maxStddev = Math.max(maxStddev, stddevOf(data))
       } catch {
         // Tainted canvas (z.B. Cross-Origin ImageData) → als "ok" werten

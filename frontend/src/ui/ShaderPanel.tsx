@@ -61,7 +61,8 @@ function ShaderPanel({ fragmentShader, uniforms, title }: ShaderPanelProps) {
       const canvas = canvasRef.current
       if (!canvas) return false
 
-      gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl') as WebGLRenderingContext
+      const options = { preserveDrawingBuffer: true }
+      gl = (canvas.getContext('webgl', options) || canvas.getContext('experimental-webgl', options)) as WebGLRenderingContext | null
       if (!gl) {
         console.error('[ShaderPanel] Failed to retrieve WebGL context.')
         return false

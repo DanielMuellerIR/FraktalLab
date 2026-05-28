@@ -20,8 +20,15 @@ async function getCanvasStdDev(page: any): Promise<number> {
     const h = canvas.height
     if (w < 4 || h < 4) return 0
 
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return 0
+    let ctx = canvas.getContext('2d')
+    let isWebGL = false
+    let gl: any = null
+    
+    if (!ctx) {
+      gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+      if (!gl) return 0
+      isWebGL = true
+    }
 
     // Sample 5 regions: corners and center
     const sw = Math.min(w, 80)
@@ -47,7 +54,16 @@ async function getCanvasStdDev(page: any): Promise<number> {
     let maxStddev = 0
     for (const r of regions) {
       try {
-        const data = ctx.getImageData(r.x, r.y, sw, sh).data
+        let data: Uint8ClampedArray
+        if (isWebGL && gl) {
+          const pixels = new Uint8Array(sw * sh * 4)
+          gl.readPixels(r.x, r.y, sw, sh, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
+          data = new Uint8ClampedArray(pixels.buffer)
+        } else if (ctx) {
+          data = ctx.getImageData(r.x, r.y, sw, sh).data
+        } else {
+          return 0
+        }
         maxStddev = Math.max(maxStddev, stddevOf(data))
       } catch {
         return -2 // Tainted / CORS (treat as ok)
