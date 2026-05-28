@@ -1,21 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 import { subscribe } from '../utils/raf-coordinator'
-
-// ── HSL→RGB Helfer ───────────────────────────────────────────────────────────
-function hsl(h: number, s: number, l: number): [number, number, number] {
-  const c = (1 - Math.abs(2*l - 1)) * s
-  const x = c * (1 - Math.abs((h/60) % 2 - 1))
-  const m = l - c/2
-  let r = 0, g = 0, b = 0
-  if      (h < 60)  { r=c; g=x }
-  else if (h < 120) { r=x; g=c }
-  else if (h < 180) { g=c; b=x }
-  else if (h < 240) { g=x; b=c }
-  else if (h < 300) { r=x; b=c }
-  else              { r=c; b=x }
-  return [Math.round((r+m)*255), Math.round((g+m)*255), Math.round((b+m)*255)]
-}
+import ShaderPanel from '../ui/ShaderPanel'
 
 // ── Factory: erstellt Panel-Komponente aus Render-Callback ───────────────────
 // Zustand wird per Ref gehalten → kein Re-render bei Frame-Updates.
@@ -176,66 +162,94 @@ function makeScene(
 //   - Alle 30 s: 3 s "Chemiefeuer"-Modus — Basis wechselt zu Grün/Gelb.
 // Interner Performance-Cap: max 160×100 (pixelated-Look ist gewollt).
 
-// Zustandstyp für FireScene (Hitzebuffer + Chemiefeuer-Timer)
-type FireState = {
-  firePixels: Uint8Array
-}
+const FIRE_SHADER = `
+  precision highp float;
 
-const firePalette: [number, number, number][] = []
-for (let i = 0; i < 36; i++) {
-  if (i <= 8) {
-    firePalette.push([Math.round(i / 8 * 255), 0, 0])
-  } else if (i <= 17) {
-    firePalette.push([255, Math.round((i - 8) / 9 * 120), 0])
-  } else if (i <= 26) {
-    firePalette.push([255, 120 + Math.round((i - 17) / 9 * 110), 0])
-  } else {
-    firePalette.push([255, 230 + Math.round((i - 26) / 9 * 25), Math.round((i - 26) / 9 * 255)])
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
   }
-}
+  
+  float noise(in vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i + vec2(0.0,0.0)), hash(i + vec2(1.0,0.0)), u.x),
+               mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), u.x), u.y);
+  }
 
-export const FireScene = makeScene(
-  'CORE MELTDOWN // STATUS: CRITICAL', 160, 100,
-  (W, H): FireState => ({
-    firePixels: new Uint8Array(W * H),
-  }),
-  (buf, W, H, _t, state: FireState) => {
-    const { firePixels } = state
-
-    // Seed bottom row with maximum heat value (35)
-    const bottomRowStart = (H - 1) * W
-    for (let x = 0; x < W; x++) {
-      firePixels[bottomRowStart + x] = Math.random() > 0.15 ? 35 : Math.floor(20 + Math.random() * 15)
+  float fbm(in vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    vec2 shift = vec2(100.0);
+    mat2 rot = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.5));
+    for (int i = 0; i < 4; ++i) {
+      v += a * noise(p);
+      p = rot * p * 2.0 + shift;
+      a *= 0.5;
     }
+    return v;
+  }
 
-    // Heat propagation from row 0 to H - 2
-    for (let y = 0; y < H - 1; y++) {
-      for (let x = 0; x < W; x++) {
-        const randOffset = Math.floor(Math.random() * 3) - 1
-        let srcX = x + randOffset
-        if (srcX < 0) srcX = 0
-        if (srcX >= W) srcX = W - 1
-
-        const parentHeat = firePixels[(y + 1) * W + srcX]
-        const decay = Math.floor(Math.random() * 2.2)
-        firePixels[y * W + x] = Math.max(0, parentHeat - decay)
+  void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    float ts = iTime;
+    vec2 uv = fragCoord.xy / iResolution.xy;
+    
+    // Basis-Flammenform (unten heiß, nach oben abnehmend)
+    float base = 1.0 - uv.y;
+    
+    // UV verzerren mit FBM-Rauschen für organischen Flammeneffekt
+    vec2 noiseUV = uv * vec2(4.0, 3.0);
+    noiseUV.y -= ts * 2.5; // Flammen steigen auf
+    noiseUV.x += sin(ts * 1.5 + uv.y * 2.0) * 0.15; // leichtes Lodern
+    
+    float n = fbm(noiseUV);
+    float heat = base * 0.4 + n * 0.7;
+    
+    // Blaue/cyan "Plasma-Jets" (jede 4. Spalte)
+    float isJet = step(0.9, sin(uv.x * 12.5));
+    
+    // Chemiefeuer-Modus (3 Sekunden alle 30 Sekunden)
+    float chemTime = mod(ts, 30.0);
+    float isChem = step(27.0, chemTime);
+    
+    vec3 col = vec3(0.0);
+    
+    if (heat > 0.1) {
+      if (isChem > 0.5) {
+        // Grünes/gelbes Chemiefeuer
+        col = mix(vec3(0.0), vec3(0.0, 0.5, 0.1), smoothstep(0.1, 0.3, heat));
+        col = mix(col, vec3(0.6, 0.9, 0.1), smoothstep(0.3, 0.6, heat));
+        col = mix(col, vec3(0.9, 1.0, 0.5), smoothstep(0.6, 0.9, heat));
+      } else {
+        // Normales Feuer (schwarz -> rot -> orange/gelb -> weiß)
+        col = mix(vec3(0.0), vec3(0.8, 0.1, 0.0), smoothstep(0.1, 0.3, heat));
+        col = mix(col, vec3(1.0, 0.6, 0.0), smoothstep(0.3, 0.6, heat));
+        col = mix(col, vec3(1.0, 1.0, 0.8), smoothstep(0.6, 0.9, heat));
+      }
+      
+      // Cyan/blaue Plasma-Jets einblenden
+      if (isJet > 0.5) {
+        vec3 jetCol = mix(vec3(0.0), vec3(0.0, 0.3, 0.8), smoothstep(0.1, 0.4, heat));
+        jetCol = mix(jetCol, vec3(0.0, 0.8, 0.9), smoothstep(0.4, 0.8, heat));
+        col = mix(col, jetCol, 0.65 * (1.0 - uv.y));
       }
     }
+    
+    // Bloom + Ausfaden oben
+    col *= smoothstep(0.05, 0.2, heat) * (1.0 - uv.y * uv.y * 0.9);
+    
+    fragColor = vec4(col, 1.0);
+  }
+`
 
-    // Map heat values to color buffer
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        const heat = firePixels[y * W + x]
-        const [r, g, b] = firePalette[heat]
-        const pi = (y * W + x) * 4
-        buf[pi] = r
-        buf[pi+1] = g
-        buf[pi+2] = b
-        buf[pi+3] = 255
-      }
-    }
-  },
-)
+export const FireScene = React.memo(function FireScene() {
+  return (
+    <ShaderPanel
+      fragmentShader={FIRE_SHADER}
+      title="CORE MELTDOWN // STATUS: CRITICAL"
+    />
+  )
+})
 
 // ── Effekt 2: Starfield — 3D-Sterne fliegen auf die Kamera zu ────────────────
 // Volle Auflösung OK (nur Punkte, kein Pixel-Buffer-Overhead).
@@ -511,137 +525,186 @@ export const StarfieldScene = makeScene(
 //     wird über den ersten geblendet → komplexer Überlagerungs-Effekt
 //   - Hue-Cycling: Farbe dreht 360° in 30 s
 // Performance-Cap: max 200×150.
-export const TunnelScene = makeScene(
-  'WORMHOLE // TRANSIT ACTIVE', 320, 240,
-  () => null,
-  (buf, W, H, t) => {
-    const ts = t * 0.001
 
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        const cx = x - W/2, cy = y - H/2
-        const r  = Math.sqrt(cx*cx + cy*cy) + 0.001
+const TUNNEL_SHADER = `
+  vec3 hsl2rgb(vec3 c) {
+    vec3 rgb = clamp(abs(mod(c.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+    return c.z + c.y * (rgb - 0.5) * (1.0 - abs(2.0 * c.z - 1.0));
+  }
 
-        const u = Math.atan2(cy, cx) / Math.PI + ts * 0.72
-        const v = 20 / r + ts * 2.25
-        const c = (Math.floor(u * 3) + Math.floor(v * 3)) & 1
-        const hue = 140 + Math.sin(ts * 0.15) * 40
-        const [ri, gi, bi] = hsl((hue + r * 2) % 360, 1, c ? 0.6 : 0.07)
+  void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    float ts = iTime;
+    
+    // Skalierung passend zur originalen CPU-Auflösung für identische Wellenformen
+    float originalW = min(iResolution.x, 320.0);
+    float originalH = min(iResolution.y, 240.0);
+    vec2 p = fragCoord.xy * vec2(originalW, originalH) / iResolution.xy;
+    
+    float cx = p.x - originalW / 2.0;
+    float cy = p.y - originalH / 2.0;
+    float r = length(vec2(cx, cy)) + 0.001;
+    
+    float u = atan(cy, cx) / 3.14159265 + ts * 0.72;
+    float v = 20.0 / r + ts * 2.25;
+    
+    float uCheck = floor(u * 3.0);
+    float vCheck = floor(v * 3.0);
+    float c = mod(uCheck + vCheck, 2.0);
+    
+    float hue = 140.0 + sin(ts * 0.15) * 40.0;
+    float finalHue = mod(hue + r * 2.0, 360.0) / 360.0;
+    
+    float lightness = c > 0.5 ? 0.6 : 0.07;
+    vec3 col = hsl2rgb(vec3(finalHue, 1.0, lightness));
+    
+    // Weichzeichnen im Zentrum zur Vermeidung von Aliasing
+    float fade = min(1.0, pow(r / 32.0, 1.5));
+    col *= fade;
+    
+    fragColor = vec4(col, 1.0);
+  }
+`
 
-        // Smoothly fade RGB values towards black near the center of the tunnel to prevent aliasing
-        const fade = Math.min(1.0, Math.pow(r / 32.0, 1.5))
-        const rf = Math.round(ri * fade)
-        const gf = Math.round(gi * fade)
-        const bf = Math.round(bi * fade)
-
-        const pi = (y * W + x) * 4
-        buf[pi] = rf; buf[pi+1] = gf; buf[pi+2] = bf; buf[pi+3] = 255
-      }
-    }
-  },
-  undefined,
-  false
-)
+export const TunnelScene = React.memo(function TunnelScene() {
+  return (
+    <ShaderPanel
+      fragmentShader={TUNNEL_SHADER}
+      title="WORMHOLE // TRANSIT ACTIVE"
+    />
+  )
+})
 
 // ── Effekt 4: Rotozoom — rotierende + zoomende Kacheln ───────────────────────
 // Performance-Cap: max 200×150.
-export const RotozoomScene = makeScene(
-  'TESSERACT ROTATION // DECRYPTING', 320, 240,
-  () => null,
-  (buf, W, H, t) => {
-    const ts  = t * 0.001
-    const z   = 0.04 + 0.03*Math.sin(ts*0.5)
-    const cos = Math.cos(ts*0.6)*z, sin = Math.sin(ts*0.6)*z
-    const offsets = [-0.25, 0.25]
 
-    for (let y = 0; y < H; y++) {
-      const cy = y - H/2
-      for (let x = 0; x < W; x++) {
-        const cx = x - W/2
+const ROTOZOOM_SHADER = `
+  vec3 hsl2rgb(vec3 c) {
+    vec3 rgb = clamp(abs(mod(c.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+    return c.z + c.y * (rgb - 0.5) * (1.0 - abs(2.0 * c.z - 1.0));
+  }
 
-        // 2x2 grid supersampling on checker function to smooth edges
-        let checkerSum = 0
-        for (let i = 0; i < 2; i++) {
-          const subCy = cy + offsets[i]
-          for (let j = 0; j < 2; j++) {
-            const subCx = cx + offsets[j]
-            const sx = subCx * cos - subCy * sin
-            const sy = subCx * sin + subCy * cos
-            const checker = (Math.floor(sx) + Math.floor(sy)) & 1
-            checkerSum += checker
-          }
-        }
-        const checkerAvg = checkerSum * 0.25
-
-        const centerSx = cx * cos - cy * sin
-        const centerSy = cx * sin + cy * cos
-        const hue = Math.abs(((centerSx + centerSy) * 10 + ts * 40) % 360)
-        const lightness = 0.05 + 0.50 * checkerAvg
-
-        const [ri, gi, bi] = hsl(hue, 1, lightness)
-        const pi = (y * W + x) * 4
-        buf[pi] = ri; buf[pi+1] = gi; buf[pi+2] = bi; buf[pi+3] = 255
+  void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    float ts = iTime;
+    
+    // Skalierung passend zur originalen CPU-Auflösung für identische Wellenformen
+    float originalW = min(iResolution.x, 320.0);
+    float originalH = min(iResolution.y, 240.0);
+    vec2 p = fragCoord.xy * vec2(originalW, originalH) / iResolution.xy;
+    
+    float cx = p.x - originalW / 2.0;
+    float cy = p.y - originalH / 2.0;
+    
+    float z = 0.04 + 0.03 * sin(ts * 0.5);
+    float cVal = cos(ts * 0.6) * z;
+    float sVal = sin(ts * 0.6) * z;
+    
+    // 2x2 grid supersampling on checker function to smooth edges
+    float checkerSum = 0.0;
+    float offsets[2];
+    offsets[0] = -0.25;
+    offsets[1] = 0.25;
+    
+    for (int i = 0; i < 2; i++) {
+      float subCy = cy + offsets[i];
+      for (int j = 0; j < 2; j++) {
+        float subCx = cx + offsets[j];
+        float sx = subCx * cVal - subCy * sVal;
+        float sy = subCx * sVal + subCy * cVal;
+        float checker = mod(floor(sx) + floor(sy), 2.0);
+        checkerSum += abs(checker);
       }
     }
-  },
-  undefined,
-  false
-)
+    float checkerAvg = checkerSum * 0.25;
+    
+    float centerSx = cx * cVal - cy * sVal;
+    float centerSy = cx * sVal + cy * cVal;
+    
+    float hue = mod(abs((centerSx + centerSy) * 10.0 + ts * 40.0), 360.0) / 360.0;
+    float lightness = 0.05 + 0.50 * checkerAvg;
+    
+    vec3 col = hsl2rgb(vec3(hue, 1.0, lightness));
+    fragColor = vec4(col, 1.0);
+  }
+`
+
+export const RotozoomScene = React.memo(function RotozoomScene() {
+  return (
+    <ShaderPanel
+      fragmentShader={ROTOZOOM_SHADER}
+      title="TESSERACT ROTATION // DECRYPTING"
+    />
+  )
+})
 
 // ── Effekt 5: Metaballs — flüssige Blobs, fein gerastert ─────────────────────
 // Verbesserung: Step-Size auf 3px reduziert → kein blockiges Pixel-Raster mehr.
 // Anzahl Bälle auf 5 gekappt (war schon 5, explizit bestätigt) um Performance
 // beim feineren Raster auszugleichen.
 // Performance-Cap: max 200×150.
-type Ball = { x:number; y:number; vx:number; vy:number; r:number; hue:number }
-export const MetaballsScene = makeScene(
-  'LIQUID CODE // RENDERING', 200, 150,
-  // Startpositionen relativ zur tatsächlichen internen Auflösung
-  (W, H): Ball[] => Array.from({length: 5}, (_,i) => ({
-    x: 5 + Math.random() * (W - 10),
-    y: 5 + Math.random() * (H - 10),
-    vx: (Math.random() - 0.5) * 0.9,
-    vy: (Math.random() - 0.5) * 0.9,
-    r:  7 + Math.random() * 10,
-    hue: (i * 72 + Math.floor(Math.random() * 30)) % 360,
-  })),
-  (buf, W, H, _t, balls: Ball[]) => {
-    // Bälle bewegen und an Wänden abprallen
-    for (const b of balls) {
-      b.x += b.vx; b.y += b.vy
-      if (b.x < 0 || b.x > W) b.vx *= -1
-      if (b.y < 0 || b.y > H) b.vy *= -1
-    }
 
-    // Hintergrund schwarz setzen
-    buf.fill(0)
-    for (let i = 3; i < buf.length; i += 4) buf[i] = 255
+const METABALLS_SHADER = `
+  vec3 hsl2rgb(vec3 c) {
+    vec3 rgb = clamp(abs(mod(c.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+    return c.z + c.y * (rgb - 0.5) * (1.0 - abs(2.0 * c.z - 1.0));
+  }
 
-    // Step-Size 1px: jedes Pixel einzeln berechnet — glatter, echter Liquid-Look.
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        let sum = 0, rW = 0, gW = 0, bW = 0
-        for (const b of balls) {
-          // Potential-Funktion: r²/d² — je näher, desto größer der Beitrag
-          const w = b.r * b.r / ((x - b.x) ** 2 + (y - b.y) ** 2 + 1)
-          sum += w
-          const [br, bg, bb] = hsl(b.hue, 1, 0.5)
-          rW += br * w; gW += bg * w; bW += bb * w
-        }
-
-        if (sum > 1) {
-          // Isosurface überschritten → Blob-Farbe (gewichtetes Mittel)
-          const pi = (y * W + x) * 4
-          buf[pi]   = Math.min(255, rW / sum)
-          buf[pi+1] = Math.min(255, gW / sum)
-          buf[pi+2] = Math.min(255, bW / sum)
-          buf[pi+3] = 255
-        }
-        // Sonst bleibt der schwarze Hintergrund stehen
+  void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    float ts = iTime;
+    float originalW = 200.0;
+    float originalH = 150.0;
+    vec2 p = fragCoord.xy * vec2(originalW, originalH) / iResolution.xy;
+    
+    float sum = 0.0;
+    vec3 colorSum = vec3(0.0);
+    
+    for (int i = 0; i < 5; i++) {
+      vec3 ball;
+      float r = 0.0;
+      
+      if (i == 0) {
+        ball = vec3(originalW * (0.5 + 0.4 * sin(ts * 0.95 + 1.0)), originalH * (0.5 + 0.4 * cos(ts * 1.12 + 2.0)), 0.0);
+        r = 12.0;
+      } else if (i == 1) {
+        ball = vec3(originalW * (0.5 + 0.38 * cos(ts * 0.75 + 4.0)), originalH * (0.5 + 0.35 * sin(ts * 1.35 + 0.5)), 72.0);
+        r = 15.0;
+      } else if (i == 2) {
+        ball = vec3(originalW * (0.5 + 0.42 * sin(ts * 1.15 + 3.1)), originalH * (0.5 + 0.38 * cos(ts * 0.85 + 1.2)), 144.0);
+        r = 10.0;
+      } else if (i == 3) {
+        ball = vec3(originalW * (0.5 + 0.35 * cos(ts * 1.25 + 2.4)), originalH * (0.5 + 0.4 * sin(ts * 0.95 + 4.8)), 216.0);
+        r = 16.0;
+      } else {
+        ball = vec3(originalW * (0.5 + 0.4 * sin(ts * 0.85 + 0.8)), originalH * (0.5 + 0.38 * sin(ts * 1.05 + 3.5)), 288.0);
+        r = 11.0;
       }
+      
+      float dx = p.x - ball.x;
+      float dy = p.y - ball.y;
+      float distSq = dx * dx + dy * dy + 1.0;
+      float w = (r * r) / distSq;
+      sum += w;
+      
+      vec3 ballCol = hsl2rgb(vec3(ball.z / 360.0, 1.0, 0.5));
+      colorSum += ballCol * w;
     }
-  },
-)
+    
+    vec3 finalCol = vec3(0.0);
+    if (sum > 1.0) {
+      finalCol = min(vec3(1.0), colorSum / sum);
+    }
+    
+    fragColor = vec4(col, 1.0);
+  }
+`
+
+export const MetaballsScene = React.memo(function MetaballsScene() {
+  return (
+    <ShaderPanel
+      fragmentShader={METABALLS_SHADER}
+      title="LIQUID CODE // RENDERING"
+    />
+  )
+})
 
 // ── Effekt 6: Neural Net — Canvas-2D-Version mit scharfen Linien + Labels ────
 // Standalone-Komponente (kein makeScene), damit Canvas-2D-API genutzt werden
