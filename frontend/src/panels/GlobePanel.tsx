@@ -2,8 +2,6 @@ import { memo, useEffect, useState } from 'react'
 import ShaderPanel from '../ui/ShaderPanel'
 import Panel from '../ui/Panel'
 
-const EARTH_BASE64 = 'UklGRnQEAABXRUJQVlA4IGgEAACwHACdASoAAYAAPm02l0ikIyIhI9RJSIANiWdu4XPw3WCa6LZn8qt9UY+ELzHfQB/P90N/g98A/uO+Of2DeAP//1r/RP+2drtkH+4UQLuJ0BdsI4B/NuID8H/vPmX8QMdH7zf5f+P3wC/wcJIAN/ZABv7H/hbPzZCYMtMJxbh7BPBZUajnlWc/odAofN/ytItCJc7VQjOdKJEf4wDs5mwSkGzNLb6xwMv/7fz3h/asmq9gpRyalgX1FsUd1x4Ns6RKE1GYL2IXNagdQAb84FRqpbSUH8bzZruVaCdfrzwuX3aWGqQdUWVGsqQAb+oAAP7+UX3/8er1J8q/wOf/49t/49t/49t/+PPOi3s4lCAY50ssB8bFuaPA9RHAvsjjkr0hVoD4+QCCirzRC13shAh3zXDNFVk3MHhlEYPSOpCa+JALDLu4X7snBdI2wnO6pIpwsVxaB+DfwVPw5D9dfNn/MgWdW/qpAPllzcuJZMYvN+lYH9i97ubql7c2f30KyCqUtRPeltR+a6F3Kw+1RsVeVuSPY/jSZe9Vqjn3DOoGfjBAlQit3cbOmEgWytHzWYXR1MY8mqa5KsGKq6WburEfuk5/CcmuagxOIAc40cY0hW1r9ZVnQJUxWSYD9tWVQ6Bwf9buJlj2GvgKDfOl2VTiTIGKmXSeC3Al/Hpp304taxspDNsDkK6LbPn0uK0rAqzRJluNRvuzzmPGn9DJ7gs86zpxsLCCiu9qyt2nEwMdwdT86qD37ubQcYrNUr2dAmVl5zV/gmyo2FTIVKCRxLjP2NnA/DVEAb+CyYtFsW+1kXxCut372VaJEciaIlkPOCX+4DHahW+9nez6e+3rSBROQtsZlltJxhhnDxYJAHBWvOY3dH5oOrISNzTKYyL4sgZZ+4v/glBQtJ2BMQUHn9H70nHyoKJet9KGHjfaLj1SR/MqQDtaKuHW1zC2dpcWfSQjmrD4HWpgg7MaeSk3p2X/6CR6LLK9wFigGL9oWPiWsHEmf9xdL26kbZ1QX6N8D9gViStFznJv0ZUE/AXaklYa6hf1lRNeH/Be2RCUvY8qfxZZXolPED72WCYf2pma2ILDzUxcfBE3PS4oyiOeJsXE//Dmq8JBDMqKPddcmglmeTcTzFBeJWHrR6K8l3Aedd0GJMgYqZQY4NHSIzROXVy/WxHo5V+WTHt+x5jNraN1udu64fdB3gCv3Z+5jLLs0LEkZDqWTH7RAYjJ8qEAD46XLDGJJYSID83cNmWtCMmCUXgI4ehFo9kWG1LtKX5YTSY48L9wqGeMn2wt45RxTmu3GZSf/AS9YF3DSsJ7JJIwR8iHVVdSt3dTTTXPf3eDRYnXVOrxxrS5KA3E6OtfhODHN5JpSlKIZ3uuiWcXW1koyZMEGZd2LxeRC3meSbTr8F2sSARIb1ToraJd9N4sC7J0JTb3DBrq0MprGmUp/PepbR29qNM/TpNv2kYMcQMh7/Gx7J7l5u1DnZaSOV3bbf+aXYAAAAAAAAA='
-
 const REAL_EARTH_SHADER = `
   precision highp float;
   uniform sampler2D uHeightmap;
@@ -82,7 +80,6 @@ const REAL_EARTH_SHADER = `
         // Natural Land colors (green/brown)
         vec3 forest = vec3(0.08, 0.35, 0.12);
         vec3 sand = vec3(0.42, 0.48, 0.25);
-        vec3 mountain = vec3(0.38, 0.32, 0.24);
         vec3 snow = vec3(0.95, 0.95, 0.98);
         
         float detail = noise(rotatedP * 12.0);
@@ -158,15 +155,122 @@ const REAL_EARTH_SHADER = `
 `;
 
 function GlobePanel() {
-  const [earthImg, setEarthImg] = useState<HTMLImageElement | null>(null)
+  const [earthCanvas, setEarthCanvas] = useState<HTMLCanvasElement | null>(null)
 
   useEffect(() => {
-    const img = new Image()
-    img.onload = () => setEarthImg(img)
-    img.src = `data:image/webp;base64,${EARTH_BASE64}`
+    const canvas = document.createElement('canvas')
+    canvas.width = 512
+    canvas.height = 256
+    const ctx = canvas.getContext('2d')
+    if (ctx) {
+      // Fill ocean (Red = 0, Green = 0)
+      ctx.fillStyle = 'rgb(0,0,0)'
+      ctx.fillRect(0, 0, 512, 256)
+
+      let seed = 98765
+      const rnd = () => {
+        const x = Math.sin(seed++) * 10000
+        return x - Math.floor(x)
+      }
+
+      // Draw seed-deterministic continent blobs (Red channel > 115 representing Land)
+      ctx.fillStyle = 'rgb(255, 0, 0)'
+      
+      // Eurasia & Africa masses
+      ctx.beginPath()
+      ctx.arc(320, 90, 70, 0, Math.PI * 2) // Asia/Europe
+      ctx.arc(280, 140, 55, 0, Math.PI * 2) // Africa
+      ctx.arc(380, 110, 45, 0, Math.PI * 2) // East Asia
+      ctx.fill()
+
+      // Americas masses
+      ctx.beginPath()
+      ctx.arc(120, 80, 45, 0, Math.PI * 2) // North America
+      ctx.arc(150, 170, 48, 0, Math.PI * 2) // South America
+      ctx.fill()
+      
+      // Central America bridge
+      ctx.lineWidth = 15
+      ctx.strokeStyle = 'rgb(255, 0, 0)'
+      ctx.beginPath()
+      ctx.moveTo(120, 100)
+      ctx.lineTo(140, 140)
+      ctx.stroke()
+
+      // Australia
+      ctx.beginPath()
+      ctx.arc(420, 180, 25, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Antarctica
+      ctx.fillRect(0, 230, 512, 26)
+
+      // Add fractal land details on boundaries
+      ctx.fillStyle = 'rgb(255, 0, 0)'
+      for (let i = 0; i < 260; i++) {
+        let cx = 0, cy = 0
+        const group = rnd()
+        if (group < 0.35) {
+          cx = 260 + rnd() * 150
+          cy = 60 + rnd() * 120
+        } else if (group < 0.7) {
+          cx = 90 + rnd() * 80
+          cy = 50 + rnd() * 140
+        } else if (group < 0.85) {
+          cx = 390 + rnd() * 50
+          cy = 160 + rnd() * 40
+        } else {
+          cx = rnd() * 512
+          cy = rnd() * 256
+        }
+        const r = 4 + rnd() * 20
+        ctx.beginPath()
+        ctx.arc(cx, cy, r, 0, Math.PI * 2)
+        ctx.fill()
+      }
+
+      // Generate City lights strictly on land (Green channel)
+      const imgData = ctx.getImageData(0, 0, 512, 256)
+      const data = imgData.data
+      
+      for (let y = 0; y < 256; y++) {
+        for (let x = 0; x < 512; x++) {
+          const idx = (y * 512 + x) * 4
+          const isLandPixel = data[idx] > 115
+          
+          if (isLandPixel) {
+            const latFactor = Math.cos((y - 128) / 128 * Math.PI) // lower city density near polar/extreme latitudes
+            const cityProb = rnd()
+            
+            // Antarctica cutoff (no cities below lat 0.8)
+            if (y > 210) continue;
+
+            if (cityProb > 0.985 * (1.5 - latFactor)) {
+              const radius = Math.floor(1 + rnd() * 3)
+              for (let dy = -radius; dy <= radius; dy++) {
+                for (let dx = -radius; dx <= radius; dx++) {
+                  const ny = y + dy
+                  const nx = (x + dx + 512) % 512
+                  if (ny >= 0 && ny < 256) {
+                    const nidx = (ny * 512 + nx) * 4
+                    if (data[nidx] > 115) { // Confirm city light is on land
+                      const dist = Math.sqrt(dx * dx + dy * dy)
+                      const intens = Math.max(0, 255 * (1.0 - dist / radius))
+                      data[nidx + 1] = Math.max(data[nidx + 1], Math.floor(intens))
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      ctx.putImageData(imgData, 0, 0)
+    }
+    setEarthCanvas(canvas)
   }, [])
 
-  if (!earthImg) {
+  if (!earthCanvas) {
     return (
       <Panel title="GLOBAL SURVEILLANCE // PLANET WATCH">
         <div className="w-full h-full bg-black flex items-center justify-center text-green-500 text-xs font-mono">
@@ -180,8 +284,8 @@ function GlobePanel() {
     <ShaderPanel
       fragmentShader={REAL_EARTH_SHADER}
       title="GLOBAL SURVEILLANCE // PLANET WATCH"
-      attribution="Real Earth map by NASA (downsized)"
-      textureData={{ data: earthImg }}
+      attribution="Procedural Real-World Globe Mapping"
+      textureData={{ data: earthCanvas, width: 512, height: 256 }}
     />
   )
 }
