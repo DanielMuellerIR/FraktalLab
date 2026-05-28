@@ -91,6 +91,10 @@ export default function AmiModPanel() {
   const statusRowRef = useRef<HTMLSpanElement>(null);
   const rowsContainerRef = useRef<HTMLDivElement>(null);
 
+  // Caching für Container- und Zeilenhöhe zur Vermeidung von Layout-Thrashing (Forced Reflow)
+  const rowHeightRef = useRef<number>(15);
+  const containerHeightRef = useRef<number>(200);
+
   // ModPlayer einmalig für die Lebensdauer der Komponente erzeugen
   const [player] = useState(() => new ModPlayer());
   const playerRef = useRef<ModPlayer>(player);
@@ -154,10 +158,10 @@ export default function AmiModPanel() {
             if (nextActive) {
               nextActive.setAttribute('data-active', 'true');
               
-              // In die Mitte scrollen
-              const containerHeight = container.clientHeight;
-              const rowHeight = (nextActive as HTMLElement).clientHeight;
-              const rowTop = (nextActive as HTMLElement).offsetTop;
+              // In die Mitte scrollen ohne Layout-Abfrage zur Vermeidung von forced reflows
+              const containerHeight = containerHeightRef.current;
+              const rowHeight = rowHeightRef.current;
+              const rowTop = row * rowHeight;
               container.scrollTop = rowTop - (containerHeight / 2) + (rowHeight / 2);
             }
           }
@@ -212,14 +216,18 @@ export default function AmiModPanel() {
         const bar = vuBarsRef.current[i];
         if (bar) {
           const pct = Math.max(2, Math.round(levels[i] * 100));
-          bar.style.height = `${pct}%`;
+          const newHeight = `${pct}%`;
+          if (bar.style.height !== newHeight) {
+            bar.style.height = newHeight;
+          }
         }
       }
     });
     return unsubscribe;
   }, []);
 
-  // Scrollt die aktive Zeile in die Mitte, wenn sich das Pattern ändert
+  // Scrollt die aktive Zeile in die Mitte, wenn sich das Pattern ändert,
+  // und misst einmalig die Höhen, um Layout-Thrashing beim Abspielen zu vermeiden.
   useEffect(() => {
     const container = rowsContainerRef.current;
     if (!container) return;
@@ -227,6 +235,8 @@ export default function AmiModPanel() {
     if (!activeRowEl) return;
     const containerHeight = container.clientHeight;
     const rowHeight = activeRowEl.clientHeight;
+    containerHeightRef.current = containerHeight || 200;
+    rowHeightRef.current = rowHeight || 15;
     const rowTop = activeRowEl.offsetTop;
     container.scrollTop = rowTop - (containerHeight / 2) + (rowHeight / 2);
   }, [currentPosition]);

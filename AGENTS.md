@@ -16,7 +16,7 @@ Thematischer Rahmen: Ein fiktives „Neural Intrusion Dashboard", das Hacker-Kli
 
 **Speed-first-Regel:** Jedes Feature muss in einer einzigen Session vollständig lauffähig implementiert werden können. Features, die das nicht schaffen, werden auf kleineres Scope reduziert oder verschoben. Keine halbfertigen Implementierungen.
 
-Aktueller Stand: **v1.2.3**. Deployment auf Netcup-Webspace (Apache).
+Aktueller Stand: **v1.2.4**. Deployment auf Netcup-Webspace (Apache).
 
 ---
 
