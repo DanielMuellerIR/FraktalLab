@@ -110,14 +110,14 @@ function AmiModPanel() {
 
   // Caching und Autoplay-Auswahl bei Mount
   useEffect(() => {
-    // Falls kein anderes Video oder Mod-Player läuft, wählen wir einen zufälligen Track und spielen ihn automatisch ab.
+    // Falls kein anderes Video oder Mod-Player läuft, wählen wir einen zufälligen Track aus.
     const isVidPlaying = !!document.querySelector<HTMLVideoElement>('video:not([muted])');
     const isOtherModPlaying = !!(window as any).fraktallab_mod_playing;
     
     if (!isVidPlaying && !isOtherModPlaying) {
       const randIdx = Math.floor(Math.random() * TRACKS.length);
       setTrackIdx(randIdx);
-      shouldAutoPlayRef.current = true;
+      shouldAutoPlayRef.current = false; // Keinen automatischen Start auslösen
     }
   }, []);
 
@@ -232,8 +232,8 @@ function AmiModPanel() {
     const unsubscribe = subscribe(() => {
       const levels = vuLevelsRef.current;
       for (let i = 0; i < 4; i++) {
-        // VU-Wert reduzieren (Abklingeffekt)
-        levels[i] = Math.max(0, levels[i] - 0.08);
+        // VU-Wert snappier reduzieren (dynamischerer Abklingeffekt)
+        levels[i] = Math.max(0, levels[i] - 0.20);
         
         // VU-Balken direkt im DOM zeichnen
         const bar = vuBarsRef.current[i];

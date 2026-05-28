@@ -47,11 +47,11 @@ export default function AmbientSound({ enabled }: AmbientSoundProps) {
       hfBpf.type          = 'bandpass'
       hfBpf.frequency.value = 4000 + Math.random() * 3000
       hfBpf.Q.value       = 0.9
-      hfGain.gain.value   = (0.18 + Math.random() * 0.14) * volume
+      hfGain.gain.value   = (0.04 + Math.random() * 0.03) * volume // Weichere, weniger scharfe Klicks
       hfSrc.connect(hfBpf); hfBpf.connect(hfGain); hfGain.connect(activeCtx.destination)
       hfSrc.start(now)
 
-      // Schicht 2: LF-Body-Thump (8–14 ms, Tiefpass 300–500 Hz)
+      // Schicht 2: LF-Body-Thump (8–14 ms, Tiefpass 200–350 Hz)
       const lfDur  = 0.008 + Math.random() * 0.006
       const lfBuf  = activeCtx.createBuffer(1, Math.ceil(activeCtx.sampleRate * lfDur), activeCtx.sampleRate)
       const lfData = lfBuf.getChannelData(0)
@@ -62,12 +62,12 @@ export default function AmbientSound({ enabled }: AmbientSoundProps) {
       const lfGain = activeCtx.createGain()
       lfSrc.buffer        = lfBuf
       lfLpf.type          = 'lowpass'
-      lfLpf.frequency.value = 300 + Math.random() * 200
-      lfGain.gain.value   = (0.10 + Math.random() * 0.10) * volume
+      lfLpf.frequency.value = 200 + Math.random() * 150 // Tiefere, wärmere Frequenzen für mechanische Tasten
+      lfGain.gain.value   = (0.14 + Math.random() * 0.08) * volume // Mehr Körper-Anteil
       lfSrc.connect(lfLpf); lfLpf.connect(lfGain); lfGain.connect(activeCtx.destination)
       lfSrc.start(now)
 
-      // Schicht 3: Key-Release-Klick (optional, leise, 30–50 ms später)
+      // Schicht 3: Key-Release-Klick (optional, sehr leise, 30–50 ms später)
       if (Math.random() > 0.45) {
         const relDelay = 0.030 + Math.random() * 0.020
         const relDur   = 0.002 + Math.random() * 0.002
@@ -81,7 +81,7 @@ export default function AmbientSound({ enabled }: AmbientSoundProps) {
         relSrc.buffer       = relBuf
         relHpf.type         = 'highpass'
         relHpf.frequency.value = 3000 + Math.random() * 2000
-        relGain.gain.value  = (0.04 + Math.random() * 0.04) * volume
+        relGain.gain.value  = (0.01 + Math.random() * 0.01) * volume // Dezentere Tastenfreigabe
         relSrc.connect(relHpf); relHpf.connect(relGain); relGain.connect(activeCtx.destination)
         relSrc.start(now + relDelay)
       }

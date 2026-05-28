@@ -1,14 +1,16 @@
 import { memo,  useRef, useState, useEffect } from 'react'
 import Panel from '../ui/Panel'
 
+import { isSharedAudioContextRunning } from '../utils/shared-audio'
+
 // Korrekte Datei-URL: Dateiname = dIQ53t0gv_4.mp4 (ohne "youtube-"-Prefix).
 // COEP: credentialless in vite.config.ts erlaubt das ohne crossOrigin-Attribut.
 const VIDEO_SRC = 'https://archive.org/download/youtube-dIQ53t0gv_4/dIQ53t0gv_4.mp4'
 
 function AllYourBase() {
   const videoRef = useRef<HTMLVideoElement>(null)
-  // Ton ist standardmäßig AN — "All your base" verdient Ton
-  const [muted, setMuted] = useState(false)
+  // Ton ist standardmäßig AN, außer der SharedAudioContext läuft noch nicht (dann starten wir stumm)
+  const [muted, setMuted] = useState(() => !isSharedAudioContextRunning())
 
   // React's `muted`-Prop hat einen bekannten Bug (wird nach erstem Render nicht aktualisiert).
   // Daher direkt über das DOM-Element steuern.
@@ -17,7 +19,9 @@ function AllYourBase() {
   useEffect(() => {
     const v = videoRef.current
     if (!v) return
-    v.muted = false
+    const initialMute = !isSharedAudioContextRunning()
+    v.muted = initialMute
+    setMuted(initialMute)
     v.play().catch(() => {
       // Autoplay mit Ton wurde vom Browser blockiert → stumm abspielen
       v.muted = true
