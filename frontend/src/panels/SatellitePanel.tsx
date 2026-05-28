@@ -43,11 +43,11 @@ function drawAsciiGrid(tick: number): string[] {
   const height = 5
   const sweepCol = tick % width
 
-  // Feste/leicht bewegliche Satelliten-Blips auf dem Gitter
+  // Leicht bewegliche Satelliten-Blips auf dem Gitter
   const blips = [
-    { x: 2, y: 1, char: '■' },
-    { x: 8, y: 3, char: '▲' },
-    { x: 4, y: 2, char: '⧇' }
+    { x: (2 + Math.floor(tick / 12)) % width, y: 1, char: '■' },
+    { x: (8 - Math.floor(tick / 18) + width) % width, y: 3, char: '▲' },
+    { x: (4 + Math.floor(tick / 24)) % width, y: 2, char: '⧇' }
   ]
 
   const rows: string[] = []

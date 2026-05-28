@@ -73,23 +73,6 @@ function calcETA(hashRate: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-// Generiert einen simulierten SHA256-Hashversuch für den Ticker
-function generateHashAttempt(): string {
-  const chars = '0123456789abcdef'
-  const len = randInt(20, 30)
-  let hash = '0000'
-  while (hash.length < len) {
-    hash += chars[Math.floor(Math.random() * 16)]
-  }
-  const r = Math.random()
-  let suffix = ' [TRY]'
-  if (r < 0.02) {
-    suffix = ' [OK]'
-  } else if (r < 0.05) {
-    suffix = ' [ERR]'
-  }
-  return hash + suffix
-}
 
 // Gelegentliche Ereignisse die ins Log-Feld geschrieben werden
 const EVENTS: { text: string; color: 'green' | 'red' | 'cyan' }[] = [
@@ -133,7 +116,7 @@ function progressBar(value: number, width = 20): string {
 export default function BitcoinMinerPanel() {
   // Der gesamte Miner-Zustand als React-State (löst Re-render bei Änderung aus)
   const [state, setState] = useState<MinerState>(INITIAL_STATE)
-  const [attempts, setAttempts] = useState<string[]>([])
+  const scramblerRef = useRef<HTMLDivElement>(null)
 
   // Ref auf den Log-Bereich für automatisches Scrollen
   const logRef = useRef<HTMLDivElement>(null)
@@ -142,17 +125,29 @@ export default function BitcoinMinerPanel() {
   const tickRef = useRef(0)
 
   useEffect(() => {
-    const tickerInterval = setInterval(() => {
-      setAttempts(prev => {
-        const nextHash = generateHashAttempt()
-        const nextList = [...prev, nextHash]
-        if (nextList.length > 4) {
-          nextList.shift()
+    const chars = '0123456789abcdef'
+    const interval = setInterval(() => {
+      const scrambler = scramblerRef.current
+      if (!scrambler) return
+      let html = ''
+      for (let r = 0; r < 4; r++) {
+        let hash = '00000000' // Target difficulty prefix (8 leading zeros!)
+        for (let c = 0; c < 20; c++) {
+          hash += chars[Math.floor(Math.random() * 16)]
         }
-        return nextList
-      })
-    }, 100)
-    return () => clearInterval(tickerInterval)
+        // Match frequency
+        const rand = Math.random()
+        let status = '<span class="text-green-800">[TRY]</span>'
+        if (rand < 0.03) {
+          status = '<span class="text-green-400 font-bold">[OK]</span>'
+        } else if (rand < 0.06) {
+          status = '<span class="text-red-500 font-bold">[ERR]</span>'
+        }
+        html += `<div class="flex justify-between"><span>${hash}</span><span>${status}</span></div>`
+      }
+      scrambler.innerHTML = html
+    }, 60)
+    return () => clearInterval(interval)
   }, [])
 
   useEffect(() => {
@@ -321,22 +316,7 @@ export default function BitcoinMinerPanel() {
         {/* ── Active Hash Attempts (Scrolling list) ────────────────────── */}
         <div className="flex flex-col gap-0.5 bg-black/40 p-1 border border-green-900/50 rounded overflow-hidden shrink-0">
           <div className="text-green-700 text-[8px] uppercase mb-0.5 border-b border-green-950 pb-0.5">ACTIVE HASH ATTEMPTS</div>
-          <div className="flex flex-col gap-0.5">
-            {attempts.map((attempt, idx) => {
-              let color = 'text-green-500/70'
-              if (attempt.endsWith('[OK]')) color = 'text-green-400 font-bold'
-              else if (attempt.endsWith('[ERR]')) color = 'text-red-500 font-bold'
-              return (
-                <div key={idx} className={`${color} whitespace-nowrap overflow-hidden text-ellipsis flex justify-between`}>
-                  <span>{attempt.split(' ')[0]}</span>
-                  <span>{attempt.split(' ')[1]}</span>
-                </div>
-              )
-            })}
-            {attempts.length === 0 && (
-              <div className="text-green-800 italic">Initializing hash pipeline...</div>
-            )}
-          </div>
+          <div ref={scramblerRef} className="flex flex-col gap-0.5 min-h-[50px]" />
         </div>
 
         <div className="border-t border-green-900" />

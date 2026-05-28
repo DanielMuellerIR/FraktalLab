@@ -79,10 +79,11 @@ function drawInfoBox(
   H: number,
   alpha: number,   // 0..1, für Fade-in/out
 ) {
-  const fontSize = 14
+  const minDim   = Math.min(W, H)
+  const fontSize = Math.max(12, Math.min(22, Math.round(minDim * 0.032)))
   const lineH    = fontSize + 8
-  const padX     = 16
-  const padY     = 12
+  const padX     = Math.max(12, Math.round(fontSize * 1.1))
+  const padY     = Math.max(8, Math.round(fontSize * 0.8))
 
   // Zeilen der Info-Box
   const lines = [
@@ -101,7 +102,8 @@ function drawInfoBox(
   const boxW = maxWidth + padX * 2
   const boxH = lines.length * lineH + padY * 2
 
-  const bx = W * 0.52
+  // Centered horizontally on the right half of the screen
+  const bx = W * 0.73 - boxW / 2
   const by = (H - boxH) / 2
 
   // Hintergrund-Rechteck
@@ -384,7 +386,8 @@ export default function SolarSystemPanel() {
         // Im Watching-Modus: nur fokussierten Planeten beschriften (weniger Clutter)
         const showLabel = !isWatching || i === zoom.targetPlanetIdx
         if (showLabel) {
-          ctx.font         = 'bold 13px monospace'
+          const labelSize = Math.max(10, Math.min(18, Math.round(Math.min(W, H) * 0.024)))
+          ctx.font         = `bold ${labelSize}px monospace`
           ctx.fillStyle    = '#ffffff'
           ctx.textBaseline = 'middle'
           ctx.textAlign    = 'left'

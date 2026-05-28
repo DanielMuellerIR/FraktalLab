@@ -45,33 +45,38 @@ function isLowDetail(pixels: Uint8ClampedArray): boolean {
   return false
 }
 
-function findClosestBoundaryPixel(pixels: Uint8ClampedArray, W: number, H: number): { px: number, py: number } | null {
+function findBoundaryNonBlack(pixels: Uint8ClampedArray, W: number, H: number): { px: number, py: number } | null {
   const cx = Math.floor(W / 2)
   const cy = Math.floor(H / 2)
-  
+
   const isBlack = (x: number, y: number) => {
     const idx = (y * W + x) * 4
     return pixels[idx] === 0 && pixels[idx + 1] === 0 && pixels[idx + 2] === 0
   }
-  
+
   const maxRadius = Math.min(cx, cy) - 2
   for (let r = 1; r < maxRadius; r += 2) {
     const numSamples = Math.min(64, 4 * r)
-    for (let s = 0; s < numSamples; s++) {
-      const angle = (s * 2 * Math.PI) / numSamples
+    for (let si = 0; si < numSamples; si++) {
+      const angle = (si * 2 * Math.PI) / numSamples
       const px = Math.round(cx + r * Math.cos(angle))
       const py = Math.round(cy + r * Math.sin(angle))
-      
+
       if (px < 1 || px >= W - 1 || py < 1 || py >= H - 1) continue
-      
-      const centerBlack = isBlack(px, py)
-      const leftBlack   = isBlack(px - 1, py)
-      const rightBlack  = isBlack(px + 1, py)
-      const topBlack    = isBlack(px, py - 1)
-      const bottomBlack = isBlack(px, py + 1)
-      
-      if (centerBlack !== leftBlack || centerBlack !== rightBlack || centerBlack !== topBlack || centerBlack !== bottomBlack) {
-        return { px, py }
+
+      const centerIsBlack = isBlack(px, py)
+      const neighbors = [
+        isBlack(px - 1, py), isBlack(px + 1, py),
+        isBlack(px, py - 1), isBlack(px, py + 1),
+      ]
+      const isBoundary = neighbors.some(n => n !== centerIsBlack)
+
+      if (isBoundary) {
+        if (!centerIsBlack) return { px, py }
+        if (!neighbors[0]) return { px: px - 1, py }
+        if (!neighbors[1]) return { px: px + 1, py }
+        if (!neighbors[2]) return { px, py: py - 1 }
+        if (!neighbors[3]) return { px, py: py + 1 }
       }
     }
   }
@@ -93,8 +98,8 @@ export default function FractalJulia() {
 
     let cancelled = false
 
-    const RENDER_W = 600
-    const RENDER_H = 400
+    const RENDER_W = 320
+    const RENDER_H = 213
 
     const setSize = () => {
       if (canvas.width !== RENDER_W) canvas.width = RENDER_W
@@ -187,9 +192,9 @@ export default function FractalJulia() {
               s.angle
             )
 
-            // Apply feedback correction (only when zooming in)
-            if (s.zoomDirection === 1) {
-              const boundary = findClosestBoundaryPixel(pixels, RENDER_W, RENDER_H)
+            // Apply feedback correction (only when zooming in to steer toward colored details)
+            if (s.zoomDirection === 1 && s.zoom > 300) {
+              const boundary = findBoundaryNonBlack(pixels, RENDER_W, RENDER_H)
               if (boundary) {
                 // Convert boundary pixel to complex coordinate
                 const cos_a = Math.cos(s.angle)
@@ -204,9 +209,9 @@ export default function FractalJulia() {
                 const targetY = s.centerY + ry
 
                 // Smoothly nudge center towards boundary
-                const lerpFactor = 1 - Math.pow(0.92, dt / 16.7)
-                s.centerX = s.centerX * (1 - lerpFactor) + targetX * lerpFactor
-                s.centerY = s.centerY * (1 - lerpFactor) + targetY * lerpFactor
+                const lerpFactor = 1 - Math.pow(0.94, dt / 16.7)
+                s.centerX += (targetX - s.centerX) * lerpFactor
+                s.centerY += (targetY - s.centerY) * lerpFactor
               }
             }
 

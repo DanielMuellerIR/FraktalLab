@@ -41,6 +41,7 @@ function makeScene(
   draw: (buf: Uint8ClampedArray, W: number, H: number, t: number, s: any) => void,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   postDraw?: (ctx: CanvasRenderingContext2D, W: number, H: number, t: number, s: any) => void,
+  pixelated: boolean = true,
 ): () => React.JSX.Element {
   return function Scene() {
     const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -152,7 +153,7 @@ function makeScene(
         {/* Canvas füllt den Panel-Body vollständig */}
         <canvas
           ref={canvasRef}
-          style={{ width: '100%', height: '100%', imageRendering: 'pixelated', display: 'block' }}
+          style={{ width: '100%', height: '100%', imageRendering: pixelated ? 'pixelated' : 'auto', display: 'block' }}
         />
       </Panel>
     )
@@ -519,7 +520,7 @@ export const TunnelScene = makeScene(
         const [ri, gi, bi] = hsl((hue + r * 2) % 360, 1, c ? 0.6 : 0.07)
 
         // Smoothly fade RGB values towards black near the center of the tunnel to prevent aliasing
-        const fade = Math.min(1.0, r / 15.0)
+        const fade = Math.min(1.0, Math.pow(r / 32.0, 1.5))
         const rf = Math.round(ri * fade)
         const gf = Math.round(gi * fade)
         const bf = Math.round(bi * fade)
@@ -529,6 +530,8 @@ export const TunnelScene = makeScene(
       }
     }
   },
+  undefined,
+  false
 )
 
 // ── Effekt 4: Rotozoom — rotierende + zoomende Kacheln ───────────────────────
@@ -572,6 +575,8 @@ export const RotozoomScene = makeScene(
       }
     }
   },
+  undefined,
+  false
 )
 
 // ── Effekt 5: Metaballs — flüssige Blobs, fein gerastert ─────────────────────

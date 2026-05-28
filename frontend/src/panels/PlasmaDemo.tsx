@@ -56,7 +56,7 @@ function paletteVoid(v: number, ts: number): [number, number, number] {
 // Array aller Paletten zur Indizierung
 const PALETTES = [paletteNebula, paletteInfrared, paletteAcidic, paletteVoid]
 const PALETTE_DURATION = 10   // Sekunden pro Palette (10s Szenenwechsel)
-const CROSSFADE_DURATION = 4  // Sekunden Überblendung
+const CROSSFADE_DURATION = 10  // Kontinuierlicher Farbwechsel (ganze Dauer)
 
 
 export default function PlasmaDemo() {

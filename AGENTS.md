@@ -184,23 +184,23 @@ Basis: manueller Durchlauf aller Panels am 2026-05-21. Daumen rauf/runter = erst
 ### Schnell (kleine Änderungen)
 
 - [x] **AgentCodePanel** — Text anpassen: jemand schreibt genau diese Seite (FraktalLab), nicht irgendein Projekt
-- [ ] **ICQChatPanel** — Erste 3 Nachrichten beschleunigen, danach normales Tempo
-- [ ] **PlasmaDemo** — Szenen auf 10s; kontinuierlicher Farbwechsel
-- [ ] **VisitorProfilePanel** — 10s warten nach Durchlauf, dann Panel-Wechsel
-- [ ] **SatellitePanel** — Mehr Bewegung ODER 10s Timeout dann Panel-Wechsel
-- [ ] **FractalJulia** — Flimmern reduzieren
-- [ ] **EnhanceView** — „Apollo"-Text fixen; anstößige/politische Bilder entfernen → nur neutrale Stadtszenen
-- [ ] **Fractal-Panels** — Alle Fraktal-Panels (außer FractalView / "Neural Fractal Dimension" und FractalJulia) sehen scheiße aus; diese wurden vorübergehend in POOL_GFX deaktiviert und müssen grundlegend verbessert werden. FractalView fehlt zudem im Review-Modus (ALL_PANELS) und sollte dort integriert werden.
+- [x] **ICQChatPanel** — Erste 3 Nachrichten beschleunigen, danach normales Tempo
+- [x] **PlasmaDemo** — Szenen auf 10s; kontinuierlicher Farbwechsel
+- [x] **VisitorProfilePanel** — 10s warten nach Durchlauf, dann Panel-Wechsel
+- [x] **SatellitePanel** — Mehr Bewegung ODER 10s Timeout dann Panel-Wechsel
+- [x] **FractalJulia** — Flimmern reduzieren
+- [x] **EnhanceView** — „Apollo"-Text fixen; anstößige/politische Bilder entfernen → nur neutrale Stadtszenen
+- [x] **Fractal-Panels** — Alle Fraktal-Panels (außer FractalView / "Neural Fractal Dimension" und FractalJulia) sehen scheiße aus; diese wurden vorübergehend in POOL_GFX deaktiviert und müssen grundlegend verbessert werden. FractalView fehlt zudem im Review-Modus (ALL_PANELS) und sollte dort integriert werden.
 
 
 ### Mittel
 
-- [ ] **SolarSystemPanel** — Infotafel größer + mittig; realistische Startpositionen; Umlaufbahnen einzeichnen; Planetenbeschriftung größer + weiß (nicht eingefärbt)
-- [ ] **DNAHelix** — Grau-Kugel-Artefakt an der Vorderseite (wo Kreise groß sind) fixen
-- [ ] **TunnelScene** — Grobpixeligkeit reduzieren, besonders in der Mitte
-- [ ] **RotozoomScene** — Kantenglättung; generell bei pixeligen Panels anwenden
-- [ ] **BitcoinMinerPanel** — Hashing-Animation auf Textbasis hinzufügen
-- [ ] **FireScene** — Echte Feuersimulation statt blaue vertikale Linien
+- [x] **SolarSystemPanel** — Infotafel größer + mittig; realistische Startpositionen; Umlaufbahnen einzeichnen; Planetenbeschriftung größer + weiß (nicht eingefärbt)
+- [x] **DNAHelix** — Grau-Kugel-Artefakt an der Vorderseite (wo Kreise groß sind) fixen
+- [x] **TunnelScene** — Grobpixeligkeit reduzieren, besonders in der Mitte
+- [x] **RotozoomScene** — Kantenglättung; generell bei pixeligen Panels anwenden
+- [x] **BitcoinMinerPanel** — Hashing-Animation auf Textbasis hinzufügen
+- [x] **FireScene** — Echte Feuersimulation statt blaue vertikale Linien
 - [x] **LissajousScene** (Panel 18) — Komplett neu: High-res smooth vectors, neon oscilloscope glow trails, morphing curves.
 - [x] **PlasmaDemo** (Panel 21) — Mehr Kontrast: brightness amplitude bis 0.5 boosten, tiefe Täler schwarz, fließende Übergänge.
 - [x] **VoxelDemo** (Panels 23 & 24) — Differentiate & De-jitter: Farb-Linien-Variante (constant canyon) und S/W-Gelände-Variante (circular orbit).

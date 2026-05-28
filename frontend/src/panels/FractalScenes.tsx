@@ -79,39 +79,6 @@ function isLowDetail(pixels: Uint8ClampedArray): boolean {
   return false
 }
 
-function findClosestBoundaryPixel(pixels: Uint8ClampedArray, W: number, H: number): { px: number, py: number } | null {
-  const cx = Math.floor(W / 2)
-  const cy = Math.floor(H / 2)
-  
-  const isBlack = (x: number, y: number) => {
-    const idx = (y * W + x) * 4
-    return pixels[idx] === 0 && pixels[idx + 1] === 0 && pixels[idx + 2] === 0
-  }
-  
-  const maxRadius = Math.min(cx, cy) - 2
-  for (let r = 1; r < maxRadius; r += 2) {
-    const numSamples = Math.min(64, 4 * r)
-    for (let s = 0; s < numSamples; s++) {
-      const angle = (s * 2 * Math.PI) / numSamples
-      const px = Math.round(cx + r * Math.cos(angle))
-      const py = Math.round(cy + r * Math.sin(angle))
-      
-      if (px < 1 || px >= W - 1 || py < 1 || py >= H - 1) continue
-      
-      const centerBlack = isBlack(px, py)
-      const leftBlack   = isBlack(px - 1, py)
-      const rightBlack  = isBlack(px + 1, py)
-      const topBlack    = isBlack(px, py - 1)
-      const bottomBlack = isBlack(px, py + 1)
-      
-      if (centerBlack !== leftBlack || centerBlack !== rightBlack || centerBlack !== topBlack || centerBlack !== bottomBlack) {
-        return { px, py }
-      }
-    }
-  }
-  return null
-}
-
 function pixelToComplex(
   px: number,
   py: number,
@@ -144,7 +111,7 @@ function pixelToComplex(
 function makeFractalScene(
   title:           string,
   type:            'mandelbrot' | 'julia',
-  _locs:           Location[],
+  locs:            Location[],
   juliaC:          { cx: number; cy: number } | null,
   maxIter:         number,
   colorTransform?: ColorTransform,
@@ -153,16 +120,21 @@ function makeFractalScene(
   const W = 320
   const H = 213
 
+  // Deterministic seed from title so each panel starts differently
+  let seed = 0
+  for (let i = 0; i < title.length; i++) seed = ((seed << 5) - seed + title.charCodeAt(i)) | 0
+  const initialAngle = ((seed & 0xFFFF) / 0xFFFF) * Math.PI * 2
+
   return function FractalScene() {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const stateRef  = useRef({
-      zoom:       type === 'mandelbrot' ? 1.5 : 180,
-      centerX:    type === 'mandelbrot' ? -0.5 : 0.0,
-      centerY:    0.0,
+      zoom:       type === 'mandelbrot' ? 10 : 180,
+      centerX:    type === 'mandelbrot' ? locs[0].cx : 0.0,
+      centerY:    type === 'mandelbrot' ? locs[0].cy : 0.0,
       locIdx:     0,
-      zoomDirection: 1, // 1 = zoom in, -1 = zoom out
-      angle:      0,
-      driftAngle: Math.random() * Math.PI * 2,
+      zoomDirection: 1,
+      angle:      initialAngle,
+      driftAngle: initialAngle + 1.0,
       lastFrame:  0,
     })
 
@@ -209,8 +181,7 @@ function makeFractalScene(
         if (!isVisible) return
         if (!wasmMod) return
 
-        // ── Normal Render ──
-        // Zoom exponentially based on direction
+        // ── Zoom ──
         const zoomRate = Math.pow(type === 'mandelbrot' ? 1.038 : 1.026, dt / 16.7)
         if (s.zoomDirection === 1) {
           s.zoom *= zoomRate
@@ -219,19 +190,16 @@ function makeFractalScene(
         }
 
         // Slow rotation
-        s.angle += 0.0055 * (dt / 16.7) * s.zoomDirection
+        s.angle += 0.004 * (dt / 16.7) * s.zoomDirection
 
-        // Only drift/tumble once zoomed in enough (zoom > 30 for Mandelbrot, > 600 for Julia)
-        const minZoomForDrift = type === 'mandelbrot' ? 30 : 600
-        if (s.zoom > minZoomForDrift) {
-          // Tumbling: shift center slightly with sine waves
-          const tumbleAmp = 0.04 / s.zoom
+        // Drift/tumble only at deeper zoom
+        if (s.zoom > (type === 'mandelbrot' ? 30 : 600)) {
+          const tumbleAmp = 0.03 / s.zoom
           s.centerX += Math.sin(t * 0.0006) * tumbleAmp
           s.centerY += Math.cos(t * 0.0008) * tumbleAmp
 
-          // Scaled drift – capped to prevent wild jumps
-          s.driftAngle += 0.008 * (dt / 16.7)
-          const maxDrift = (type === 'mandelbrot' ? 0.28 : 0.4) / s.zoom
+          s.driftAngle += 0.006 * (dt / 16.7)
+          const maxDrift = (type === 'mandelbrot' ? 0.2 : 0.3) / s.zoom
           s.centerX += Math.cos(s.driftAngle) * maxDrift
           s.centerY += Math.sin(s.driftAngle) * maxDrift
         }
@@ -243,69 +211,61 @@ function makeFractalScene(
             pixels.set(mandelPixels)
           } else {
             wasmMod.render_julia(
-              buf,
-              W,
-              H,
-              juliaC!.cx,
-              juliaC!.cy,
-              s.centerX,
-              s.centerY,
-              s.zoom,
-              maxIter,
-              s.angle
+              buf, W, H,
+              juliaC!.cx, juliaC!.cy,
+              s.centerX, s.centerY,
+              s.zoom, maxIter, s.angle
             )
           }
 
-          // Apply boundary feedback correction (only when zooming in to stay centered on detail and zoom is high enough)
-          if (s.zoomDirection === 1 && s.zoom > 45) {
-            const boundary = findClosestBoundaryPixel(pixels, W, H)
+          // Boundary feedback: steer toward the NON-BLACK side of boundaries
+          // This prevents zooming into the solid interior of the set
+          if (s.zoomDirection === 1 && s.zoom > 8) {
+            const boundary = findBoundaryNonBlack(pixels, W, H)
             if (boundary) {
               const target = pixelToComplex(boundary.px, boundary.py, W, H, s.centerX, s.centerY, s.zoom, type, s.angle)
-              const lerpFactor = 1 - Math.pow(0.93, dt / 16.7)
-              s.centerX = s.centerX * (1 - lerpFactor) + target.x * lerpFactor
-              s.centerY = s.centerY * (1 - lerpFactor) + target.y * lerpFactor
+              const lerpFactor = 1 - Math.pow(0.94, dt / 16.7)
+              s.centerX += (target.x - s.centerX) * lerpFactor
+              s.centerY += (target.y - s.centerY) * lerpFactor
             }
           }
 
-          // Transform colors
           if (colorTransform) applyTransform(pixels, colorTransform)
-
-          // Put to screen
           ctx.putImageData(imgData, 0, 0)
         } catch (err) {
           console.error('[FractalScenes] Render error:', err)
           return
         }
 
-        // Bidirectional Zoom Transition Logic
+        // Bidirectional zoom logic
         const lowDetail = isLowDetail(pixels)
-        const absoluteMinZoom = type === 'mandelbrot' ? 1.5 : 180
+        const minZoom = type === 'mandelbrot' ? 1.5 : 180
         const maxZoomLimit = type === 'mandelbrot' ? 2e12 : 2e9
 
         if (s.zoomDirection === 1) {
-          // Switch to zoom-out if detail is low or zoom limit is reached
-          if (lowDetail && s.zoom > absoluteMinZoom * 4) {
+          if (lowDetail && s.zoom > minZoom * 4) {
             s.zoomDirection = -1
           } else if (s.zoom > maxZoomLimit) {
             s.zoomDirection = -1
           }
         } else {
-          // Switch to zoom-in if zoomed out too far
-          if (s.zoom <= absoluteMinZoom) {
+          if (s.zoom <= minZoom) {
             s.zoomDirection = 1
-            s.zoom = absoluteMinZoom
+            s.zoom = minZoom
 
-            // Always reset to standard Mandelbrot overview - boundary tracking navigates from there
-            if (type === 'mandelbrot') {
-              s.centerX = -0.5 + (Math.random() - 0.5) * 0.3
-              s.centerY = (Math.random() - 0.5) * 0.3
+            // Cycle through locs for variety
+            if (type === 'mandelbrot' && locs.length > 1) {
+              s.locIdx = (s.locIdx + 1) % locs.length
+              s.centerX = locs[s.locIdx].cx
+              s.centerY = locs[s.locIdx].cy
+            } else if (type === 'mandelbrot') {
+              s.centerX = locs[0].cx
+              s.centerY = locs[0].cy
             } else {
-              // Julia: return to center with slight offset
-              s.centerX = (Math.random() - 0.5) * 0.05
-              s.centerY = (Math.random() - 0.5) * 0.05
+              s.centerX = (Math.random() - 0.5) * 0.04
+              s.centerY = (Math.random() - 0.5) * 0.04
             }
             s.driftAngle = Math.random() * Math.PI * 2
-            s.angle = 0
           }
         }
       }
@@ -328,6 +288,51 @@ function makeFractalScene(
       </Panel>
     )
   }
+}
+
+/**
+ * Find nearest boundary pixel but return the NON-BLACK side.
+ * This steers zoom toward colorful detail, not into solid Mandelbrot interior.
+ */
+function findBoundaryNonBlack(pixels: Uint8ClampedArray, W: number, H: number): { px: number, py: number } | null {
+  const cx = Math.floor(W / 2)
+  const cy = Math.floor(H / 2)
+
+  const isBlack = (x: number, y: number) => {
+    const idx = (y * W + x) * 4
+    return pixels[idx] === 0 && pixels[idx + 1] === 0 && pixels[idx + 2] === 0
+  }
+
+  const maxRadius = Math.min(cx, cy) - 2
+  for (let r = 1; r < maxRadius; r += 2) {
+    const numSamples = Math.min(64, 4 * r)
+    for (let si = 0; si < numSamples; si++) {
+      const angle = (si * 2 * Math.PI) / numSamples
+      const px = Math.round(cx + r * Math.cos(angle))
+      const py = Math.round(cy + r * Math.sin(angle))
+
+      if (px < 1 || px >= W - 1 || py < 1 || py >= H - 1) continue
+
+      const centerIsBlack = isBlack(px, py)
+      const neighbors = [
+        isBlack(px - 1, py), isBlack(px + 1, py),
+        isBlack(px, py - 1), isBlack(px, py + 1),
+      ]
+      const isBoundary = neighbors.some(n => n !== centerIsBlack)
+
+      if (isBoundary) {
+        // Return the non-black pixel at this boundary
+        if (!centerIsBlack) return { px, py }
+
+        // Center is black — find the non-black neighbor
+        if (!neighbors[0]) return { px: px - 1, py }
+        if (!neighbors[1]) return { px: px + 1, py }
+        if (!neighbors[2]) return { px, py: py - 1 }
+        if (!neighbors[3]) return { px, py: py + 1 }
+      }
+    }
+  }
+  return null
 }
 
 // ── 10 Overhauled Fractal Scenes ──

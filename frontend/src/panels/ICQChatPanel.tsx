@@ -127,8 +127,8 @@ export default function ICQChatPanel() {
       chatRef.current.scrollTop = chatRef.current.scrollHeight
 
       // Nach kurzer Zeit Indikator entfernen und Nachricht zeigen
-      // Erste 3 Nachrichten beschleunigen (Tippen: 100–300ms, danach 500–1200ms)
-      const duration = msgIdx < 3 ? randInt(100, 300) : randInt(500, 1200)
+      // Erste 3 Nachrichten beschleunigen (Tippen: 50–150ms, danach 500–1200ms)
+      const duration = msgIdx < 3 ? randInt(50, 150) : randInt(500, 1200)
       const t = setTimeout(() => {
         chatRef.current?.removeChild(indicator)
         onDone()
@@ -137,9 +137,9 @@ export default function ICQChatPanel() {
     }
 
     // Sendet die nächste Nachricht mit Verzögerung
-    // Erste 3 Nachrichten beschleunigen (Pause: 300–800ms, danach 2000–5500ms)
+    // Erste 3 Nachrichten beschleunigen (Pause: 50-300ms, danach 2000–5500ms)
     function scheduleNext() {
-      const delay = msgIdx < 3 ? randInt(300, 800) : randInt(2000, 5500)
+      const delay = msgIdx === 0 ? 50 : (msgIdx < 3 ? randInt(100, 300) : randInt(2000, 5500))
       const t = setTimeout(() => {
         const msg = MESSAGES[msgIdx % MESSAGES.length]
         // Kurz "tippt..." zeigen, dann Nachricht

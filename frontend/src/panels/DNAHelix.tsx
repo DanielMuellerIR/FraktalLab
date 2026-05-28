@@ -201,21 +201,27 @@ export default function DNAHelix() {
           ctx!.lineTo(d.x2, d.y)
           ctx!.stroke()
         } else {
-          // Kugel (opaque Sphären mit depth-blended Farben)
+          // Kugel (opaque Sphären mit radialem 3D-Verlauf)
           const dotR = Math.max(1, radius * 0.18 * d.bright)
           const [r, g, b] = d.color
-          ctx!.fillStyle = `rgb(${Math.round(r * d.bright)}, ${Math.round(g * d.bright)}, ${Math.round(b * d.bright)})`
+
+          // Radialer Verlauf für echten 3D-Glanz
+          const grad = ctx!.createRadialGradient(
+            d.x - dotR * 0.25, d.y - dotR * 0.25, dotR * 0.05,
+            d.x, d.y, dotR
+          )
+          
+          const baseColor = `rgb(${Math.round(r * d.bright)}, ${Math.round(g * d.bright)}, ${Math.round(b * d.bright)})`
+          const highlightColor = `rgb(${Math.round(Math.min(255, r * d.bright + (255 - r) * 0.5))}, ${Math.round(Math.min(255, g * d.bright + (255 - g) * 0.5))}, ${Math.round(Math.min(255, b * d.bright + (255 - b) * 0.5))})`
+          
+          grad.addColorStop(0, '#ffffff')
+          grad.addColorStop(0.2, highlightColor)
+          grad.addColorStop(1, baseColor)
+
+          ctx!.fillStyle = grad
           ctx!.beginPath()
           ctx!.arc(d.x, d.y, dotR, 0, Math.PI * 2)
           ctx!.fill()
-
-          // Kleiner heller Glanzpunkt oben links auf dem Kreis
-          if (d.bright > 0.7) {
-            ctx!.fillStyle = `rgba(255,255,255,${(d.bright - 0.7) * 0.6})`
-            ctx!.beginPath()
-            ctx!.arc(d.x - dotR * 0.3, d.y - dotR * 0.3, dotR * 0.3, 0, Math.PI * 2)
-            ctx!.fill()
-          }
         }
       }
 
