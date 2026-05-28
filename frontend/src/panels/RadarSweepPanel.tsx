@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 // ── Konstanten ───────────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ function makeBlip(now: number, visible: boolean): Blip {
 
 // ── Komponente ───────────────────────────────────────────────────────────────
 
-export default function RadarSweepPanel() {
+function RadarSweepPanel() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -369,3 +369,5 @@ export default function RadarSweepPanel() {
     </Panel>
   )
 }
+
+export default memo(RadarSweepPanel);

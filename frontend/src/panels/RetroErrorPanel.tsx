@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 // Slideshow klassischer Betriebssystem-Fehlermeldungen — alles prozedural auf Canvas 2D.
@@ -635,7 +635,7 @@ const SCREENS: Screen[] = [
   },
 ]
 
-export default function RetroErrorPanel() {
+function RetroErrorPanel() {
   const canvasRef    = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -717,3 +717,5 @@ export default function RetroErrorPanel() {
     </Panel>
   )
 }
+
+export default memo(RetroErrorPanel);

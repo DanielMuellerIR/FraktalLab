@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import Panel from '../ui/Panel'
 import ScrollingLog from '../ui/ScrollingLog'
 
@@ -20,10 +21,12 @@ const LINES = [
   'DOWNLOADING classified_stuff.zip ....... 3%',
 ]
 
-export default function NuclearTargets() {
+function NuclearTargets() {
   return (
     <Panel title="☢ NUCLEAR SITE INFILTRATION">
       <ScrollingLog lines={LINES} interval={1100} className="text-yellow-700 [&>div:last-child]:text-yellow-400" />
     </Panel>
   )
 }
+
+export default memo(NuclearTargets);

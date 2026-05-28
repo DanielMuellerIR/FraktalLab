@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo,  useEffect, useRef, useState } from 'react'
 import Panel from '../ui/Panel'
 
 // ── Typen ──────────────────────────────────────────────────────────────────────
@@ -113,7 +113,7 @@ function progressBar(value: number, width = 20): string {
 }
 
 // ── Komponente ─────────────────────────────────────────────────────────────────
-export default function BitcoinMinerPanel() {
+function BitcoinMinerPanel() {
   // Der gesamte Miner-Zustand als React-State (löst Re-render bei Änderung aus)
   const [state, setState] = useState<MinerState>(INITIAL_STATE)
   const scramblerRef = useRef<HTMLDivElement>(null)
@@ -339,3 +339,5 @@ export default function BitcoinMinerPanel() {
     </Panel>
   )
 }
+
+export default memo(BitcoinMinerPanel);

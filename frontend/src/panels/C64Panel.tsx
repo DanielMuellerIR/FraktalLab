@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 // ── C64-Palette (VICE values) ──────────────────────────────────
@@ -63,7 +63,7 @@ function getCharCoords(char: string): { col: number; row: number } | null {
   return { col: 0, row: 2 } // Fallback to space
 }
 
-export default function C64Panel() {
+function C64Panel() {
   const canvasRef    = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -555,3 +555,5 @@ export default function C64Panel() {
     </Panel>
   )
 }
+
+export default memo(C64Panel);

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 // ── Typen ──────────────────────────────────────────────────────────────────────
@@ -85,7 +85,7 @@ function nowTime(): string {
 }
 
 // ── Komponente ─────────────────────────────────────────────────────────────────
-export default function ICQChatPanel() {
+function ICQChatPanel() {
   // Ref auf den scrollbaren Chat-Bereich
   const chatRef = useRef<HTMLDivElement>(null)
 
@@ -210,3 +210,5 @@ function escHtml(s: string): string {
     .replace(/>/g, '&gt;')
     // Emojis und Unicode bleiben erhalten — nur die HTML-Sonderzeichen werden maskiert
 }
+
+export default memo(ICQChatPanel);

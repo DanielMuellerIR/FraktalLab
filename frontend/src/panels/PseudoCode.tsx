@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import Panel from '../ui/Panel'
 import ScrollingLog from '../ui/ScrollingLog'
 
@@ -28,10 +29,12 @@ const LINES = [
   '// AI wrote this, not my problem',
 ]
 
-export default function PseudoCode() {
+function PseudoCode() {
   return (
     <Panel title="AI SOURCE CODE (LIVE)">
       <ScrollingLog lines={LINES} interval={180} className="text-cyan-800 [&>div:last-child]:text-cyan-400" />
     </Panel>
   )
 }
+
+export default memo(PseudoCode);

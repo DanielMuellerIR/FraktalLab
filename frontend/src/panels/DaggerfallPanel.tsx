@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -204,7 +204,7 @@ function bfsPath(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-export default function DaggerfallPanel() {
+function DaggerfallPanel() {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef    = useRef<HTMLCanvasElement>(null)
 
@@ -675,3 +675,5 @@ export default function DaggerfallPanel() {
     </Panel>
   )
 }
+
+export default memo(DaggerfallPanel);

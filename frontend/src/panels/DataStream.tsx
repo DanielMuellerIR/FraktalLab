@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import Panel from '../ui/Panel'
 import ScrollingLog from '../ui/ScrollingLog'
 
@@ -19,10 +20,12 @@ const LINES = [
   'STACK SMASH: feature not bug',
 ]
 
-export default function DataStream() {
+function DataStream() {
   return (
     <Panel title="DATA STREAM" className="text-cyan-800 [&>div:last-child]:text-cyan-300">
       <ScrollingLog lines={LINES} interval={80} />
     </Panel>
   )
 }
+
+export default memo(DataStream);

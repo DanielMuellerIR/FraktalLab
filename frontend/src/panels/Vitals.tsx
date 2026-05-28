@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import Panel from '../ui/Panel'
 import StatBar from '../ui/StatBar'
 import ScrollingLog from '../ui/ScrollingLog'
@@ -26,7 +27,7 @@ const METRIC_LINES = [
   'EVIL_INDEX: .............. 99%',
 ]
 
-export default function Vitals() {
+function Vitals() {
   return (
     <Panel title="SYSTEM VITALS">
       <div className="flex flex-col h-full w-full gap-0.5">
@@ -47,3 +48,5 @@ export default function Vitals() {
     </Panel>
   )
 }
+
+export default memo(Vitals);

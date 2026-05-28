@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import Panel from '../ui/Panel'
 import ScrollingLog from '../ui/ScrollingLog'
 
@@ -19,10 +20,12 @@ const LINES = [
   'IDENTITY: fully stolen (sorry about that)',
 ]
 
-export default function SocialEngineering() {
+function SocialEngineering() {
   return (
     <Panel title="SOCIAL ENGINEERING" className="text-red-900 [&>div:last-child]:text-red-400">
       <ScrollingLog lines={LINES} interval={1800} />
     </Panel>
   )
 }
+
+export default memo(SocialEngineering);

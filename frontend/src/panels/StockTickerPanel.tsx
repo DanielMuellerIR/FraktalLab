@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { memo,  useState, useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 // ── Ticker-Definitionen ──────────────────────────────────────────────────────
@@ -64,7 +64,7 @@ function initTickers(): TickerState[] {
 }
 
 // ── Hauptkomponente ──────────────────────────────────────────────────────────
-export default function StockTickerPanel() {
+function StockTickerPanel() {
   const [tickers, setTickers] = useState<TickerState[]>(initTickers)
 
   // Marquee-Animation: wie weit ist das Band bereits nach links gescrollt (px)
@@ -193,3 +193,5 @@ export default function StockTickerPanel() {
     </Panel>
   )
 }
+
+export default memo(StockTickerPanel);

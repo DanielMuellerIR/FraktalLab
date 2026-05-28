@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -142,7 +142,7 @@ interface Star2D {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-export default function ElitePanel() {
+function ElitePanel() {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef    = useRef<HTMLCanvasElement>(null)
 
@@ -482,3 +482,5 @@ export default function ElitePanel() {
     </Panel>
   )
 }
+
+export default memo(ElitePanel);

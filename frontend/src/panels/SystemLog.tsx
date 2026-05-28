@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import Panel from '../ui/Panel'
 import ScrollingLog from '../ui/ScrollingLog'
 
@@ -21,10 +22,12 @@ const LINES = [
   '$ KERNEL PANIC AVERTED (you\'re welcome)',
 ]
 
-export default function SystemLog() {
+function SystemLog() {
   return (
     <Panel title="SYSTEM LOG">
       <ScrollingLog lines={LINES} interval={900} />
     </Panel>
   )
 }
+
+export default memo(SystemLog);

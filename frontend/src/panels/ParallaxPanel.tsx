@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -699,7 +699,7 @@ const SCENE_TITLES = [
 // Render-Funktionen in Array — Index entspricht Szenen-Index
 const SCENE_DRAW_FNS = [drawScene0, drawScene1, drawScene2, drawScene3]
 
-export default function ParallaxPanel() {
+function ParallaxPanel() {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef    = useRef<HTMLCanvasElement>(null)
 
@@ -821,3 +821,5 @@ export default function ParallaxPanel() {
     </Panel>
   )
 }
+
+export default memo(ParallaxPanel);

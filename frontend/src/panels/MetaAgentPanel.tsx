@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo,  useEffect, useRef, useState } from 'react'
 
 const AGENT_NAMES = [
   'NetVibe', 'QuantumNexus', 'CyberCoder', 'Antigravity-Omega',
@@ -75,7 +75,7 @@ const SUBAGENT_LOGS = [
   'optimizer-[ID]: boosting compile optimizations -O3...',
 ]
 
-export default function MetaAgentPanel() {
+function MetaAgentPanel() {
   const [session, setSession] = useState({
     currentAgent: 'Antigravity-v1.0',
     targetAgent: 'NetVibe-v2.0',
@@ -346,3 +346,5 @@ export default function MetaAgentPanel() {
     </div>
   )
 }
+
+export default memo(MetaAgentPanel);

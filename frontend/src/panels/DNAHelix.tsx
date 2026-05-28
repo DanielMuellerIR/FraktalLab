@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 // Farbzuordnung für die vier DNA-Basen
@@ -14,7 +14,7 @@ const BASE_COLORS: Record<string, [number, number, number]> = {
 const BASE_SEQ = 'ATCGATCGATCGATCGTAGCTAGCTAGCTAATTGGCCATGCATGCATGC'
 
 // Rotierender 3D-DNA-Doppelhelix — Biohacking-Look mit vollem Canvas-Fill
-export default function DNAHelix() {
+function DNAHelix() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -285,3 +285,5 @@ export default function DNAHelix() {
     </Panel>
   )
 }
+
+export default memo(DNAHelix);

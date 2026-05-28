@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo,  useEffect, useRef, useState } from 'react'
 import Panel from '../ui/Panel'
 import ScrollingLog from '../ui/ScrollingLog'
 
@@ -45,7 +45,7 @@ function generateRandomLog() {
     .replace('[QUAD]', String(Math.floor(1 + Math.random() * 12)))
 }
 
-export default function TrafficMonitor() {
+function TrafficMonitor() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [stats, setStats] = useState({
     throughput: '8.42 YB/s',
@@ -247,3 +247,5 @@ export default function TrafficMonitor() {
     </Panel>
   )
 }
+
+export default memo(TrafficMonitor);

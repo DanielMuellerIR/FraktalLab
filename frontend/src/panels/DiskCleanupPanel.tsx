@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 // ── Typen ──────────────────────────────────────────────────────────────────────
@@ -117,7 +117,7 @@ const DONE_JOKES = [
 ]
 
 // ── Komponente ─────────────────────────────────────────────────────────────────
-export default function DiskCleanupPanel() {
+function DiskCleanupPanel() {
   // Ref auf den scrollbaren Output-Bereich
   const outputRef = useRef<HTMLDivElement>(null)
   // Aktuelle Phase — als Ref statt State, da wir direkt ins DOM schreiben
@@ -328,3 +328,5 @@ export default function DiskCleanupPanel() {
     </Panel>
   )
 }
+
+export default memo(DiskCleanupPanel);

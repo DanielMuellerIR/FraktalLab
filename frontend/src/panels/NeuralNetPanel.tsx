@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 interface Node {
@@ -15,7 +15,7 @@ const MEMORY_ADDRESSES = [
   '0xEA39F', '0xFD022', '0x002FB', '0x883E1', '0x55A1C', '0xC0B29', '0xAA911', '0x1F2C3'
 ]
 
-export default function NeuralNetPanel() {
+function NeuralNetPanel() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -163,3 +163,5 @@ export default function NeuralNetPanel() {
     </Panel>
   )
 }
+
+export default memo(NeuralNetPanel);

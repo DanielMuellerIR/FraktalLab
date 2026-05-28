@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 // ── Planetendaten (Wissenschaftlich + Anzeige) ────────────────────────────────
@@ -134,7 +134,7 @@ function drawInfoBox(
 }
 
 // ── Haupt-Komponente ──────────────────────────────────────────────────────────
-export default function SolarSystemPanel() {
+function SolarSystemPanel() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -484,3 +484,5 @@ export default function SolarSystemPanel() {
     </Panel>
   )
 }
+
+export default memo(SolarSystemPanel);

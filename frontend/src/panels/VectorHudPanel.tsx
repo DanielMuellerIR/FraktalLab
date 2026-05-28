@@ -1,9 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 interface Point3D { x: number; y: number; z: number }
 
-export default function VectorHudPanel() {
+function VectorHudPanel() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -189,3 +189,5 @@ export default function VectorHudPanel() {
     </Panel>
   )
 }
+
+export default memo(VectorHudPanel);

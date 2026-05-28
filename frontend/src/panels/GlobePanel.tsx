@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 // ── Kapitalen-Daten ──────────────────────────────────────────────────────────
@@ -210,7 +210,7 @@ interface AnimState {
 }
 
 // ── Haupt-Komponente ─────────────────────────────────────────────────────────
-export default function GlobePanel() {
+function GlobePanel() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // Alle Animations-Variablen leben in diesem Ref — kein re-render nötig
   const stateRef = useRef<AnimState>({
@@ -650,3 +650,5 @@ export default function GlobePanel() {
     </Panel>
   )
 }
+
+export default memo(GlobePanel);

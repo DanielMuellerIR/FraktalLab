@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -619,7 +619,7 @@ function dot(a: Vec3, b: Vec3): number {
 // ─────────────────────────────────────────────────────────────────────────────
 // HAUPTKOMPONENTE
 // ─────────────────────────────────────────────────────────────────────────────
-export default function CADRobotPanel() {
+function CADRobotPanel() {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef    = useRef<HTMLCanvasElement>(null)
 
@@ -1181,3 +1181,5 @@ export default function CADRobotPanel() {
     </Panel>
   )
 }
+
+export default memo(CADRobotPanel);

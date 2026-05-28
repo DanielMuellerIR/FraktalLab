@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
-export default function OscilloscopePanel() {
+function OscilloscopePanel() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -167,3 +167,5 @@ export default function OscilloscopePanel() {
     </Panel>
   )
 }
+
+export default memo(OscilloscopePanel);

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { memo,  useEffect, useState, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 // ── Typen ──────────────────────────────────────────────────────────────────────
@@ -112,7 +112,7 @@ function statusClass(s: SatStatus): string {
 }
 
 // ── Komponente ─────────────────────────────────────────────────────────────────
-export default function SatellitePanel({ onComplete }: { onComplete?: () => void }) {
+function SatellitePanel({ onComplete }: { onComplete?: () => void }) {
   // Vollständige Satelliten-Liste als React-State
   const [sats, setSats]       = useState<Satellite[]>(INITIAL_SATS)
   // Blink-State für "GROUND STATION LOCK"-Indikator
@@ -334,3 +334,5 @@ export default function SatellitePanel({ onComplete }: { onComplete?: () => void
     </Panel>
   )
 }
+
+export default memo(SatellitePanel);

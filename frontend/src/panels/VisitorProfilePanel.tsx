@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 // ── Typen ──────────────────────────────────────────────────────────────────────
@@ -180,7 +180,7 @@ function buildScanLines(): ScanLine[] {
 }
 
 // ── Komponente ─────────────────────────────────────────────────────────────────
-export default function VisitorProfilePanel({ onComplete }: { onComplete?: () => void }) {
+function VisitorProfilePanel({ onComplete }: { onComplete?: () => void }) {
   // Ref auf den scrollbaren Ausgabe-Bereich
   const outputRef = useRef<HTMLDivElement>(null)
 
@@ -259,3 +259,5 @@ export default function VisitorProfilePanel({ onComplete }: { onComplete?: () =>
     </Panel>
   )
 }
+
+export default memo(VisitorProfilePanel);

@@ -1,11 +1,11 @@
-import { useRef, useState, useEffect } from 'react'
+import { memo,  useRef, useState, useEffect } from 'react'
 import Panel from '../ui/Panel'
 
 // Korrekte Datei-URL: Dateiname = dIQ53t0gv_4.mp4 (ohne "youtube-"-Prefix).
 // COEP: credentialless in vite.config.ts erlaubt das ohne crossOrigin-Attribut.
 const VIDEO_SRC = 'https://archive.org/download/youtube-dIQ53t0gv_4/dIQ53t0gv_4.mp4'
 
-export default function AllYourBase() {
+function AllYourBase() {
   const videoRef = useRef<HTMLVideoElement>(null)
   // Ton ist standardmäßig AN — "All your base" verdient Ton
   const [muted, setMuted] = useState(false)
@@ -57,3 +57,5 @@ export default function AllYourBase() {
     </Panel>
   )
 }
+
+export default memo(AllYourBase);

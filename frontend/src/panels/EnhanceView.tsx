@@ -1,10 +1,13 @@
+import { memo } from 'react';
 import Panel from '../ui/Panel'
 import EnhancePhoto from '../components/EnhancePhoto'
 
-export default function EnhanceView() {
+function EnhanceView() {
   return (
     <Panel title="ENHANCE PHOTO">
       <EnhancePhoto />
     </Panel>
   )
 }
+
+export default memo(EnhanceView);

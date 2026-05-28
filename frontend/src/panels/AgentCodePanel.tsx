@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 
 // ── Typen ──────────────────────────────────────────────────────────────────────
@@ -115,7 +115,7 @@ function randInt(min: number, max: number): number {
 }
 
 // ── Komponente ─────────────────────────────────────────────────────────────────
-export default function AgentCodePanel() {
+function AgentCodePanel() {
   // Ref auf das scrollbare Terminal-Ausgabe-Div
   const outputRef = useRef<HTMLDivElement>(null)
   // Ref auf die aktuelle Eingabezeile (unten, mit blinkendem Cursor)
@@ -316,3 +316,5 @@ function escHtml(s: string): string {
 function escHtmlText(s: string): string {
   return s
 }
+
+export default memo(AgentCodePanel);

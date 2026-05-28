@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo,  useEffect, useRef } from 'react'
 import { getWasmModule } from '../utils/wasm-loader'
 import { subscribe } from '../utils/raf-coordinator'
 
@@ -84,7 +84,7 @@ function findBoundaryNonBlack(pixels: Uint8ClampedArray, W: number, H: number): 
   return null
 }
 
-export default function FractalJulia() {
+function FractalJulia() {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -323,3 +323,4 @@ export default function FractalJulia() {
   )
 }
 
+export default memo(FractalJulia);

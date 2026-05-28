@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import Panel from '../ui/Panel'
 import ScrollingLog from '../ui/ScrollingLog'
 
@@ -11,10 +12,12 @@ const LINES = [
   '0.0.0.0       PORT ??? ░░ ???',
 ]
 
-export default function PortScanner() {
+function PortScanner() {
   return (
     <Panel title="PORT SCANNER">
       <ScrollingLog lines={LINES} interval={700} />
     </Panel>
   )
 }
+
+export default memo(PortScanner);

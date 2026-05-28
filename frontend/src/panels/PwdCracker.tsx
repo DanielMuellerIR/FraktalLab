@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import Panel from '../ui/Panel'
 import ScrollingLog from '../ui/ScrollingLog'
 
@@ -15,10 +16,12 @@ const LINES = [
   '> was it even worth it',
 ]
 
-export default function PwdCracker() {
+function PwdCracker() {
   return (
     <Panel title="PWD CRACKER 9000">
       <ScrollingLog lines={LINES} interval={1300} />
     </Panel>
   )
 }
+
+export default memo(PwdCracker);

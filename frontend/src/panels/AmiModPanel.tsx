@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo,  useEffect, useRef, useState } from 'react';
 import Panel from '../ui/Panel';
 import { ModPlayer } from '../utils/modplayer/player';
 import { Mod, Note } from '../utils/modplayer/mod';
@@ -71,7 +71,7 @@ function formatEffect(note: Note): string {
 
 type VuLevels = [number, number, number, number];
 
-export default function AmiModPanel() {
+function AmiModPanel() {
   const [trackIdx, setTrackIdx] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -621,3 +621,5 @@ export default function AmiModPanel() {
     </Panel>
   );
 }
+
+export default memo(AmiModPanel);

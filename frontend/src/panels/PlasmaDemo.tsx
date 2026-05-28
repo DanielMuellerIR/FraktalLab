@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 import { subscribe } from '../utils/raf-coordinator'
 
@@ -60,7 +60,7 @@ const PALETTE_DURATION = 10   // Sekunden pro Palette (10s Szenenwechsel)
 const CROSSFADE_DURATION = 10  // Kontinuierlicher Farbwechsel (ganze Dauer)
 
 
-export default function PlasmaDemo() {
+function PlasmaDemo() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -224,3 +224,5 @@ export default function PlasmaDemo() {
     </Panel>
   )
 }
+
+export default memo(PlasmaDemo);

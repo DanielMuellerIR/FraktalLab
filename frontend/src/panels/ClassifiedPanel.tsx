@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo,  useEffect, useRef, useState } from 'react'
 import Panel from '../ui/Panel'
 
 // ── Typen ──────────────────────────────────────────────────────────────────────
@@ -229,7 +229,7 @@ function segmentOffsets(body: Segment[]): number[] {
 }
 
 // ── Komponente ─────────────────────────────────────────────────────────────────
-export default function ClassifiedPanel() {
+function ClassifiedPanel() {
   // Index des aktuell angezeigten Dokuments
   const [docIdx, setDocIdx] = useState(0)
   // Wie viele Zeichen des Rohtexts wurden bisher enthüllt (Typewriter-Fortschritt)
@@ -390,3 +390,5 @@ export default function ClassifiedPanel() {
     </Panel>
   )
 }
+
+export default memo(ClassifiedPanel);
