@@ -573,7 +573,7 @@ export const VoxelThermal = makeVoxelScene(
   THERMAL_GLSL_COLOR,
   { vx: 1.0, vy: 0.4, va: 0.0008, speedMin: 0.6, speedMax: 3.0, lateralDrift: true },
   {
-    camHBase: 110, camHAmp: 15, camHFloor: 65,
+    camHBase: 80, camHAmp: 12, camHFloor: 38,
     renderOverlay: VoxelThermalOverlay,
   },
 )
