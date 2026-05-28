@@ -85,8 +85,15 @@ test.describe('Review Mode - Visual Panel Verification', () => {
   test('Verify and screenshot all panels in review mode', async ({ page }) => {
     test.setTimeout(150000)
     page.on('console', (msg) => {
-      if (msg.type() === 'error') {
-        console.error('[BROWSER ERROR]', msg.text())
+      const type = msg.type()
+      const text = msg.text()
+      if (type === 'error') {
+        console.error('[BROWSER ERROR]', text)
+      } else if (type === 'warning') {
+        console.warn('[BROWSER WARN]', text)
+      } else {
+        // Forward WASM and WebGL logs to see step-by-step progress
+        console.log('[BROWSER LOG]', text)
       }
     })
 
