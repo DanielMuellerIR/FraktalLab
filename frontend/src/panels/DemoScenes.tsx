@@ -41,9 +41,9 @@ function makeScene(
   draw: (buf: Uint8ClampedArray, W: number, H: number, t: number, s: any) => void,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   postDraw?: (ctx: CanvasRenderingContext2D, W: number, H: number, t: number, s: any) => void,
-  pixelated: boolean = true,
-): () => React.JSX.Element {
-  return function Scene() {
+  pixelated: boolean = false,
+): React.NamedExoticComponent<any> {
+  return React.memo(function Scene() {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stateRef = useRef<any>(null)
@@ -157,7 +157,7 @@ function makeScene(
         />
       </Panel>
     )
-  }
+  })
 }
 
 // ── Effekt 1: Feuer — Doom-Algorithmus mit Farb-Varianz ──────────────────────
@@ -643,7 +643,7 @@ type NeuralNode2D = {
   vx: number; vy: number  // Drift-Geschwindigkeit
   label: string           // z.B. "N-01"
 }
-export function DotCloudScene() {
+export const DotCloudScene = React.memo(function DotCloudScene() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -773,7 +773,7 @@ export function DotCloudScene() {
       <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
     </Panel>
   )
-}
+})
 
 // ── Effekt 7: Three Body Problem — klassische 3D-Kugeln mit Orbit-Vektoren ────
 type ThreeBodyBall = {
@@ -797,7 +797,7 @@ type ThreeBodyState = {
 }
 
 export const ThreeBodyScene = makeScene(
-  'THREE BODY PROBLEM // CHAOTIC RESONANCE', 640, 480,
+  'THREE BODY PROBLEM // CHAOTIC RESONANCE', 400, 300,
   (W, H): ThreeBodyState => {
     const balls: ThreeBodyBall[] = []
     for (let i = 0; i < 3; i++) {

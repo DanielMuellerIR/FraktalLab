@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, memo } from 'react'
 import { getWasmModule } from '../utils/wasm-loader'
 
 // Interessante Mandelbrot-Koordinaten — werden zyklisch durchgezoomt.
@@ -14,7 +14,7 @@ const LOCATIONS = [
   { cx: -1.2560,  cy:  0.3818  },  // Satellite Bulb
 ]
 
-export default function FractalCanvas() {
+export default memo(function FractalCanvas() {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // Zoom-State im Ref statt im React-State — kein Re-render-Overhead pro Frame.
@@ -46,10 +46,26 @@ export default function FractalCanvas() {
     if (!ctx) return
 
     let cancelled = false
+    let isVisible = true
+
+    const io = new IntersectionObserver(([e]) => {
+      isVisible = e.isIntersecting
+    })
+    io.observe(canvas)
 
     // Canvas-Auflösung exakt an Container anpassen (kein Seitenverhältnis-Verzerrung).
     // Pixel-Budget begrenzt die Gesamtpixel für Performance, nicht W/H einzeln.
     const MAX_PIXELS = 480000; // ~800×600 Budget
+
+    let buf: Uint8Array
+    let pixelsArray: Uint8ClampedArray
+    let imgData: ImageData
+
+    let prevImgData: ImageData
+    let nextBuf: Uint8Array
+    let nextPixelsArray: Uint8ClampedArray
+    let nextImgData: ImageData
+    let blendImgData: ImageData
 
     const syncSize = () => {
       const cw = container.clientWidth  || 300
@@ -59,9 +75,20 @@ export default function FractalCanvas() {
       const scale = pixels > MAX_PIXELS ? Math.sqrt(MAX_PIXELS / pixels) : 1
       const w = Math.round(cw * scale)
       const h = Math.round(ch * scale)
-      if (canvas.width !== w || canvas.height !== h) {
+      if (canvas.width !== w || canvas.height !== h || !buf) {
         canvas.width  = w
         canvas.height = h
+
+        buf = new Uint8Array(w * h * 4)
+        pixelsArray = new Uint8ClampedArray(buf.buffer, buf.byteOffset, buf.byteLength)
+        imgData = new ImageData(pixelsArray as any, w, h)
+
+        prevImgData = new ImageData(w, h)
+        nextBuf = new Uint8Array(w * h * 4)
+        nextPixelsArray = new Uint8ClampedArray(nextBuf.buffer, nextBuf.byteOffset, nextBuf.byteLength)
+        nextImgData = new ImageData(nextPixelsArray as any, w, h)
+
+        blendImgData = new ImageData(w, h)
       }
     }
     syncSize()
@@ -81,10 +108,17 @@ export default function FractalCanvas() {
           s.centerY = LOCATIONS[s.locIdx].cy
           s.initialized = true
           ;(s as any).locTime = performance.now()
+          ;(s as any).hasSnapshots = false
+          ;(s as any).boundaryFrame = 0
         }
 
         const frame = () => {
           if (cancelled) return
+
+          if (!isVisible) {
+            rafRef.current = requestAnimationFrame(frame)
+            return
+          }
 
           syncSize()
           if (canvas.width === 0 || canvas.height === 0) {
@@ -93,15 +127,12 @@ export default function FractalCanvas() {
           }
 
           // ── Cross-Fade läuft: nur Pixel blenden, kein WASM-Render ─────────
-          if (s.fading && s.prevImageData && s.nextImageData) {
+          if (s.fading && (s as any).hasSnapshots) {
             s.fadeAlpha = Math.min(1, s.fadeAlpha + 0.025)
 
-            const prev   = s.prevImageData.data
-            const next   = s.nextImageData.data
-            const W      = s.prevImageData.width
-            const H      = s.prevImageData.height
-            const blended = new ImageData(W, H)
-            const out    = blended.data
+            const prev   = prevImgData.data
+            const next   = nextImgData.data
+            const out    = blendImgData.data
             const a      = s.fadeAlpha
 
             // Pixel-genaues Blend: prev*(1-a) + next*a
@@ -111,7 +142,7 @@ export default function FractalCanvas() {
               out[i+2] = (prev[i+2] * (1 - a) + next[i+2] * a) | 0
               out[i+3] = 255
             }
-            ctx.putImageData(blended, 0, 0)
+            ctx.putImageData(blendImgData, 0, 0)
 
             // Cross-Fade abgeschlossen: zu nächster Location wechseln
             if (s.fadeAlpha >= 1) {
@@ -121,8 +152,7 @@ export default function FractalCanvas() {
               s.centerY      = s.nextCenterY
               s.fading       = false
               s.fadeAlpha    = 0
-              s.prevImageData = null
-              s.nextImageData = null
+              ;(s as any).hasSnapshots = false
               ;(s as any).locTime = performance.now()
             }
 
@@ -146,15 +176,18 @@ export default function FractalCanvas() {
 
           try {
             const params = new RenderParams(s.centerX, s.centerY, s.zoom, 128, angle)
-            const pixels = new Uint8ClampedArray(render(canvas.width, canvas.height, params))
+            render(buf, canvas.width, canvas.height, params)
 
             // Boundary tracking: keep zooming on high-detail boundary and avoid black interior
             if (!s.fading && s.zoom > 200) {
-              const boundary = findBoundaryNonBlack(pixels, canvas.width, canvas.height)
-              if (boundary) {
-                const target = pixelToComplex(boundary.px, boundary.py, canvas.width, canvas.height, s.centerX, s.centerY, s.zoom, angle)
-                s.centerX += (target.x - s.centerX) * 0.15
-                s.centerY += (target.y - s.centerY) * 0.15
+              ;(s as any).boundaryFrame++
+              if ((s as any).boundaryFrame % 4 === 0) {
+                const boundary = findBoundaryNonBlack(pixelsArray, canvas.width, canvas.height)
+                if (boundary) {
+                  const target = pixelToComplex(boundary.px, boundary.py, canvas.width, canvas.height, s.centerX, s.centerY, s.zoom, angle)
+                  s.centerX += (target.x - s.centerX) * 0.15
+                  s.centerY += (target.y - s.centerY) * 0.15
+                }
               }
             }
 
@@ -162,22 +195,22 @@ export default function FractalCanvas() {
             // sofort Übergang auslösen statt schwarze Frames zu zeigen (nur nach mind. 12s Zoom).
             if (!s.fading && s.zoom > 200 && elapsed > 12000) {
               let black = 0, total = 0
-              for (let i = 0; i < pixels.length; i += 128) {
-                if (pixels[i] === 0 && pixels[i + 1] === 0 && pixels[i + 2] === 0) black++
+              for (let i = 0; i < pixelsArray.length; i += 128) {
+                if (pixelsArray[i] === 0 && pixelsArray[i + 1] === 0 && pixelsArray[i + 2] === 0) black++
                 total++
               }
               if (black / total > 0.75) s.fading = true
             }
 
             // Aktuellen Frame immer auf Canvas ausgeben
-            ctx.putImageData(new ImageData(pixels, canvas.width, canvas.height), 0, 0)
+            ctx.putImageData(imgData, 0, 0)
             canvas.setAttribute('data-zoom', s.zoom.toString())
             canvas.setAttribute('data-zoom-direction', s.fading ? '0' : '1')
 
             // Übergang starten: Snapshot beider Frames vorbereiten
-            if (s.fading && !s.prevImageData) {
+            if (s.fading && !(s as any).hasSnapshots) {
               // Snapshot des gerade gerenderten Frames
-              s.prevImageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+              prevImgData.data.set(pixelsArray)
 
               // Nächste Location und Zoom bestimmen
               s.nextLocIdx = (s.locIdx + 1) % LOCATIONS.length
@@ -187,12 +220,12 @@ export default function FractalCanvas() {
 
               // Einen WASM-Frame der Ziel-Location rendern
               const nextParams = new RenderParams(s.nextCenterX, s.nextCenterY, s.nextZoom, 128, 0.0)
-              const nextPixels = new Uint8ClampedArray(render(canvas.width, canvas.height, nextParams))
-              s.nextImageData  = new ImageData(nextPixels, canvas.width, canvas.height)
-
+              render(nextBuf, canvas.width, canvas.height, nextParams)
+              
+              ;(s as any).hasSnapshots = true
               s.fadeAlpha = 0
             }
-          } catch { /* WASM-Fehler still ignorieren */ }
+          } catch (err) { console.error('[FractalCanvas] render error:', err) }
 
           rafRef.current = requestAnimationFrame(frame)
         }
@@ -205,6 +238,7 @@ export default function FractalCanvas() {
       cancelled = true
       cancelAnimationFrame(rafRef.current)
       ro.disconnect()
+      io.disconnect()
     }
   }, [])
 
@@ -213,11 +247,11 @@ export default function FractalCanvas() {
       <canvas
         ref={canvasRef}
         data-testid="fractal-canvas"
-        style={{ display: 'block', width: '100%', height: '100%', imageRendering: 'pixelated' }}
+        style={{ display: 'block', width: '100%', height: '100%', imageRendering: 'auto' }}
       />
     </div>
   )
-}
+})
 
 function pixelToComplex(
   px: number,

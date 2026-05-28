@@ -384,7 +384,7 @@ function makeVoxelScene(
     matrixMode?: boolean
     waveFn?: (x: number, y: number, t: number) => number
   } = {}
-): () => React.JSX.Element {
+): React.NamedExoticComponent<any> {
   const {
     scale           = 120,
     fov             = 1.2,
@@ -400,7 +400,7 @@ function makeVoxelScene(
     waveFn,
   } = opts
 
-  return function VoxelScene() {
+  return React.memo(function VoxelScene() {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const cam = useRef({
       x: 150 + Math.random() * 200,
@@ -773,7 +773,7 @@ function makeVoxelScene(
         />
       </Panel>
     )
-  }
+  })
 }
 
 // ── Terrain-Heightmaps (einmalig beim Modullade berechnet) ────────────────────

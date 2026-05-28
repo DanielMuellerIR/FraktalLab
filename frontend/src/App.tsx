@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react'
 import PanelSlot     from './ui/PanelSlot'
 import FractalView   from './panels/FractalView'
 import GlitchOverlay from './ui/GlitchOverlay'
@@ -77,6 +77,14 @@ const POOL_GFX: React.ComponentType[] = [
   FractalDendrite, FractalSwirl,
   FractalJulia, RadarSweepPanel,
 ]
+
+POOL_TEXT.forEach((Comp, idx) => {
+  POOL_TEXT[idx] = memo(Comp) as any
+})
+
+POOL_GFX.forEach((Comp, idx) => {
+  POOL_GFX[idx] = memo(Comp) as any
+})
 
 
 // ── Zufallslayout-Generator ───────────────────────────────────────────────────
@@ -399,6 +407,10 @@ const ALL_PANELS: { name: string; Component: React.ComponentType }[] = [
   { name: 'StockTickerPanel',   Component: StockTickerPanel },
   { name: 'ClassifiedPanel',    Component: ClassifiedPanel },
 ]
+
+ALL_PANELS.forEach(p => {
+  p.Component = memo(p.Component) as any
+})
 
 // ── localStorage-Helfer für Reviews ──────────────────────────────────────────
 
@@ -1068,6 +1080,7 @@ export default function App() {
                     key={`out-${prevLayout.id}`}
                     className="absolute inset-0 p-1 layout-slide-out"
                     aria-hidden="true"
+                    style={{ contain: 'paint' }}
                   >
                     <LayoutContent layout={prevLayout} onSkipSlot={() => {}} />
                   </div>

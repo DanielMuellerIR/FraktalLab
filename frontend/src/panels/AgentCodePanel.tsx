@@ -280,7 +280,7 @@ export default function AgentCodePanel() {
         {/* Scrollbarer Ausgabe-Bereich */}
         <div
           ref={outputRef}
-          className="flex-1 overflow-y-auto text-xs font-mono leading-relaxed min-h-0"
+          className="flex-1 overflow-y-auto text-xs font-mono leading-relaxed min-h-0 whitespace-pre-wrap"
           style={{ scrollbarWidth: 'none' }}
         />
 

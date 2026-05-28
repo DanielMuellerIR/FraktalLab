@@ -26,11 +26,10 @@ impl RenderParams {
 
 /// Rendert die Mandelbrot-Menge in einen Pixel-Buffer (RGBA, row-major).
 ///
-/// Gibt einen `Vec<u8>` zurück, den der JS-Caller via `ImageData` auf ein
-/// `<canvas>`-Element überträgt. Buffer-Länge = width * height * 4 Bytes.
+/// Schreibt direkt in den vom JS-Caller bereitgestellten Buffer.
+/// Buffer-Länge muss mindestens width * height * 4 Bytes sein.
 #[wasm_bindgen]
-pub fn render(width: u32, height: u32, params: &RenderParams) -> Vec<u8> {
-    let mut buffer = vec![0u8; (width * height * 4) as usize];
+pub fn render(buf: &mut [u8], width: u32, height: u32, params: &RenderParams) {
     let cos_a = params.angle.cos();
     let sin_a = params.angle.sin();
 
@@ -50,14 +49,12 @@ pub fn render(width: u32, height: u32, params: &RenderParams) -> Vec<u8> {
             let color = iter_to_color(iter, params.max_iter);
 
             let idx = ((py * width + px) * 4) as usize;
-            buffer[idx]     = color.0; // R
-            buffer[idx + 1] = color.1; // G
-            buffer[idx + 2] = color.2; // B
-            buffer[idx + 3] = 255;     // A (volle Deckkraft)
+            buf[idx]     = color.0; // R
+            buf[idx + 1] = color.1; // G
+            buf[idx + 2] = color.2; // B
+            buf[idx + 3] = 255;     // A (volle Deckkraft)
         }
     }
-
-    buffer
 }
 
 /// Zählt Iterationen bis zum Entkommen aus dem Betrag-2-Radius.

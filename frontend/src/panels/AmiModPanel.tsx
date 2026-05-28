@@ -85,6 +85,7 @@ export default function AmiModPanel() {
   const [player] = useState(() => new ModPlayer());
   const playerRef = useRef<ModPlayer>(player);
   const shouldAutoPlayRef = useRef(false);
+  const rowsContainerRef = useRef<HTMLDivElement>(null);
 
   // ModPlayer beim Unmount entladen
   useEffect(() => {
@@ -174,6 +175,18 @@ export default function AmiModPanel() {
     return () => cancelAnimationFrame(rAFId);
   }, []);
 
+  // Scroll active row into center of viewport
+  useEffect(() => {
+    const container = rowsContainerRef.current;
+    if (!container) return;
+    const activeRowEl = container.querySelector('[data-active="true"]') as HTMLElement;
+    if (!activeRowEl) return;
+    const containerHeight = container.clientHeight;
+    const rowHeight = activeRowEl.clientHeight;
+    const rowTop = activeRowEl.offsetTop;
+    container.scrollTop = rowTop - (containerHeight / 2) + (rowHeight / 2);
+  }, [currentRow]);
+
   // Play/Stop toggle
   const handlePlayToggle = () => {
     const player = playerRef.current;
@@ -204,14 +217,7 @@ export default function AmiModPanel() {
     ? mod.patterns[patternIdxInTable] 
     : null;
 
-  const VISIBLE_ROWS = 32;
-  const halfVisible = Math.floor(VISIBLE_ROWS / 2);
-  const startRow = Math.max(0, Math.min(
-    currentRow - halfVisible,
-    64 - VISIBLE_ROWS
-  ));
-  
-  const visibleRows = pattern ? pattern.rows.slice(startRow, startRow + VISIBLE_ROWS) : [];
+  const allRows = pattern ? pattern.rows : [];
 
   // Instrumentenliste
   const instrumentsToDisplay = mod 
@@ -331,18 +337,27 @@ export default function AmiModPanel() {
             </div>
 
             {/* Rows */}
-            <div className="flex-1 overflow-hidden">
+            <div
+              ref={rowsContainerRef}
+              className="flex-1 overflow-y-auto no-scrollbar"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            >
+              <style>{`
+                .no-scrollbar::-webkit-scrollbar {
+                  display: none;
+                }
+              `}</style>
               {loading ? (
                 <div className="h-full flex items-center justify-center text-[#00ccff] animate-pulse text-xs">
                   LOADING RETRO TRACKER MODULE...
                 </div>
-              ) : visibleRows.length > 0 ? (
-                visibleRows.map((row, idx) => {
-                  const absoluteRow = startRow + idx;
+              ) : allRows.length > 0 ? (
+                allRows.map((row, absoluteRow) => {
                   const isActive = absoluteRow === currentRow;
                   return (
                     <div
                       key={absoluteRow}
+                      data-active={isActive ? "true" : "false"}
                       className="flex items-center px-1"
                       style={{
                         fontSize: '11px',

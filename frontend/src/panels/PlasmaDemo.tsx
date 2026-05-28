@@ -105,10 +105,9 @@ export default function PlasmaDemo() {
 
       const ts = t * 0.001  // Sekunden
 
-      // Interne Auflösung: Performance-Cap bei max 200×150.
-      // Demoscene-Plasma sieht bei grober Auflösung besser aus (grobe Pixel-Ästhetik).
-      const W = Math.min(canvas!.width,  200)
-      const H = Math.min(canvas!.height, 150)
+      // Interne Auflösung: Performance-Cap bei max 480×360.
+      const W = Math.min(canvas!.width,  480)
+      const H = Math.min(canvas!.height, 360)
 
       // OffscreenCanvas auf interne Auflösung setzen (nur wenn sich Größe ändert)
       if (offscreen.width !== W || offscreen.height !== H) {
@@ -211,7 +210,7 @@ export default function PlasmaDemo() {
       {/* Canvas füllt den Panel-Body vollständig */}
       <canvas
         ref={canvasRef}
-        style={{ width: '100%', height: '100%', imageRendering: 'pixelated', display: 'block' }}
+        style={{ width: '100%', height: '100%', imageRendering: 'auto', display: 'block' }}
       />
     </Panel>
   )

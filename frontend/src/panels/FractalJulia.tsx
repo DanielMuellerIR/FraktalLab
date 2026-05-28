@@ -84,6 +84,7 @@ function findBoundaryNonBlack(pixels: Uint8ClampedArray, W: number, H: number): 
 }
 
 export default function FractalJulia() {
+  const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rafRef    = useRef<number>(0)
 
@@ -97,15 +98,45 @@ export default function FractalJulia() {
     const ctx: CanvasRenderingContext2D  = _ctx
 
     let cancelled = false
+    let isVisible = true
 
-    const RENDER_W = 320
-    const RENDER_H = 213
+    const io = new IntersectionObserver(([e]) => {
+      isVisible = e.isIntersecting
+    })
+    io.observe(canvas)
 
-    const setSize = () => {
-      if (canvas.width !== RENDER_W) canvas.width = RENDER_W
-      if (canvas.height !== RENDER_H) canvas.height = RENDER_H
+    const MAX_PIXELS = 240000
+    let RENDER_W = 320
+    let RENDER_H = 213
+    let buf: Uint8Array
+    let pixels: Uint8ClampedArray
+    let imgData: ImageData
+
+    const syncSize = () => {
+      const container = containerRef.current
+      if (!container) return
+      const cw = container.clientWidth  || 300
+      const ch = container.clientHeight || 200
+      const pixelsCount = cw * ch
+      const scale = pixelsCount > MAX_PIXELS ? Math.sqrt(MAX_PIXELS / pixelsCount) : 1
+      const w = Math.round(cw * scale)
+      const h = Math.round(ch * scale)
+      if (canvas.width !== w || canvas.height !== h || !buf) {
+        canvas.width  = w
+        canvas.height = h
+        RENDER_W = w
+        RENDER_H = h
+        buf = new Uint8Array(w * h * 4)
+        pixels = new Uint8ClampedArray(buf.buffer, buf.byteOffset, buf.byteLength)
+        imgData = new ImageData(pixels as any, w, h)
+      }
     }
-    setSize()
+    syncSize()
+
+    const ro = new ResizeObserver(syncSize)
+    const container = containerRef.current
+    if (container) ro.observe(container)
+
     const s = {
       paramIdx:   0,
       zoom:       180,
@@ -118,22 +149,11 @@ export default function FractalJulia() {
       directionTime: 0,
     }
 
-    let isVisible = true
-
-    const io = new IntersectionObserver(([e]) => {
-      isVisible = e.isIntersecting
-    })
-    io.observe(canvas)
-
     getWasmModule()
       .then((wasm) => {
         if (cancelled) return
 
         const { render_julia } = wasm
-
-        const buf = new Uint8Array(RENDER_W * RENDER_H * 4)
-        const pixels = new Uint8ClampedArray(buf.buffer, buf.byteOffset, buf.byteLength)
-        const imgData = new ImageData(pixels, RENDER_W, RENDER_H)
 
         const frame = (now: number) => {
           if (cancelled) return
@@ -145,7 +165,7 @@ export default function FractalJulia() {
           }
 
           if (canvas.width === 0 || canvas.height === 0) {
-            setSize()
+            syncSize()
             s.lastFrame = now
             rafRef.current = requestAnimationFrame(frame)
             return
@@ -279,17 +299,19 @@ export default function FractalJulia() {
     return () => {
       cancelled = true
       cancelAnimationFrame(rafRef.current)
-      window.removeEventListener('resize', setSize)
+      ro.disconnect()
       io.disconnect()
     }
   }, [])
 
   return (
-    <canvas
-      ref={canvasRef}
-      data-testid="fractal-julia-canvas"
-      style={{ display: 'block', width: '100%', height: '100%', imageRendering: 'pixelated' }}
-    />
+    <div ref={containerRef} style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
+      <canvas
+        ref={canvasRef}
+        data-testid="fractal-julia-canvas"
+        style={{ display: 'block', width: '100%', height: '100%', imageRendering: 'auto' }}
+      />
+    </div>
   )
 }
 

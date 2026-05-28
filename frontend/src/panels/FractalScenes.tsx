@@ -116,13 +116,13 @@ function makeFractalScene(
   maxIter:         number,
   colorTransform?: ColorTransform,
   _zoomMax:         number = 1e9,
-): () => React.JSX.Element {
+): React.NamedExoticComponent<any> {
   // Deterministic seed from title so each panel starts differently
   let seed = 0
   for (let i = 0; i < title.length; i++) seed = ((seed << 5) - seed + title.charCodeAt(i)) | 0
   const initialAngle = ((seed & 0xFFFF) / 0xFFFF) * Math.PI * 2
 
-  return function FractalScene() {
+  return React.memo(function FractalScene() {
     const containerRef = useRef<HTMLDivElement>(null)
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const stateRef  = useRef({
@@ -250,8 +250,7 @@ function makeFractalScene(
         try {
           if (type === 'mandelbrot') {
             const params = new wasmMod.RenderParams(s.centerX, s.centerY, s.zoom, maxIter, s.angle)
-            const mandelPixels = new Uint8ClampedArray(wasmMod.render(w, h, params))
-            pixels.set(mandelPixels)
+            wasmMod.render(buf, w, h, params)
           } else {
             wasmMod.render_julia(
               buf, w, h,
@@ -342,7 +341,7 @@ function makeFractalScene(
         </div>
       </Panel>
     )
-  }
+  })
 }
 
 /**
