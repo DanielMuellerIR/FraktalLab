@@ -80,6 +80,7 @@ export default function FractalCanvas() {
           s.centerX = LOCATIONS[s.locIdx].cx
           s.centerY = LOCATIONS[s.locIdx].cy
           s.initialized = true
+          ;(s as any).locTime = performance.now()
         }
 
         const frame = () => {
@@ -122,6 +123,7 @@ export default function FractalCanvas() {
               s.fadeAlpha    = 0
               s.prevImageData = null
               s.nextImageData = null
+              ;(s as any).locTime = performance.now()
             }
 
             rafRef.current = requestAnimationFrame(frame)
@@ -139,7 +141,8 @@ export default function FractalCanvas() {
           const angle = (s as any).angle || 0
 
           // Übergang auslösen bevor Floating-Point-Artefakte sichtbar werden
-          if (s.zoom > 3e4 && !s.fading) s.fading = true
+          const elapsed = performance.now() - ((s as any).locTime || performance.now())
+          if (s.zoom > 1.5e6 && elapsed > 12000 && !s.fading) s.fading = true
 
           try {
             const params = new RenderParams(s.centerX, s.centerY, s.zoom, 128, angle)
@@ -150,14 +153,14 @@ export default function FractalCanvas() {
               const boundary = findBoundaryNonBlack(pixels, canvas.width, canvas.height)
               if (boundary) {
                 const target = pixelToComplex(boundary.px, boundary.py, canvas.width, canvas.height, s.centerX, s.centerY, s.zoom, angle)
-                s.centerX += (target.x - s.centerX) * 0.05
-                s.centerY += (target.y - s.centerY) * 0.05
+                s.centerX += (target.x - s.centerX) * 0.15
+                s.centerY += (target.y - s.centerY) * 0.15
               }
             }
 
             // Schwarzraum-Früherkennung: wenn >75% der Pixel Mandelbrot-Inneres sind,
-            // sofort Übergang auslösen statt schwarze Frames zu zeigen.
-            if (!s.fading && s.zoom > 200) {
+            // sofort Übergang auslösen statt schwarze Frames zu zeigen (nur nach mind. 12s Zoom).
+            if (!s.fading && s.zoom > 200 && elapsed > 12000) {
               let black = 0, total = 0
               for (let i = 0; i < pixels.length; i += 128) {
                 if (pixels[i] === 0 && pixels[i + 1] === 0 && pixels[i + 2] === 0) black++
@@ -168,6 +171,8 @@ export default function FractalCanvas() {
 
             // Aktuellen Frame immer auf Canvas ausgeben
             ctx.putImageData(new ImageData(pixels, canvas.width, canvas.height), 0, 0)
+            canvas.setAttribute('data-zoom', s.zoom.toString())
+            canvas.setAttribute('data-zoom-direction', s.fading ? '0' : '1')
 
             // Übergang starten: Snapshot beider Frames vorbereiten
             if (s.fading && !s.prevImageData) {

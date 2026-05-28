@@ -157,7 +157,7 @@ export default function FractalJulia() {
 
           // ── Normal Render ──
           // Exponential zoom
-          const zoomRate = Math.pow(1.026, dt / 16.7)
+          const zoomRate = Math.pow(1.018, dt / 16.7)
           if (s.zoomDirection === 1) {
             s.zoom *= zoomRate
           } else {
@@ -168,13 +168,14 @@ export default function FractalJulia() {
           s.angle += 0.004 * (dt / 16.7) * s.zoomDirection
           
           // Tumbling
-          const tumbleAmp = 0.03 / s.zoom
+          const factor = s.zoomDirection === 1 ? 0.05 : 1.0
+          const tumbleAmp = (0.03 / s.zoom) * factor
           s.centerX += Math.sin(now * 0.0005) * tumbleAmp
           s.centerY += Math.cos(now * 0.0007) * tumbleAmp
 
           // Constant scaled drift
           s.driftAngle += 0.008 * (dt / 16.7)
-          const driftDist = 0.42 / s.zoom
+          const driftDist = (0.42 / s.zoom) * factor
           s.centerX += Math.cos(s.driftAngle) * driftDist
           s.centerY += Math.sin(s.driftAngle) * driftDist
 
@@ -211,7 +212,7 @@ export default function FractalJulia() {
                 const targetY = s.centerY + ry
 
                 // Smoothly nudge center towards boundary
-                const lerpFactor = 1 - Math.pow(0.94, dt / 16.7)
+                const lerpFactor = 1 - Math.pow(0.84, dt / 16.7)
                 s.centerX += (targetX - s.centerX) * lerpFactor
                 s.centerY += (targetY - s.centerY) * lerpFactor
               }
@@ -219,6 +220,8 @@ export default function FractalJulia() {
 
             // Put image data to canvas
             ctx.putImageData(imgData, 0, 0)
+            canvas.setAttribute('data-zoom', s.zoom.toString())
+            canvas.setAttribute('data-zoom-direction', s.zoomDirection.toString())
           } catch (err) {
             console.error('[FractalJulia] WASM error:', err)
           }

@@ -221,7 +221,7 @@ function makeFractalScene(
         updateBuffers(w, h)
 
         // ── Zoom ──
-        const zoomRate = Math.pow(type === 'mandelbrot' ? 1.038 : 1.026, dt / 16.7)
+        const zoomRate = Math.pow(type === 'mandelbrot' ? 1.020 : 1.018, dt / 16.7)
         if (s.zoomDirection === 1) {
           s.zoom *= zoomRate
         } else {
@@ -233,12 +233,14 @@ function makeFractalScene(
 
         // Drift/tumble only at deeper zoom
         if (s.zoom > (type === 'mandelbrot' ? 30 : 600)) {
-          const tumbleAmp = 0.03 / s.zoom
+          // Reduce drift/tumble amplitude during zoom-in so it doesn't fight boundary tracking
+          const factor = s.zoomDirection === 1 ? 0.05 : 1.0
+          const tumbleAmp = (0.03 / s.zoom) * factor
           s.centerX += Math.sin(t * 0.0006) * tumbleAmp
           s.centerY += Math.cos(t * 0.0008) * tumbleAmp
 
           s.driftAngle += 0.006 * (dt / 16.7)
-          const maxDrift = (type === 'mandelbrot' ? 0.2 : 0.3) / s.zoom
+          const maxDrift = ((type === 'mandelbrot' ? 0.2 : 0.3) / s.zoom) * factor
           s.centerX += Math.cos(s.driftAngle) * maxDrift
           s.centerY += Math.sin(s.driftAngle) * maxDrift
         }
@@ -263,7 +265,7 @@ function makeFractalScene(
             const boundary = findBoundaryNonBlack(pixels, w, h)
             if (boundary) {
               const target = pixelToComplex(boundary.px, boundary.py, w, h, s.centerX, s.centerY, s.zoom, type, s.angle)
-              const lerpFactor = 1 - Math.pow(0.94, dt / 16.7)
+              const lerpFactor = 1 - Math.pow(0.84, dt / 16.7)
               s.centerX += (target.x - s.centerX) * lerpFactor
               s.centerY += (target.y - s.centerY) * lerpFactor
             }
@@ -271,6 +273,8 @@ function makeFractalScene(
 
           if (colorTransform) applyTransform(pixels, colorTransform)
           ctx.putImageData(imgData, 0, 0)
+          canvas.setAttribute('data-zoom', s.zoom.toString())
+          canvas.setAttribute('data-zoom-direction', s.zoomDirection.toString())
         } catch (err) {
           console.error('[FractalScenes] Render error:', err)
           return
@@ -466,7 +470,6 @@ export const FractalSatellite = makeFractalScene(
   'SATELLITE ORBIT // DATASTREAM',
   'mandelbrot',
   [
-    { cx: -0.5,    cy: 0.0    },  // start: full view with guaranteed variance
     { cx: -1.2560, cy: 0.3818 },  // satellite bulb
     { cx: -0.7326, cy: 0.2312 },  // seahorse-adjacent
   ],
