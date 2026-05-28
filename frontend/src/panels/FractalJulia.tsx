@@ -157,11 +157,13 @@ export default function FractalJulia() {
 
           // ── Normal Render ──
           // Exponential zoom
-          const zoomRate = Math.pow(1.018, dt / 16.7)
           if (s.zoomDirection === 1) {
+            const zoomRate = Math.pow(1.018, dt / 16.7)
             s.zoom *= zoomRate
           } else {
-            s.zoom /= zoomRate
+            // Warp zoom-out speed to minimize black screen time
+            const zoomRateOut = Math.pow(1.100, dt / 16.7)
+            s.zoom /= zoomRateOut
           }
 
           // Slow rotation and tumbling

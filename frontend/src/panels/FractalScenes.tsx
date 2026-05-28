@@ -221,11 +221,13 @@ function makeFractalScene(
         updateBuffers(w, h)
 
         // ── Zoom ──
-        const zoomRate = Math.pow(type === 'mandelbrot' ? 1.020 : 1.018, dt / 16.7)
         if (s.zoomDirection === 1) {
+          const zoomRate = Math.pow(type === 'mandelbrot' ? 1.020 : 1.018, dt / 16.7)
           s.zoom *= zoomRate
         } else {
-          s.zoom /= zoomRate
+          // Warp zoom-out speed to minimize black screen time
+          const zoomRateOut = Math.pow(type === 'mandelbrot' ? 1.120 : 1.100, dt / 16.7)
+          s.zoom /= zoomRateOut
         }
 
         // Slow rotation
@@ -408,11 +410,11 @@ export const FractalSpiral = makeFractalScene(
   'TRIPLE SPIRAL // SECTOR 3',
   'mandelbrot',
   [
-    { cx: 0.36,  cy: 0.1  },
-    { cx: 0.355, cy: 0.108 },
+    { cx: -0.761574, cy: -0.0847596 },
+    { cx: -0.743643, cy: 0.1318259  },
   ],
   null,
-  130,
+  200,
   'mono',
   1e9
 )
@@ -421,11 +423,11 @@ export const FractalLightning = makeFractalScene(
   'LIGHTNING FORK // VECTOR FIELD',
   'mandelbrot',
   [
-    { cx: -0.0630, cy: 0.6748 },
-    { cx: -0.0621, cy: 0.7140 },
+    { cx: -1.25066, cy: 0.02012 },
+    { cx: -1.25045, cy: 0.02019 },
   ],
   null,
-  120,
+  200,
   'cold',
   1e9
 )
@@ -474,7 +476,7 @@ export const FractalSatellite = makeFractalScene(
     { cx: -0.7326, cy: 0.2312 },  // seahorse-adjacent
   ],
   null,
-  130,
+  200,
   'cold',
   1e9
 )
@@ -507,11 +509,11 @@ export const FractalTendril = makeFractalScene(
   'TENDRIL CLUSTER // CRAWLING',
   'mandelbrot',
   [
-    { cx: -0.7490, cy: 0.0585 },
-    { cx: -0.7080, cy: 0.2492 },
+    { cx: -0.7483, cy: 0.1127 },
+    { cx: -0.743643, cy: 0.1318259 },
   ],
   null,
-  120,
+  200,
   'hot',
   1e9
 )

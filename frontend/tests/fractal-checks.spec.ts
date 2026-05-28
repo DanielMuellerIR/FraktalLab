@@ -2,16 +2,16 @@ import { test, expect, Page } from '@playwright/test'
 
 const BASE_URL = process.env.VITE_URL ?? 'http://localhost:5174'
 
-// 5 Regionen standard deviation check
-async function canvasMaxStdDev(page: Page): Promise<number> {
+// 5 Regionen detail checks (stddev & complexity)
+async function canvasQualityMetrics(page: Page): Promise<{ stddev: number; activeBins: number }> {
   return page.evaluate(() => {
     const canvas = document.querySelector<HTMLCanvasElement>('canvas:not([data-testid="glitch-overlay"])')
-    if (!canvas) return 0
+    if (!canvas) return { stddev: 0, activeBins: 0 }
     const w = canvas.width
     const h = canvas.height
-    if (w < 4 || h < 4) return 0
+    if (w < 4 || h < 4) return { stddev: 0, activeBins: 0 }
     const ctx = canvas.getContext('2d')
-    if (!ctx) return 0
+    if (!ctx) return { stddev: 0, activeBins: 0 }
 
     const sw = Math.min(w, 80)
     const sh = Math.min(h, 80)
@@ -33,16 +33,30 @@ async function canvasMaxStdDev(page: Page): Promise<number> {
       return Math.sqrt(variance)
     }
 
+    function activeBinsOf(data: Uint8ClampedArray): number {
+      const bins = new Array(16).fill(0)
+      const numPixels = data.length / 4
+      for (let i = 0; i < data.length; i += 4) {
+        const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+        const binIdx = Math.min(15, Math.floor(lum / 16))
+        bins[binIdx]++
+      }
+      const threshold = numPixels * 0.005 // at least 0.5% of pixels
+      return bins.filter(count => count >= threshold).length
+    }
+
     let maxStddev = 0
+    let maxActiveBins = 0
     for (const r of regions) {
       try {
         const data = ctx.getImageData(r.x, r.y, sw, sh).data
         maxStddev = Math.max(maxStddev, stddevOf(data))
+        maxActiveBins = Math.max(maxActiveBins, activeBinsOf(data))
       } catch {
-        return -1 // tainted
+        return { stddev: -1, activeBins: -1 } // tainted
       }
     }
-    return maxStddev
+    return { stddev: maxStddev, activeBins: maxActiveBins }
   })
 }
 
@@ -96,10 +110,11 @@ test.describe('Automatisches Testsystem - Fraktal Zoom & Detail Check', () => {
         const initialDir = info?.direction ?? '0'
         console.log(`    Initial Dir: ${initialDir}, Initial Zoom: ${info?.zoom}`)
 
-        // Verify stddev is high at start
-        let stddev = await canvasMaxStdDev(page)
-        console.log(`    Initial StdDev: ${stddev.toFixed(2)}`)
-        expect(stddev, `Fractal panel ${panelTitle} has no detail at start`).toBeGreaterThan(5)
+        // Verify stddev and color complexity are high at start
+        let metrics = await canvasQualityMetrics(page)
+        console.log(`    Initial Metrics -> StdDev: ${metrics.stddev.toFixed(2)}, ActiveBins: ${metrics.activeBins}`)
+        expect(metrics.stddev, `Fractal panel ${panelTitle} has no detail at start`).toBeGreaterThan(5)
+        expect(metrics.activeBins, `Fractal panel ${panelTitle} has low complexity / lacks gradients at start`).toBeGreaterThanOrEqual(2)
 
         // Verify zoom and direction over 10 seconds
         let lastZoom = info?.zoom ?? 0
@@ -107,12 +122,15 @@ test.describe('Automatisches Testsystem - Fraktal Zoom & Detail Check', () => {
           await page.waitForTimeout(1000)
           
           info = await getCanvasZoomInfo(page)
-          stddev = await canvasMaxStdDev(page)
+          metrics = await canvasQualityMetrics(page)
 
-          console.log(`      Second ${sec}: Zoom: ${info?.zoom?.toFixed(2)}, Dir: ${info?.direction}, StdDev: ${stddev.toFixed(2)}`)
+          console.log(`      Second ${sec}: Zoom: ${info?.zoom?.toFixed(2)}, Dir: ${info?.direction}, StdDev: ${metrics.stddev.toFixed(2)}, ActiveBins: ${metrics.activeBins}`)
 
           // Verify stddev stays high (no black or empty space)
-          expect(stddev, `Fractal panel ${panelTitle} faded to black/solid color at second ${sec}`).toBeGreaterThan(5)
+          expect(metrics.stddev, `Fractal panel ${panelTitle} faded to black/solid color at second ${sec}`).toBeGreaterThan(5)
+          
+          // Verify color complexity stays high (no boring bicolor/gradient-free zones)
+          expect(metrics.activeBins, `Fractal panel ${panelTitle} has low color complexity / lacks gradients at second ${sec}`).toBeGreaterThanOrEqual(2)
           
           // Verify zoom direction has not flipped
           expect(info?.direction, `Fractal panel ${panelTitle} flipped zoom direction before 10 seconds!`).toBe(initialDir)
