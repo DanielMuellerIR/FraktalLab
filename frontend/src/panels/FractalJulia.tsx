@@ -115,6 +115,7 @@ export default function FractalJulia() {
       angle:      Math.random() * Math.PI * 2,
       driftAngle: Math.random() * Math.PI * 2,
       lastFrame:  performance.now(),
+      directionTime: 0,
     }
 
     let isVisible = true
@@ -152,6 +153,7 @@ export default function FractalJulia() {
 
           const dt = Math.max(1, Math.min(100, now - s.lastFrame))
           s.lastFrame = now
+          s.directionTime += dt
 
           // ── Normal Render ──
           // Exponential zoom
@@ -226,21 +228,29 @@ export default function FractalJulia() {
           const maxZoomLimit = 1.5e10
 
           if (s.zoomDirection === 1) {
-            if (lowDetail && s.zoom > 1000) {
-              s.zoomDirection = -1
-            } else if (s.zoom > maxZoomLimit) {
-              s.zoomDirection = -1
+            if (s.directionTime > 12000) {
+              if (lowDetail && s.zoom > 1000) {
+                s.zoomDirection = -1
+                s.directionTime = 0
+              } else if (s.zoom > maxZoomLimit) {
+                s.zoomDirection = -1
+                s.directionTime = 0
+              }
             }
           } else {
             if (s.zoom <= 180) {
               s.zoomDirection = 1
               s.zoom = 180
+              s.directionTime = 0
               
               // Switch to next param set to keep things interesting
               s.paramIdx = (s.paramIdx + 1) % JULIA_PARAMS.length
               s.centerX = 0.0
               s.centerY = 0.0
               s.driftAngle = Math.random() * Math.PI * 2
+            } else if (s.directionTime > 12000 && lowDetail) {
+              s.zoomDirection = 1
+              s.directionTime = 0
             }
           }
 

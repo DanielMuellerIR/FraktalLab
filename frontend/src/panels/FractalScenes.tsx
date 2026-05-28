@@ -117,15 +117,13 @@ function makeFractalScene(
   colorTransform?: ColorTransform,
   _zoomMax:         number = 1e9,
 ): () => React.JSX.Element {
-  const W = 320
-  const H = 213
-
   // Deterministic seed from title so each panel starts differently
   let seed = 0
   for (let i = 0; i < title.length; i++) seed = ((seed << 5) - seed + title.charCodeAt(i)) | 0
   const initialAngle = ((seed & 0xFFFF) / 0xFFFF) * Math.PI * 2
 
   return function FractalScene() {
+    const containerRef = useRef<HTMLDivElement>(null)
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const stateRef  = useRef({
       zoom:       type === 'mandelbrot' ? 10 : 180,
@@ -136,9 +134,11 @@ function makeFractalScene(
       angle:      initialAngle,
       driftAngle: initialAngle + 1.0,
       lastFrame:  0,
+      directionTime: 0,
     })
 
     useEffect(() => {
+      const container = containerRef.current!
       const canvas = canvasRef.current!
       const ctx    = canvas.getContext('2d')!
       let raf: number
@@ -158,9 +158,43 @@ function makeFractalScene(
         console.error('[FractalScenes] WASM-Fehler (import):', err)
       })
 
-      const buf = new Uint8Array(W * H * 4)
-      const pixels = new Uint8ClampedArray(buf.buffer, buf.byteOffset, buf.byteLength)
-      const imgData = new ImageData(pixels, W, H)
+      // Dynamic sizing configuration
+      const MAX_PIXELS = 120000
+      let w = 320
+      let h = 213
+      let lastW = 0
+      let lastH = 0
+      let buf: Uint8Array
+      let pixels: Uint8ClampedArray
+      let imgData: ImageData
+
+      const syncSize = () => {
+        const cw = container.clientWidth  || 300
+        const ch = container.clientHeight || 200
+        const pixelCount = cw * ch
+        const scale = pixelCount > MAX_PIXELS ? Math.sqrt(MAX_PIXELS / pixelCount) : 1
+        const targetW = Math.round(cw * scale)
+        const targetH = Math.round(ch * scale)
+        if (canvas.width !== targetW || canvas.height !== targetH) {
+          canvas.width  = targetW
+          canvas.height = targetH
+        }
+        w = canvas.width
+        h = canvas.height
+      }
+      syncSize()
+
+      const ro = new ResizeObserver(syncSize)
+      ro.observe(container)
+
+      const updateBuffers = (targetW: number, targetH: number) => {
+        if (targetW === lastW && targetH === lastH) return
+        buf = new Uint8Array(targetW * targetH * 4)
+        pixels = new Uint8ClampedArray(buf.buffer as ArrayBuffer, buf.byteOffset, buf.byteLength)
+        imgData = new ImageData(pixels as any, targetW, targetH)
+        lastW = targetW
+        lastH = targetH
+      }
 
       function loop(t: number) {
         if (!alive) return
@@ -177,9 +211,14 @@ function makeFractalScene(
         if (t - s.lastFrame < 33) return
         const dt = t - s.lastFrame
         s.lastFrame = t
+        s.directionTime += dt
 
         if (!isVisible) return
         if (!wasmMod) return
+
+        syncSize()
+        if (w === 0 || h === 0) return
+        updateBuffers(w, h)
 
         // ── Zoom ──
         const zoomRate = Math.pow(type === 'mandelbrot' ? 1.038 : 1.026, dt / 16.7)
@@ -207,11 +246,11 @@ function makeFractalScene(
         try {
           if (type === 'mandelbrot') {
             const params = new wasmMod.RenderParams(s.centerX, s.centerY, s.zoom, maxIter, s.angle)
-            const mandelPixels = new Uint8ClampedArray(wasmMod.render(W, H, params))
+            const mandelPixels = new Uint8ClampedArray(wasmMod.render(w, h, params))
             pixels.set(mandelPixels)
           } else {
             wasmMod.render_julia(
-              buf, W, H,
+              buf, w, h,
               juliaC!.cx, juliaC!.cy,
               s.centerX, s.centerY,
               s.zoom, maxIter, s.angle
@@ -221,9 +260,9 @@ function makeFractalScene(
           // Boundary feedback: steer toward the NON-BLACK side of boundaries
           // This prevents zooming into the solid interior of the set
           if (s.zoomDirection === 1 && s.zoom > 8) {
-            const boundary = findBoundaryNonBlack(pixels, W, H)
+            const boundary = findBoundaryNonBlack(pixels, w, h)
             if (boundary) {
-              const target = pixelToComplex(boundary.px, boundary.py, W, H, s.centerX, s.centerY, s.zoom, type, s.angle)
+              const target = pixelToComplex(boundary.px, boundary.py, w, h, s.centerX, s.centerY, s.zoom, type, s.angle)
               const lerpFactor = 1 - Math.pow(0.94, dt / 16.7)
               s.centerX += (target.x - s.centerX) * lerpFactor
               s.centerY += (target.y - s.centerY) * lerpFactor
@@ -243,15 +282,20 @@ function makeFractalScene(
         const maxZoomLimit = type === 'mandelbrot' ? 2e12 : 2e9
 
         if (s.zoomDirection === 1) {
-          if (lowDetail && s.zoom > minZoom * 4) {
-            s.zoomDirection = -1
-          } else if (s.zoom > maxZoomLimit) {
-            s.zoomDirection = -1
+          if (s.directionTime > 12000) {
+            if (lowDetail && s.zoom > minZoom * 4) {
+              s.zoomDirection = -1
+              s.directionTime = 0
+            } else if (s.zoom > maxZoomLimit) {
+              s.zoomDirection = -1
+              s.directionTime = 0
+            }
           }
         } else {
           if (s.zoom <= minZoom) {
             s.zoomDirection = 1
             s.zoom = minZoom
+            s.directionTime = 0
 
             // Cycle through locs for variety
             if (type === 'mandelbrot' && locs.length > 1) {
@@ -266,6 +310,9 @@ function makeFractalScene(
               s.centerY = (Math.random() - 0.5) * 0.04
             }
             s.driftAngle = Math.random() * Math.PI * 2
+          } else if (s.directionTime > 12000 && lowDetail) {
+            s.zoomDirection = 1
+            s.directionTime = 0
           }
         }
       }
@@ -275,16 +322,18 @@ function makeFractalScene(
         alive = false
         cancelAnimationFrame(raf)
         io.disconnect()
+        ro.disconnect()
       }
     }, [])
 
     return (
       <Panel title={title}>
-        <canvas
-          ref={canvasRef}
-          width={W} height={H}
-          style={{ width:'100%', height:'100%', imageRendering:'pixelated', display:'block' }}
-        />
+        <div ref={containerRef} style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
+          <canvas
+            ref={canvasRef}
+            style={{ display: 'block', width: '100%', height: '100%', imageRendering: 'pixelated' }}
+          />
+        </div>
       </Panel>
     )
   }

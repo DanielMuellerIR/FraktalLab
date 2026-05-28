@@ -286,7 +286,7 @@ export default function C64Panel() {
     let phase:      Phase  = 'boot'
     let phaseStart: number = 0
 
-    const LOAD_CMD = 'LOAD"*",8,1:'
+    const LOAD_CMD = 'LOAD"*",8,1'
     const RUN_CMD  = 'RUN'
     let typedSoFar = ''
 
@@ -317,8 +317,7 @@ export default function C64Panel() {
       for (let i = 0; i < SCROLL_TXT.length; i++) {
         const cx2 = scrollX + i * charW
         if (cx2 < bx - charW || cx2 > bx + cw) continue
-        const phase2 = (cx2 - bx) / (cw * 0.5)
-        const cy2 = centerY + Math.sin(phase2 * Math.PI * 2 + now / 600) * amplitude - charW / 2
+        const cy2 = centerY + Math.sin(i * 0.25 + now / 250) * amplitude - charW / 2
         
         const palIdx = (Math.floor(i + now / 80)) % PAL.length
         const cColor = PAL[Math.max(1, palIdx)]

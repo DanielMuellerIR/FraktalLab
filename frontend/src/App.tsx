@@ -24,6 +24,8 @@ import DiskCleanupPanel  from './panels/DiskCleanupPanel'
 import StockTickerPanel  from './panels/StockTickerPanel'
 import SatellitePanel    from './panels/SatellitePanel'
 import ClassifiedPanel   from './panels/ClassifiedPanel'
+import MetaAgentPanel    from './panels/MetaAgentPanel'
+
 
 // ── Grafik-Panels ─────────────────────────────────────────────────────────────
 import { VoxelDemoColor, VoxelDemoBW } from './panels/VoxelDemo'
@@ -59,7 +61,7 @@ const POOL_TEXT: React.ComponentType[] = [
   SystemLog, DataStream, SocialEngineering, Vitals, TrafficMonitor,
   NuclearTargets, PwdCracker, PortScanner, PseudoCode,
   AgentCodePanel, VisitorProfilePanel, ICQChatPanel, BitcoinMinerPanel, DiskCleanupPanel,
-  StockTickerPanel, SatellitePanel, ClassifiedPanel,
+  StockTickerPanel, SatellitePanel, ClassifiedPanel, MetaAgentPanel,
 ]
 
 // Alle visuellen Panels in einem Pool — AllYourBase und EnhanceView sind normale Einträge
@@ -334,6 +336,7 @@ function generateLayout(id: number): GeneratedLayout {
 // Jeder Eintrag hat einen stabilen Namen (Funktionsname) als ID für localStorage.
 const ALL_PANELS: { name: string; Component: React.ComponentType }[] = [
   // --- Recently Worked-On / Overhauled Panels (First in list) ---
+  { name: 'MetaAgentPanel',     Component: MetaAgentPanel },
   { name: 'FractalJulia',       Component: FractalJulia },
   { name: 'C64Panel',           Component: C64Panel },
   { name: 'FractalSeahorse',    Component: FractalSeahorse },
@@ -609,7 +612,7 @@ export default function App() {
 
   // Automatische Review-Zurücksetzung bei Versionsänderung
   useEffect(() => {
-    const RESET_VERSION = 'v0.9.9-reset-5'
+    const RESET_VERSION = 'v1.1.0-reset-1'
     const currentReset = localStorage.getItem('fraktallab_reset_version')
     if (currentReset !== RESET_VERSION) {
       localStorage.removeItem(LS_KEY)
@@ -768,7 +771,7 @@ export default function App() {
       {/* Kopfzeile */}
       <header className="border-b border-green-900 px-3 py-1 flex items-center gap-3 shrink-0">
         <span className="text-green-600 text-xs uppercase tracking-widest">
-          ◈ FRAKTALLAB // NEURAL INTRUSION DASHBOARD v0.9.9
+          ◈ FRAKTALLAB // NEURAL INTRUSION DASHBOARD v1.1.0
         </span>
         <span className="ml-auto text-red-800 text-xs animate-pulse">● LIVE</span>
 

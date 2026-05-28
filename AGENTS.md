@@ -222,3 +222,47 @@ Basis: manueller Durchlauf aller Panels am 2026-05-21. Daumen rauf/runter = erst
 
 - → **AmiModPanel** echte .mod-Dateien: Aufwand hoch (MOD-Parser oder libopenmpt-WASM benötigt) — Tracks siehe Roadmap oben
 - → **EnhanceView** Live-Webcams: CORS/CSP-Problem mit externen Streams; unklar ob ohne Backend realisierbar
+
+---
+
+## Offene Todos (Eval 2026-05-28)
+
+Basis: Review-Modus JSON vom 2026-05-28.
+
+### Erledigt / Bestätigt (Daumen hoch)
+- [x] **FractalSeahorse**
+- [x] **FractalDragon** — "Super."
+- [x] **ThreeBodyScene**
+- [x] **FireScene**
+- [x] **LissajousScene**
+- [x] **TunnelScene**
+- [x] **RotozoomScene**
+- [x] **PlasmaDemo**
+- [x] **EnhanceView**
+- [x] **VoxelThermal**
+- [x] **VoxelMatrix**
+- [x] **StarfieldScene**
+- [x] **OscilloscopePanel**
+- [x] **MetaballsScene**
+- [x] **AllYourBase**
+- [x] **ElitePanel**
+- [x] **CADRobotPanel**
+- [x] **RetroErrorPanel**
+- [x] **RadarSweepPanel**
+- [x] **DNAHelix**
+- [x] **ICQChatPanel**
+- [x] **VisitorProfilePanel**
+- [x] **SatellitePanel**
+- [x] **BitcoinMinerPanel**
+- [x] **PwdCracker**
+- [x] **DiskCleanupPanel**
+- [x] **StockTickerPanel**
+- [x] **ClassifiedPanel**
+
+### Offen (Daumen runter / Feedback)
+- [x] **FractalDendrite** — Viel zu grobpixelig
+- [x] **FractalSwirl** — Gleiche Kritik wie bei den anderen Fraktalpanels (grobpixelig)
+- [x] **FractalView** — Zoom geht in den Schwarzen bereich, nicht gut
+- [x] **TrafficMonitor** — langweilig, lieber ein semi-grafisches Tool mit absurd übertriebenen Netzwerk-Statistiken eines Computers aus der Zukunft
+- [x] **MetaAgentPanel** (Neu) — Grafischer Coding Agent mit verschachtelter Endlosschleife und Variationen
+

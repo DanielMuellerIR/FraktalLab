@@ -19,10 +19,13 @@ export default function FractalCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // Zoom-State im Ref statt im React-State — kein Re-render-Overhead pro Frame.
   // Zufälliger Einstieg: andere Location und Zoom-Stufe bei jedem Laden.
-  // eslint-disable-next-line react-hooks/purity
+// eslint-disable-next-line react-hooks/purity
   const stateRef = useRef({
     zoom:          80 + Math.random() * 800,
     locIdx:        Math.floor(Math.random() * LOCATIONS.length),
+    centerX:       0,
+    centerY:       0,
+    initialized:   false,
     fadeAlpha:     0,
     fading:        false,
     // Cross-Fade: Snapshots des aktuellen und nächsten Frames
@@ -30,6 +33,8 @@ export default function FractalCanvas() {
     nextImageData: null as ImageData | null,
     nextLocIdx:    0,
     nextZoom:      80,
+    nextCenterX:   0,
+    nextCenterY:   0,
   })
   const rafRef = useRef<number>(0)
 
@@ -71,6 +76,12 @@ export default function FractalCanvas() {
         const { RenderParams, render } = wasm
         const s = stateRef.current
 
+        if (!s.initialized) {
+          s.centerX = LOCATIONS[s.locIdx].cx
+          s.centerY = LOCATIONS[s.locIdx].cy
+          s.initialized = true
+        }
+
         const frame = () => {
           if (cancelled) return
 
@@ -105,6 +116,8 @@ export default function FractalCanvas() {
             if (s.fadeAlpha >= 1) {
               s.locIdx       = s.nextLocIdx
               s.zoom         = s.nextZoom
+              s.centerX      = s.nextCenterX
+              s.centerY      = s.nextCenterY
               s.fading       = false
               s.fadeAlpha    = 0
               s.prevImageData = null
@@ -116,7 +129,6 @@ export default function FractalCanvas() {
           }
 
           // ── Normaler Live-Render ────────────────────────────────────────────
-          const loc = LOCATIONS[s.locIdx]
           s.zoom *= 1.015
           
           // Rotate background fractal slowly
@@ -130,12 +142,21 @@ export default function FractalCanvas() {
           if (s.zoom > 3e4 && !s.fading) s.fading = true
 
           try {
-            const params = new RenderParams(loc.cx, loc.cy, s.zoom, 128, angle)
+            const params = new RenderParams(s.centerX, s.centerY, s.zoom, 128, angle)
             const pixels = new Uint8ClampedArray(render(canvas.width, canvas.height, params))
+
+            // Boundary tracking: keep zooming on high-detail boundary and avoid black interior
+            if (!s.fading && s.zoom > 200) {
+              const boundary = findBoundaryNonBlack(pixels, canvas.width, canvas.height)
+              if (boundary) {
+                const target = pixelToComplex(boundary.px, boundary.py, canvas.width, canvas.height, s.centerX, s.centerY, s.zoom, angle)
+                s.centerX += (target.x - s.centerX) * 0.05
+                s.centerY += (target.y - s.centerY) * 0.05
+              }
+            }
 
             // Schwarzraum-Früherkennung: wenn >75% der Pixel Mandelbrot-Inneres sind,
             // sofort Übergang auslösen statt schwarze Frames zu zeigen.
-            // Zoom-Guard: unter 200 ist ein großes Inneres normal (breite Außenansicht).
             if (!s.fading && s.zoom > 200) {
               let black = 0, total = 0
               for (let i = 0; i < pixels.length; i += 128) {
@@ -156,10 +177,11 @@ export default function FractalCanvas() {
               // Nächste Location und Zoom bestimmen
               s.nextLocIdx = (s.locIdx + 1) % LOCATIONS.length
               s.nextZoom   = 80 + Math.random() * 800
+              s.nextCenterX = LOCATIONS[s.nextLocIdx].cx
+              s.nextCenterY = LOCATIONS[s.nextLocIdx].cy
 
               // Einen WASM-Frame der Ziel-Location rendern
-              const nextLoc    = LOCATIONS[s.nextLocIdx]
-              const nextParams = new RenderParams(nextLoc.cx, nextLoc.cy, s.nextZoom, 128, 0.0)
+              const nextParams = new RenderParams(s.nextCenterX, s.nextCenterY, s.nextZoom, 128, 0.0)
               const nextPixels = new Uint8ClampedArray(render(canvas.width, canvas.height, nextParams))
               s.nextImageData  = new ImageData(nextPixels, canvas.width, canvas.height)
 
@@ -190,5 +212,67 @@ export default function FractalCanvas() {
       />
     </div>
   )
+}
+
+function pixelToComplex(
+  px: number,
+  py: number,
+  W: number,
+  H: number,
+  centerX: number,
+  centerY: number,
+  zoom: number,
+  angle: number
+): { x: number; y: number } {
+  const dx = (px - W / 2) / (zoom * W / 4.0)
+  const dy = (py - H / 2) / (zoom * H / 4.0)
+
+  const cos_a = Math.cos(angle)
+  const sin_a = Math.sin(angle)
+  const rx = dx * cos_a - dy * sin_a
+  const ry = dx * sin_a + dy * cos_a
+
+  return {
+    x: centerX + rx,
+    y: centerY + ry,
+  }
+}
+
+function findBoundaryNonBlack(pixels: Uint8ClampedArray, W: number, H: number): { px: number, py: number } | null {
+  const cx = Math.floor(W / 2)
+  const cy = Math.floor(H / 2)
+
+  const isBlack = (x: number, y: number) => {
+    const idx = (y * W + x) * 4
+    return pixels[idx] === 0 && pixels[idx + 1] === 0 && pixels[idx + 2] === 0
+  }
+
+  const maxRadius = Math.min(cx, cy) - 2
+  for (let r = 1; r < maxRadius; r += 2) {
+    const numSamples = Math.min(64, 4 * r)
+    for (let si = 0; si < numSamples; si++) {
+      const angle = (si * 2 * Math.PI) / numSamples
+      const px = Math.round(cx + r * Math.cos(angle))
+      const py = Math.round(cy + r * Math.sin(angle))
+
+      if (px < 1 || px >= W - 1 || py < 1 || py >= H - 1) continue
+
+      const centerIsBlack = isBlack(px, py)
+      const neighbors = [
+        isBlack(px - 1, py), isBlack(px + 1, py),
+        isBlack(px, py - 1), isBlack(px, py + 1),
+      ]
+      const isBoundary = neighbors.some(n => n !== centerIsBlack)
+
+      if (isBoundary) {
+        if (!centerIsBlack) return { px, py }
+        if (!neighbors[0]) return { px: px - 1, py }
+        if (!neighbors[1]) return { px: px + 1, py }
+        if (!neighbors[2]) return { px, py: py - 1 }
+        if (!neighbors[3]) return { px, py: py + 1 }
+      }
+    }
+  }
+  return null
 }
 
