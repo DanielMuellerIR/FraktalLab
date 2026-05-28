@@ -205,8 +205,8 @@ const FIRE_SHADER = `
     float n = fbm(noiseUV);
     float heat = base * 0.4 + n * 0.7;
     
-    // Blaue/cyan "Plasma-Jets" (jede 4. Spalte)
-    float isJet = step(0.9, sin(uv.x * 12.5));
+    // Blaue/cyan "Plasma-Jets" deaktiviert für ein homogenes Flammenbild
+    float isJet = 0.0;
     
     // Chemiefeuer-Modus (3 Sekunden alle 30 Sekunden)
     float chemTime = mod(ts, 30.0);

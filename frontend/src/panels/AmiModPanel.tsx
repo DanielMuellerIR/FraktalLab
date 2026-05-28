@@ -3,6 +3,9 @@ import Panel from '../ui/Panel';
 import { ModPlayer } from '../utils/modplayer/player';
 import { Mod, Note } from '../utils/modplayer/mod';
 import { subscribe } from '../utils/raf-coordinator';
+import { registerAudioFocusListener, requestAudioFocus, releaseAudioFocus } from '../utils/audio-focus';
+
+const AUDIO_ID = 'ami-mod-player';
 
 
 // ─── Musik-Tracks ─────────────────────────────────────────────────────────────
@@ -100,10 +103,20 @@ function AmiModPanel() {
   const playerRef = useRef<ModPlayer>(player);
   const shouldAutoPlayRef = useRef(false);
 
-  // ModPlayer beim Unmount entladen
+  // ModPlayer beim Unmount entladen und Audio-Fokus abonnieren
   useEffect(() => {
+    const unsubscribe = registerAudioFocusListener((focusedId) => {
+      if (focusedId !== null && focusedId !== AUDIO_ID) {
+        player.stop();
+        setPlaying(false);
+        (window as any).fraktallab_mod_playing = false;
+      }
+    });
+
     return () => {
+      unsubscribe();
       player.unload();
+      releaseAudioFocus(AUDIO_ID);
       (window as any).fraktallab_mod_playing = false;
     };
   }, [player]);
@@ -139,6 +152,7 @@ function AmiModPanel() {
       setMod(player.mod);
 
       if (shouldAutoPlayRef.current) {
+        requestAudioFocus(AUDIO_ID);
         player.play();
         setPlaying(true);
         (window as any).fraktallab_mod_playing = true;
@@ -264,7 +278,7 @@ function AmiModPanel() {
     container.scrollTop = rowTop - (containerHeight / 2) + (rowHeight / 2);
   }, [currentPosition]);
 
-  // Abspielen / Stoppen umschalten
+  // Abspielen / Stoppen umschalten mit Audio-Fokus
   const handlePlayToggle = () => {
     const player = playerRef.current;
     if (!player || loading) return;
@@ -273,8 +287,10 @@ function AmiModPanel() {
       player.stop();
       setPlaying(false);
       (window as any).fraktallab_mod_playing = false;
+      releaseAudioFocus(AUDIO_ID);
     } else {
       player.resumeContext();
+      requestAudioFocus(AUDIO_ID);
       player.play();
       setPlaying(true);
       (window as any).fraktallab_mod_playing = true;

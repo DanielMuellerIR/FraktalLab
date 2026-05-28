@@ -1,0 +1,37 @@
+{
+  "shader_cyber_grid": {
+    "source": "https://www.shadertoy.com/view/MslGWN",
+    "author": "Shane",
+    "license": "CC-BY-NC-SA-3.0",
+    "modifications": "Zusätzliche grüne Farbtönung und Rotations-Speed angepasst für Cyber-Theme.",
+    "attribution": "Cyber Grid by Shane (mod)"
+  },
+  "shader_mandelbox": {
+    "source": "https://www.shadertoy.com/view/Msl3Rr",
+    "author": "Inigo Quilez (iq)",
+    "license": "CC-BY-NC-SA-3.0",
+    "modifications": "Farbliche Modifikation in Richtung Neon-Grün und Reduzierung der Iterationsschritte auf 45 für 60 FPS Performance.",
+    "attribution": "Mandelbox by iq (mod)"
+  },
+  "shader_retro_wave": {
+    "source": "https://www.shadertoy.com/view/ldfGWn",
+    "author": "FabriceNeyret2",
+    "license": "CC-BY-NC-SA-3.0",
+    "modifications": "Umstellung auf Cyber-Neon-Grün/Blau-Palette und Perspektiven-Optimierung.",
+    "attribution": "Outrun Sun by FabriceNeyret2 (mod)"
+  },
+  "shader_smooth_min": {
+    "source": "https://iquilezles.org/articles/smin/",
+    "author": "Inigo Quilez (iq)",
+    "license": "MIT",
+    "modifications": "SDF Metaballs-Berechnung auf CPU/GPU mit Polynomial Smooth Minimum und Matrix-Raster.",
+    "attribution": "Smooth Minimum SDF by Inigo Quilez"
+  },
+  "shader_digital_storm": {
+    "source": "https://iquilezles.org/articles/warp/",
+    "author": "Inigo Quilez (iq)",
+    "license": "MIT",
+    "modifications": "Eigene FBM (Fractional Brownian Motion) Rauschverzerrungs-Storm-Simulation.",
+    "attribution": "FBM Digital Storm by Inigo Quilez"
+  }
+}

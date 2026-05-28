@@ -36,6 +36,9 @@ import PlasmaDemo        from './panels/PlasmaDemo'
 import EnhanceView       from './panels/EnhanceView'
 import AllYourBase       from './panels/AllYourBase'
 import GlobePanel        from './panels/GlobePanel'
+import DaggerfallPanel   from './panels/DaggerfallPanel'
+import LidarScanPanel    from './panels/LidarScanPanel'
+import NeuralLinkDecoderPanel from './panels/NeuralLinkDecoderPanel'
 import DNAHelix          from './panels/DNAHelix'
 import OscilloscopePanel from './panels/OscilloscopePanel'
 import {
@@ -56,6 +59,16 @@ import {
   FractalDendrite, FractalSwirl,
 } from './panels/FractalScenes'
 import FractalJulia from './panels/FractalJulia'
+import { ShaderHackingCore, ShaderMandelbox, ShaderRetroWave } from './panels/ShadertoyPanel'
+import { TixyPanel } from './panels/TixyPanel'
+import { IQSmoothMin, IQDigitalStorm } from './panels/IQTechniquePanel'
+import { LovebyteShowcasePanel } from './panels/LovebyteShowcasePanel'
+import { getAudioFocus, resetAudioFocus } from './utils/audio-focus'
+import MoonPanel from './panels/MoonPanel'
+import PhysicsSandboxPanel from './panels/PhysicsSandboxPanel'
+import NuclearExplosionPanel from './panels/NuclearExplosionPanel'
+import ThermonuclearWarPanel from './panels/ThermonuclearWarPanel'
+import SupervolcanoPanel from './panels/SupervolcanoPanel'
 
 // ── Panel-Pools ───────────────────────────────────────────────────────────────
 const POOL_TEXT: React.ComponentType[] = [
@@ -67,7 +80,7 @@ const POOL_TEXT: React.ComponentType[] = [
 
 // Alle visuellen Panels in einem Pool — AllYourBase und EnhanceView sind normale Einträge
 const POOL_GFX: React.ComponentType[] = [
-  VoxelDemoColor, VoxelDemoBW, /* GlobePanel, */ VoxelThermal, VoxelLava, VoxelNeon, /* VoxelMatrix, */
+  VoxelDemoColor, VoxelDemoBW, GlobePanel, VoxelThermal, VoxelLava, VoxelNeon, /* VoxelMatrix, */
 
   FireScene, StarfieldScene, ThreeBodyScene, /* LissajousScene, */
   /* OscilloscopePanel, */ TunnelScene, MetaballsScene, RotozoomScene, DotCloudScene,
@@ -77,6 +90,11 @@ const POOL_GFX: React.ComponentType[] = [
   FractalElephant, FractalMini, FractalSatellite, FractalDragon,
   FractalDendrite, FractalSwirl,
   FractalJulia, RadarSweepPanel,
+  ShaderHackingCore, ShaderMandelbox, ShaderRetroWave,
+  DaggerfallPanel, LidarScanPanel, NeuralLinkDecoderPanel,
+  TixyPanel, IQSmoothMin, IQDigitalStorm, LovebyteShowcasePanel,
+  MoonPanel, PhysicsSandboxPanel, NuclearExplosionPanel,
+  ThermonuclearWarPanel, SupervolcanoPanel,
 ]
 
 POOL_TEXT.forEach((Comp, idx) => {
@@ -106,22 +124,21 @@ interface GeneratedLayout {
   cells:               GridCell[]
 }
 
-function generateMobileIndices(): { combinedIdx: number; gfxIdx: number; textIdx: number } {
-  const gfxIdx = Math.floor(Math.random() * POOL_GFX.length);
+function generateMobileIndices(): { textIdx: number; gfxIdx1: number; gfxIdx2: number; gfxIdx3: number } {
   const textIdx = Math.floor(Math.random() * POOL_TEXT.length);
-  const gfxComp = POOL_GFX[gfxIdx];
-  const textComp = POOL_TEXT[textIdx];
-
-  const combinedPool = [...POOL_TEXT, ...POOL_GFX];
-  const eligibleCombined: number[] = [];
-  combinedPool.forEach((comp, i) => {
-    if (comp !== gfxComp && comp !== textComp) {
-      eligibleCombined.push(i);
+  const gfxIndices: number[] = [];
+  while (gfxIndices.length < 3 && gfxIndices.length < POOL_GFX.length) {
+    const idx = Math.floor(Math.random() * POOL_GFX.length);
+    if (!gfxIndices.includes(idx)) {
+      gfxIndices.push(idx);
     }
-  });
-
-  const combinedIdx = eligibleCombined[Math.floor(Math.random() * eligibleCombined.length)];
-  return { combinedIdx, gfxIdx, textIdx };
+  }
+  return {
+    textIdx,
+    gfxIdx1: gfxIndices[0] ?? 0,
+    gfxIdx2: gfxIndices[1] ?? 0,
+    gfxIdx3: gfxIndices[2] ?? 0,
+  };
 }
 
 /**
@@ -284,7 +301,7 @@ function generateLayout(id: number): GeneratedLayout {
       if (occupied.has(`${c},${r}`)) continue  // bereits durch Fraktal belegt
 
       // Typen abwechseln
-      const type: CellType = altIdx % 2 === 0 ? 'text' : 'gfx'
+      const type: CellType = altIdx % 3 === 0 ? 'text' : 'gfx'
       altIdx++
 
       if (type === 'text') hasText = true
@@ -388,6 +405,21 @@ const ALL_PANELS: { name: string; Component: React.ComponentType }[] = [
   { name: 'RetroErrorPanel',    Component: RetroErrorPanel },
   { name: 'RadarSweepPanel',    Component: RadarSweepPanel },
   { name: 'DNAHelix',           Component: DNAHelix },
+  { name: 'ShaderHackingCore',  Component: ShaderHackingCore },
+  { name: 'ShaderMandelbox',    Component: ShaderMandelbox },
+  { name: 'ShaderRetroWave',    Component: ShaderRetroWave },
+  { name: 'DaggerfallPanel',    Component: DaggerfallPanel },
+  { name: 'LidarScanPanel',     Component: LidarScanPanel },
+  { name: 'NeuralLinkDecoderPanel', Component: NeuralLinkDecoderPanel },
+  { name: 'TixyPanel',          Component: TixyPanel },
+  { name: 'IQSmoothMin',        Component: IQSmoothMin },
+  { name: 'IQDigitalStorm',     Component: IQDigitalStorm },
+  { name: 'LovebyteShowcasePanel', Component: LovebyteShowcasePanel },
+  { name: 'MoonPanel',          Component: MoonPanel },
+  { name: 'PhysicsSandboxPanel', Component: PhysicsSandboxPanel },
+  { name: 'NuclearExplosionPanel', Component: NuclearExplosionPanel },
+  { name: 'ThermonuclearWarPanel', Component: ThermonuclearWarPanel },
+  { name: 'SupervolcanoPanel',   Component: SupervolcanoPanel },
 
   // --- Text Panels ---
   { name: 'ICQChatPanel',       Component: ICQChatPanel },
@@ -445,10 +477,7 @@ function saveReview(entry: ReviewEntry): void {
 // AllYourBase (Video) und AmiModPanel (WebAudio) sind die einzigen Sound-Panels.
 // Layout-Wechsel wartet, bis kein Sound mehr läuft.
 function isAudioPlaying(): boolean {
-  const vid = document.querySelector<HTMLVideoElement>('video')
-  const vidPlaying = !!vid && !vid.muted && !vid.paused
-  const modPlaying = !!(window as any).fraktallab_mod_playing
-  return vidPlaying || modPlaying
+  return getAudioFocus() !== null
 }
 
 // ── Layout-Renderer ───────────────────────────────────────────────────────────
@@ -575,30 +604,35 @@ export default function App() {
 
   const handleSkipMobileSlot = useCallback((slotIndex: number) => {
     setMobileIndices(curr => {
-      const combinedPool = [...POOL_TEXT, ...POOL_GFX]
       const otherActiveComps = new Set<React.ComponentType<any>>()
 
       if (slotIndex !== 0) {
-        otherActiveComps.add(combinedPool[curr.combinedIdx])
+        otherActiveComps.add(POOL_TEXT[curr.textIdx])
       }
       if (slotIndex !== 1) {
-        otherActiveComps.add(POOL_GFX[curr.gfxIdx])
+        otherActiveComps.add(POOL_GFX[curr.gfxIdx1])
       }
       if (slotIndex !== 2) {
-        otherActiveComps.add(POOL_TEXT[curr.textIdx])
+        otherActiveComps.add(POOL_GFX[curr.gfxIdx2])
+      }
+      if (slotIndex !== 3) {
+        otherActiveComps.add(POOL_GFX[curr.gfxIdx3])
       }
 
       let pool: React.ComponentType<any>[]
       let currentIdx: number
       if (slotIndex === 0) {
-        pool = combinedPool
-        currentIdx = curr.combinedIdx
-      } else if (slotIndex === 1) {
-        pool = POOL_GFX
-        currentIdx = curr.gfxIdx
-      } else {
         pool = POOL_TEXT
         currentIdx = curr.textIdx
+      } else if (slotIndex === 1) {
+        pool = POOL_GFX
+        currentIdx = curr.gfxIdx1
+      } else if (slotIndex === 2) {
+        pool = POOL_GFX
+        currentIdx = curr.gfxIdx2
+      } else {
+        pool = POOL_GFX
+        currentIdx = curr.gfxIdx3
       }
 
       const currentComp = pool[currentIdx]
@@ -614,11 +648,13 @@ export default function App() {
         : Math.floor(Math.random() * pool.length)
 
       if (slotIndex === 0) {
-        return { ...curr, combinedIdx: chosenIdx }
-      } else if (slotIndex === 1) {
-        return { ...curr, gfxIdx: chosenIdx }
-      } else {
         return { ...curr, textIdx: chosenIdx }
+      } else if (slotIndex === 1) {
+        return { ...curr, gfxIdx1: chosenIdx }
+      } else if (slotIndex === 2) {
+        return { ...curr, gfxIdx2: chosenIdx }
+      } else {
+        return { ...curr, gfxIdx3: chosenIdx }
       }
     })
   }, [])
@@ -655,7 +691,7 @@ export default function App() {
   /** Wechselt zu einem Panel per Index — speichert aktuellen Stand zuerst */
   const goToPanel = useCallback((idx: number) => {
     // Auto-save falls ein Daumen gewählt wurde (Kommentar wird mitgespeichert)
-    if (reviewRating) {
+    if (reviewRating && ALL_PANELS[reviewIdx]) {
       saveReview({
         panel:   ALL_PANELS[reviewIdx].name,
         rating:  reviewRating,
@@ -663,26 +699,33 @@ export default function App() {
         ts:      Date.now(),
       })
     }
-    setReviewIdx(idx)
-    loadPanelReview(ALL_PANELS[idx].name)
+    const safeIdx = ((idx % ALL_PANELS.length) + ALL_PANELS.length) % ALL_PANELS.length
+    setReviewIdx(safeIdx)
+    if (ALL_PANELS[safeIdx]) {
+      loadPanelReview(ALL_PANELS[safeIdx].name)
+    }
   }, [reviewIdx, reviewRating, loadPanelReview])
 
   /** Öffnet den Review-Modus und lädt die Bewertung für das erste Panel */
   const enterReview = useCallback(() => {
     setReviewMode(true)
     setReviewIdx(0)
-    loadPanelReview(ALL_PANELS[0].name)
+    if (ALL_PANELS[0]) {
+      loadPanelReview(ALL_PANELS[0].name)
+    }
   }, [loadPanelReview])
 
   /** Wählt Daumen und speichert sofort — kein separater Save-Schritt nötig */
   const handleRating = useCallback((rating: 'up' | 'down') => {
     setReviewRating(rating)
-    saveReview({
-      panel:   ALL_PANELS[reviewIdx].name,
-      rating,
-      comment: commentRef.current?.value ?? '',
-      ts:      Date.now(),
-    })
+    if (ALL_PANELS[reviewIdx]) {
+      saveReview({
+        panel:   ALL_PANELS[reviewIdx].name,
+        rating,
+        comment: commentRef.current?.value ?? '',
+        ts:      Date.now(),
+      })
+    }
   }, [reviewIdx])
 
   // Ref für den laufenden Auto-Switch-Timer — wird bei jedem Wechsel neu gesetzt
@@ -697,6 +740,9 @@ export default function App() {
     setSliding(true)
     setPaused(true)
     setLayout(next)
+
+    // Automatically reset active audio focus on layout switch
+    resetAudioFocus()
 
     // Animation nach 520 ms beenden (etwas länger als die 500 ms CSS-Animation)
     setTimeout(() => {
@@ -864,27 +910,19 @@ export default function App() {
           <div className="h-full flex flex-col p-1 gap-1">
 
             {/* Panel-Container — nimmt den Hauptteil der Höhe ein */}
-            <div className="flex-1 min-h-0 bg-black">
+            <div className="flex-1 min-h-0 bg-black flex flex-col">
               {isMobile ? (
                 /* Auf Mobile (unter 768px) rendern wir NUR das eine aktive Panel */
-                <div className="h-full flex flex-col">
+                <div className="flex-1 min-h-0 h-full flex flex-col">
                   {(() => {
                     const panel = ALL_PANELS[reviewIdx]
                     const Comp = panel.Component
-                    const labelText = `${String(reviewIdx + 1).padStart(2, '0')} ${panel.name}`
-                    return (
-                      <Panel
-                        title={`REVIEW // ${panel.name} [${reviewIdx + 1}/${totalPanels}]`}
-                        rightLabel={labelText}
-                      >
-                        <Comp />
-                      </Panel>
-                    )
+                    return <Comp />
                   })()}
                 </div>
               ) : (
                 /* Auf Desktop rendern wir das 2x2 Grid (4 Panels) */
-                <div className="grid h-full grid-cols-2 grid-rows-2 gap-1 bg-black">
+                <div className="grid flex-1 min-h-0 grid-cols-2 grid-rows-2 gap-1 bg-black">
                   {[0, 1, 2, 3].map(offset => {
                     const pageStartIdx = Math.floor(reviewIdx / 4) * 4
                     const idx = pageStartIdx + offset
@@ -892,22 +930,18 @@ export default function App() {
                       const panel = ALL_PANELS[idx]
                       const Comp = panel.Component
                       const isActive = idx === reviewIdx
-                      const labelText = `${String(idx + 1).padStart(2, '0')} ${panel.name}`
                       return (
                         <div
                           key={panel.name}
-                          className={`min-h-0 min-w-0 relative flex flex-col transition-all duration-200 cursor-pointer ${
+                          className={`flex-1 min-h-0 h-full min-w-0 relative flex flex-col transition-all duration-200 cursor-pointer ${
                             isActive ? 'ring-2 ring-green-500 border border-green-500 z-10' : 'opacity-65 hover:opacity-95'
                           }`}
                           onClick={() => goToPanel(idx)}
                         >
-                          <Panel
-                            title={`REVIEW // ${panel.name} [${idx + 1}/${totalPanels}]`}
-                            className={isActive ? 'border-green-500' : ''}
-                            rightLabel={labelText}
-                          >
-                            <Comp />
-                          </Panel>
+                          <Comp />
+                          <div className="absolute bottom-1 right-2 pointer-events-none select-none text-[8px] font-mono text-green-700/60 uppercase bg-black/60 px-1.5 py-0.5 border border-green-950/20">
+                            #{idx + 1}
+                          </div>
                         </div>
                       )
                     } else {
@@ -1050,30 +1084,39 @@ export default function App() {
             {isMobile ? (
               /* ── Mobile Layout — nur unter 768px sichtbar ── */
               <div className="flex flex-col gap-1 h-full p-1">
-                {/* Panel 1: gemischter Pool aus Text und GFX */}
-                <div className="flex-1 min-h-0">
-                  <PanelSlot
-                    pool={[...POOL_TEXT, ...POOL_GFX]}
-                    activeIdx={mobileIndices.combinedIdx}
-                    onSkip={() => handleSkipMobileSlot(0)}
-                    className="h-full"
-                  />
-                </div>
-                {/* Panel 2: Grafik-Panel */}
-                <div className="flex-1 min-h-0">
-                  <PanelSlot
-                    pool={POOL_GFX}
-                    activeIdx={mobileIndices.gfxIdx}
-                    onSkip={() => handleSkipMobileSlot(1)}
-                    className="h-full"
-                  />
-                </div>
-                {/* Panel 3: Text-Panel */}
+                {/* Panel 1: Text-Panel */}
                 <div className="flex-1 min-h-0">
                   <PanelSlot
                     pool={POOL_TEXT}
                     activeIdx={mobileIndices.textIdx}
+                    onSkip={() => handleSkipMobileSlot(0)}
+                    className="h-full"
+                  />
+                </div>
+                {/* Panel 2: Grafik-Panel 1 */}
+                <div className="flex-1 min-h-0">
+                  <PanelSlot
+                    pool={POOL_GFX}
+                    activeIdx={mobileIndices.gfxIdx1}
+                    onSkip={() => handleSkipMobileSlot(1)}
+                    className="h-full"
+                  />
+                </div>
+                {/* Panel 3: Grafik-Panel 2 */}
+                <div className="flex-1 min-h-0">
+                  <PanelSlot
+                    pool={POOL_GFX}
+                    activeIdx={mobileIndices.gfxIdx2}
                     onSkip={() => handleSkipMobileSlot(2)}
+                    className="h-full"
+                  />
+                </div>
+                {/* Panel 4: Grafik-Panel 3 */}
+                <div className="flex-1 min-h-0">
+                  <PanelSlot
+                    pool={POOL_GFX}
+                    activeIdx={mobileIndices.gfxIdx3}
+                    onSkip={() => handleSkipMobileSlot(3)}
                     className="h-full"
                   />
                 </div>

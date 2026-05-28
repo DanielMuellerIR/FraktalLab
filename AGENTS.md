@@ -16,13 +16,15 @@ Thematischer Rahmen: Ein fiktives „Neural Intrusion Dashboard", das Hacker-Kli
 
 **Speed-first-Regel:** Jedes Feature muss in einer einzigen Session vollständig lauffähig implementiert werden können. Features, die das nicht schaffen, werden auf kleineres Scope reduziert oder verschoben. Keine halbfertigen Implementierungen.
 
-Aktueller Stand: **v1.2.5**. Deployment auf Netcup-Webspace (Apache).
+Aktueller Stand: **v1.2.6**. Deployment auf Netcup-Webspace (Apache).
 
 ---
 
 ## Pixel-Quality-Policy
 
 **Grundsatz:** Grobe Pixel nur dort, wo sie authentisch sind. Sonst möglichst scharf und in nativer Auflösung.
+
+**Styling-Leitlinie:** Der klassische schwarz-grüne monochrome Hacker-Stil ist *ausschließlich* für das äußere Gerüst der Seite (Borders, Headers, Sidebars) und die Text-Panels (SystemLog, DataStream etc.) reserviert. Alle Grafik- und Simulationspanels dürfen und sollen gerne vollfarbig, kontrastreich, hochauflösend und im lebendigen, kreativen Demoszene-Stil gestaltet sein (z.B. detailreiches Shading, volumetrischer Nebel, farbige Blueprint-Radar-Grafiken, Partikeleffekte), außer bei authentischen Retro-Effekten (wie C64 oder Elite 1984) oder wenn es aus Performancegründen unumgänglich ist. Es sollen jedoch immer möglichst kleine Dateigrößen für Assets angestrebt werden (vorzugsweise prozedurale Texturen oder hochkomprimierte/base64-codierte WebP-Bilder direkt im Code, wie das Vorbild Farbrausch fr-08).
 
 Diese Policy ist verbindlich für alle neuen und überarbeiteten Panels. Sie ist Konsequenz aus der Tatsache, dass FraktalLab auf modernen Displays läuft und Layouts mit bis zu 4 Panels pro Bildschirm Panel-Größen von 960×540 und mehr produzieren — bei diesen Größen werden gepixelte Effekte mit niedriger interner Auflösung deutlich unschön hochskaliert.
 

@@ -11,6 +11,12 @@ interface ShaderPanelProps {
   fragmentShader: string
   uniforms?: Record<string, number | number[]>
   title: string
+  attribution?: string
+  textureData?: {
+    data: Uint8Array | HTMLImageElement | HTMLCanvasElement
+    width?: number
+    height?: number
+  }
 }
 
 const VERTEX_SHADER_SOURCE = `
@@ -20,7 +26,7 @@ const VERTEX_SHADER_SOURCE = `
   }
 `
 
-function ShaderPanel({ fragmentShader, uniforms, title }: ShaderPanelProps) {
+function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData }: ShaderPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -33,6 +39,12 @@ function ShaderPanel({ fragmentShader, uniforms, title }: ShaderPanelProps) {
   // Keep a unique ID for the pool registration
   const panelIdRef = useRef(() => `shader-panel-${Math.random().toString(36).substr(2, 9)}`)
   const panelId = panelIdRef.current()
+
+  // Store custom uniforms in ref to prevent stale closures and avoid unnecessary WebGL teardowns
+  const currentUniformsRef = useRef(uniforms)
+  currentUniformsRef.current = uniforms
+
+  const uniformsKeys = Object.keys(uniforms || {}).join(',')
 
   useEffect(() => {
     let alive = true
@@ -76,9 +88,14 @@ function ShaderPanel({ fragmentShader, uniforms, title }: ShaderPanelProps) {
       let fullFragmentShader = fragmentShader
       if (fragmentShader.includes('mainImage') && !fragmentShader.includes('void main()')) {
         let customUniformsDecl = ''
+        if (textureData && !new RegExp(`uniform\\s+sampler2D\\s+uHeightmap\\b`).test(fragmentShader)) {
+          customUniformsDecl += 'uniform sampler2D uHeightmap;\n'
+        }
         if (uniforms) {
           for (const key of Object.keys(uniforms)) {
             if (key === 'iTime' || key === 'iResolution' || key === 'iMouse') continue
+            const isAlreadyDeclared = new RegExp(`uniform\\s+\\w+\\s+${key}\\b`).test(fragmentShader)
+            if (isAlreadyDeclared) continue
             const val = uniforms[key]
             if (Array.isArray(val)) {
               if (val.length === 2) customUniformsDecl += `uniform vec2 ${key};\n`
@@ -139,6 +156,51 @@ function ShaderPanel({ fragmentShader, uniforms, title }: ShaderPanelProps) {
       gl.enableVertexAttribArray(positionLoc)
       gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0)
 
+      if (textureData && textureData.data) {
+        const tex = gl.createTexture()
+        gl.activeTexture(gl.TEXTURE0)
+        gl.bindTexture(gl.TEXTURE_2D, tex)
+        if (textureData.data instanceof Uint8Array) {
+          gl.texImage2D(
+            gl.TEXTURE_2D,
+            0,
+            gl.LUMINANCE,
+            textureData.width || 256,
+            textureData.height || 128,
+            0,
+            gl.LUMINANCE,
+            gl.UNSIGNED_BYTE,
+            textureData.data
+          )
+        } else {
+          // HTMLImageElement or HTMLCanvasElement
+          gl.texImage2D(
+            gl.TEXTURE_2D,
+            0,
+            gl.RGBA,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            textureData.data
+          )
+        }
+
+        // WebGL 1.0 requires NPOT textures to have CLAMP_TO_EDGE wrapping and no mipmaps
+        const isPowerOf2 = (v: number) => v > 0 && (v & (v - 1)) === 0
+        const texW = textureData.width || (textureData.data instanceof HTMLImageElement ? textureData.data.width : 256)
+        const texH = textureData.height || (textureData.data instanceof HTMLImageElement ? textureData.data.height : 128)
+        const isPOT = isPowerOf2(texW) && isPowerOf2(texH)
+
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, isPOT ? gl.REPEAT : gl.CLAMP_TO_EDGE)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, isPOT ? gl.REPEAT : gl.CLAMP_TO_EDGE)
+
+        const texLoc = gl.getUniformLocation(program, 'uHeightmap')
+        if (texLoc) {
+          gl.uniform1i(texLoc, 0)
+        }
+      }
+
       return true
     }
 
@@ -179,9 +241,10 @@ function ShaderPanel({ fragmentShader, uniforms, title }: ShaderPanelProps) {
       }
 
       // Map Custom Uniforms
-      if (uniforms) {
-        for (const key of Object.keys(uniforms)) {
-          const val = uniforms[key]
+      const currentUniforms = currentUniformsRef.current
+      if (currentUniforms) {
+        for (const key of Object.keys(currentUniforms)) {
+          const val = currentUniforms[key]
           const loc = gl.getUniformLocation(program, key)
           if (!loc) continue
 
@@ -283,7 +346,7 @@ function ShaderPanel({ fragmentShader, uniforms, title }: ShaderPanelProps) {
         }
       } catch (_) {}
     }
-  }, [fragmentShader, uniforms, hasContext, panelId])
+  }, [fragmentShader, uniformsKeys, hasContext, panelId, textureData?.data, textureData?.width, textureData?.height])
 
   // Mouse Listeners mapping coordinates matching Shadertoy specifications
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -331,10 +394,17 @@ function ShaderPanel({ fragmentShader, uniforms, title }: ShaderPanelProps) {
         onMouseLeave={handleMouseUp}
       >
         {hasContext ? (
-          <canvas
-            ref={canvasRef}
-            style={{ width: '100%', height: '100%', display: 'block' }}
-          />
+          <>
+            <canvas
+              ref={canvasRef}
+              style={{ width: '100%', height: '100%', display: 'block' }}
+            />
+            {attribution && (
+              <div className="absolute bottom-1 left-2 px-1 bg-black/60 border border-green-950/20 text-[8px] font-mono text-green-700/60 rounded select-none pointer-events-none uppercase tracking-wider">
+                {attribution}
+              </div>
+            )}
+          </>
         ) : (
           <div
             onClick={() => setHasContext(true)} // Clicking wakes up the context

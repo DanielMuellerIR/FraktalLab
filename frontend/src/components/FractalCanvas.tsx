@@ -168,7 +168,7 @@ export default memo(function FractalCanvas() {
           }
 
           // ── Normaler Live-Render ────────────────────────────────────────────
-          s.zoom *= 1.015
+          s.zoom *= 1.045
           
           // Rotate background fractal slowly
           if (!s.fading) {
@@ -179,12 +179,9 @@ export default memo(function FractalCanvas() {
 
           // Übergang auslösen bevor Floating-Point-Artefakte sichtbar werden
           const elapsed = performance.now() - ((s as any).locTime || performance.now())
-          if (s.zoom > 1.5e6 && elapsed > 12000 && !s.fading) s.fading = true
+          if (s.zoom > 1.5e6 && elapsed > 6000 && !s.fading) s.fading = true
 
           try {
-            const params = new RenderParams(s.centerX, s.centerY, s.zoom, 128, angle)
-            render(buf, canvas.width, canvas.height, params)
-
             // Boundary tracking: keep zooming on high-detail boundary and avoid black interior
             if (!s.fading && s.zoom > 200) {
               ;(s as any).boundaryFrame++
@@ -192,15 +189,22 @@ export default memo(function FractalCanvas() {
                 const boundary = findBoundaryNonBlack(pixelsArray, canvas.width, canvas.height)
                 if (boundary) {
                   const target = pixelToComplex(boundary.px, boundary.py, canvas.width, canvas.height, s.centerX, s.centerY, s.zoom, angle)
-                  s.centerX += (target.x - s.centerX) * 0.15
-                  s.centerY += (target.y - s.centerY) * 0.15
+                  ;(s as any).targetCenterX = target.x
+                  ;(s as any).targetCenterY = target.y
                 }
+              }
+              if ((s as any).targetCenterX !== undefined) {
+                s.centerX += ((s as any).targetCenterX - s.centerX) * 0.035
+                s.centerY += ((s as any).targetCenterY - s.centerY) * 0.035
               }
             }
 
+            const params = new RenderParams(s.centerX, s.centerY, s.zoom, 128, angle)
+            render(buf, canvas.width, canvas.height, params)
+
             // Schwarzraum-Früherkennung: wenn >75% der Pixel Mandelbrot-Inneres sind,
-            // sofort Übergang auslösen statt schwarze Frames zu zeigen (nur nach mind. 12s Zoom).
-            if (!s.fading && s.zoom > 200 && elapsed > 12000) {
+            // sofort Übergang auslösen statt schwarze Frames zu zeigen (nur nach mind. 6s Zoom).
+            if (!s.fading && s.zoom > 200 && elapsed > 6000) {
               let black = 0, total = 0
               for (let i = 0; i < pixelsArray.length; i += 128) {
                 if (pixelsArray[i] === 0 && pixelsArray[i + 1] === 0 && pixelsArray[i + 2] === 0) black++

@@ -121,6 +121,9 @@ test.describe('Panel-Inhalt-Check', () => {
     page.on('console', (msg) => {
       if (msg.type() === 'error') console.error('[BROWSER]', msg.text())
     })
+    page.on('pageerror', (err) => {
+      console.error('[BROWSER-ERROR]', err.message, err.stack)
+    })
     // 'load' statt 'networkidle': Video-Streaming hält Network-State sonst dauerhaft offen
     await page.goto(BASE_URL, { waitUntil: 'load' })
     // Warten bis WASM geladen und Canvas-Animationen angelaufen sind

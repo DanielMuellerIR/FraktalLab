@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
+import ShaderPanel from '../ui/ShaderPanel'
 
-// ── Shared Heightmap ─────────────────────────────────────────────────────────
 const HMAP = 512
 const heightmap = new Uint8Array(HMAP * HMAP)
 
@@ -17,252 +17,164 @@ for (let y = 0; y < HMAP; y++) {
   }
 }
 
-// HSL -> RGB Converter
-function hslToRgb(h: number, s: number, l: number): [number, number, number] {
-  const c = (1 - Math.abs(2 * l - 1)) * s
-  const x = c * (1 - Math.abs((h / 60) % 2 - 1))
-  const m = l - c / 2
-  let r = 0, g = 0, b = 0
-  if      (h < 60)  { r = c; g = x }
-  else if (h < 120) { r = x; g = c }
-  else if (h < 180) { g = c; b = x }
-  else if (h < 240) { g = x; b = c }
-  else if (h < 300) { r = x; b = c }
-  else              { r = c; b = x }
-  return [Math.round((r+m)*255), Math.round((g+m)*255), Math.round((b+m)*255)]
-}
+// ── Voxel Raymarching Shader ────────────────────────────────────────────────
+const VOXEL_COLOR_SHADER = `
+  uniform vec2 uCamPos;
+  uniform float uAngle;
+  uniform float uCamH;
 
-// ── Voxel Color Renderer ─────────────────────────────────────────────────────
-function renderVoxelColor(
-  ctx: CanvasRenderingContext2D,
-  canvas: HTMLCanvasElement,
-  camX: number, camY: number, angle: number, camH: number, t: number,
-  offscreen: HTMLCanvasElement,
-  cache: { img: ImageData | null },
-) {
-  const W = Math.min(canvas.width,  400)
-  const H = Math.min(canvas.height, Math.round(400 * canvas.height / Math.max(canvas.width, 1)))
-
-  if (offscreen.width !== W || offscreen.height !== H) {
-    offscreen.width = W
-    offscreen.height = H
-    cache.img = null
+  vec3 hsl2rgb(in vec3 c) {
+    vec3 rgb = clamp(abs(mod(c.x*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0, 0.0, 1.0);
+    return c.z + c.y * (rgb-0.5)*(1.0-abs(2.0*c.z-1.0));
   }
 
-  const offCtx = offscreen.getContext('2d')!
-  if (!cache.img) {
-    cache.img = offCtx.createImageData(W, H)
-  }
-  const img = cache.img
-  const buf = img.data
+  void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    float fov = 1.2;
+    float far = 150.0;
+    float scale = 120.0;
+    float horizon = iResolution.y * 0.42;
 
-  const horizon = H * 0.42
-  const scale   = 120
-  const FOV     = 1.2
-  const FAR     = 150
+    // Sky gradient
+    float sk = max(0.0, 15.0 - fragCoord.y * 0.25) / 255.0;
+    vec3 skyCol = vec3(0.0, sk, sk * 1.3);
 
-  // Sky gradient (dark teal/black)
-  for (let y = 0; y < H; y++) {
-    const sk = Math.max(0, 15 - y * 0.25)
-    for (let x = 0; x < W; x++) {
-      const pi = (y * W + x) * 4
-      buf[pi] = 0; buf[pi+1] = sk; buf[pi+2] = sk * 1.3; buf[pi+3] = 255
+    if (fragCoord.y >= horizon) {
+        fragColor = vec4(skyCol, 1.0);
+        return;
     }
-  }
 
-  for (let x = 0; x < W; x++) {
-    const rayAngle = angle - FOV/2 + (x/W) * FOV
-    const rdx = Math.cos(rayAngle)
-    const rdy = Math.sin(rayAngle)
-    let maxY = H
+    float rayAngle = uAngle - fov/2.0 + (fragCoord.x / iResolution.x) * fov;
+    float rdx = cos(rayAngle);
+    float rdy = sin(rayAngle);
 
-    for (let z = 1; z <= FAR; z++) {
-      const wx = (camX + rdx * z) & (HMAP - 1)
-      const wy = (camY + rdy * z) & (HMAP - 1)
-      const th = heightmap[Math.floor(wy) * HMAP + Math.floor(wx)]
-
-      const projY = Math.floor((camH - th) / z * scale + horizon)
-      if (projY >= maxY) continue
-
-      const fog = z / FAR
-      // Dynamic height-dependent coloring
-      const hue = (th * 1.5 + t * 0.005) % 360
-      const [r, g, b] = hslToRgb(hue, 0.95, 0.6)
-
-      const yStart = Math.max(0, projY)
-      const yEnd   = Math.min(H, maxY)
-
-      for (let y = yStart; y < yEnd; y++) {
-        const pi = (y * W + x) * 4
-        const isTop = (y === yStart)
-        const fade = (1 - fog)
-
-        if (isTop) {
-          // Bright white-cyan edge line
-          buf[pi]   = Math.round(200 * fade + 55)
-          buf[pi+1] = Math.round(255 * fade)
-          buf[pi+2] = Math.round(255 * fade)
-        } else {
-          buf[pi]   = Math.round(r * fade)
-          buf[pi+1] = Math.round(g * fade)
-          buf[pi+2] = Math.round(b * fade)
+    float hitZ = -1.0;
+    float hitHeight = 0.0;
+    for (float z = 1.0; z < 150.0; z += 1.0) {
+        vec2 wpos = uCamPos + vec2(rdx * z, rdy * z);
+        float wz = uCamH + (fragCoord.y - horizon) * z / scale;
+        
+        float th = texture2D(uHeightmap, wpos / 512.0).r * 255.0;
+        
+        if (wz < th) {
+            hitZ = z;
+            hitHeight = th;
+            break;
         }
-        buf[pi+3] = 255
-      }
-      maxY = projY
-      if (maxY <= 0) break
     }
-  }
 
-  // Scanline overlay
-  for (let y = 0; y < H; y += 2) {
-    for (let x = 0; x < W; x++) {
-      const pi = (y * W + x) * 4
-      buf[pi]   = Math.min(255, buf[pi]   + 6)
-      buf[pi+1] = Math.min(255, buf[pi+1] + 6)
-      buf[pi+2] = Math.min(255, buf[pi+2] + 6)
+    if (hitZ < 0.0) {
+        fragColor = vec4(skyCol, 1.0);
+        return;
     }
-  }
 
-  offCtx.putImageData(img, 0, 0)
-  ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height)
-}
+    float fog = hitZ / far;
+    float fade = 1.0 - fog;
+    float hue = mod(hitHeight * 1.5 + iTime * 5.0, 360.0) / 360.0;
+    vec3 landCol = hsl2rgb(vec3(hue, 0.95, 0.6));
 
-// ── Voxel B&W Renderer ───────────────────────────────────────────────────────
-function renderVoxelBW(
-  ctx: CanvasRenderingContext2D,
-  canvas: HTMLCanvasElement,
-  camX: number, camY: number, angle: number, camH: number,
-  offscreen: HTMLCanvasElement,
-  cache: { img: ImageData | null },
-) {
-  const W = Math.min(canvas.width,  400)
-  const H = Math.min(canvas.height, Math.round(400 * canvas.height / Math.max(canvas.width, 1)))
-
-  if (offscreen.width !== W || offscreen.height !== H) {
-    offscreen.width = W
-    offscreen.height = H
-    cache.img = null
-  }
-
-  const offCtx = offscreen.getContext('2d')!
-  if (!cache.img) {
-    cache.img = offCtx.createImageData(W, H)
-  }
-  const img = cache.img
-  const buf = img.data
-
-  const horizon = H * 0.42
-  const scale   = 120
-  const FOV     = 1.2
-  const FAR     = 150
-
-  // Pure black/dark gray sky
-  for (let y = 0; y < H; y++) {
-    const sk = Math.max(0, 12 - y * 0.2)
-    for (let x = 0; x < W; x++) {
-      const pi = (y * W + x) * 4
-      buf[pi] = sk; buf[pi+1] = sk; buf[pi+2] = sk; buf[pi+3] = 255
+    float wz_above = uCamH + ((fragCoord.y + 1.0) - horizon) * hitZ / scale;
+    bool isTop = (wz_above >= hitHeight);
+    
+    vec3 col;
+    if (isTop) {
+        col = vec3(200.0/255.0 * fade + 55.0/255.0, fade, fade);
+    } else {
+        col = landCol * fade;
     }
-  }
 
-  for (let x = 0; x < W; x++) {
-    const rayAngle = angle - FOV/2 + (x/W) * FOV
-    const rdx = Math.cos(rayAngle)
-    const rdy = Math.sin(rayAngle)
-    let maxY = H
-
-    for (let z = 1; z <= FAR; z++) {
-      const wx = (camX + rdx * z) & (HMAP - 1)
-      const wy = (camY + rdy * z) & (HMAP - 1)
-      const th = heightmap[Math.floor(wy) * HMAP + Math.floor(wx)]
-
-      const projY = Math.floor((camH - th) / z * scale + horizon)
-      if (projY >= maxY) continue
-
-      const fog = z / FAR
-      const lum = Math.round((1 - fog) * 220 * (0.45 + th / 510))
-
-      const yStart = Math.max(0, projY)
-      const yEnd   = Math.min(H, maxY)
-
-      for (let y = yStart; y < yEnd; y++) {
-        const pi = (y * W + x) * 4
-        buf[pi]   = lum
-        buf[pi+1] = lum
-        buf[pi+2] = lum
-        buf[pi+3] = 255
-      }
-      maxY = projY
-      if (maxY <= 0) break
+    // Scanline overlay
+    if (mod(floor(fragCoord.y), 2.0) == 0.0) {
+        col = min(vec3(1.0), col + vec3(6.0/255.0));
     }
-  }
 
-  // Scanline overlay
-  for (let y = 0; y < H; y += 2) {
-    for (let x = 0; x < W; x++) {
-      const pi = (y * W + x) * 4
-      buf[pi]   = Math.min(255, buf[pi]   + 5)
-      buf[pi+1] = Math.min(255, buf[pi+1] + 5)
-      buf[pi+2] = Math.min(255, buf[pi+2] + 5)
+    fragColor = vec4(col, 1.0);
+  }
+`
+
+const VOXEL_BW_SHADER = `
+  uniform vec2 uCamPos;
+  uniform float uAngle;
+  uniform float uCamH;
+
+  void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    float fov = 1.2;
+    float far = 150.0;
+    float scale = 120.0;
+    float horizon = iResolution.y * 0.42;
+
+    // Sky gradient
+    float sk = max(0.0, 12.0 - fragCoord.y * 0.2) / 255.0;
+    vec3 skyCol = vec3(sk);
+
+    if (fragCoord.y >= horizon) {
+        fragColor = vec4(skyCol, 1.0);
+        return;
     }
-  }
 
-  offCtx.putImageData(img, 0, 0)
-  ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height)
-}
+    float rayAngle = uAngle - fov/2.0 + (fragCoord.x / iResolution.x) * fov;
+    float rdx = cos(rayAngle);
+    float rdy = sin(rayAngle);
+
+    float hitZ = -1.0;
+    float hitHeight = 0.0;
+    for (float z = 1.0; z < 150.0; z += 1.0) {
+        vec2 wpos = uCamPos + vec2(rdx * z, rdy * z);
+        float wz = uCamH + (fragCoord.y - horizon) * z / scale;
+        
+        float th = texture2D(uHeightmap, wpos / 512.0).r * 255.0;
+        
+        if (wz < th) {
+            hitZ = z;
+            hitHeight = th;
+            break;
+        }
+    }
+
+    if (hitZ < 0.0) {
+        fragColor = vec4(skyCol, 1.0);
+        return;
+    }
+
+    float fog = hitZ / far;
+    float lum = (1.0 - fog) * (220.0 / 255.0) * (0.45 + hitHeight / 510.0);
+    vec3 col = vec3(lum);
+
+    // Scanline overlay
+    if (mod(floor(fragCoord.y), 2.0) == 0.0) {
+        col = min(vec3(1.0), col + vec3(5.0/255.0));
+    }
+
+    fragColor = vec4(col, 1.0);
+  }
+`
 
 // ── Voxel Demo Color Panel Component ─────────────────────────────────────────
 export function VoxelDemoColor() {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
   const cam = useRef({
     x: 200, y: 300,
     vx: 1.5, vy: 0.8,
-    angle: 0.8, va: 0.002,
-    lastImpulse: -5000,
+    angle: 0.8,
+    lastT: 0,
+  })
+
+  // Stable uniforms reference for zero-rerender WebGL updates
+  const uniformsRef = useRef({
+    uCamPos: [200.0, 300.0],
+    uAngle: 0.8,
+    uCamH: 100.0,
   })
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')!
-    if (!ctx) return
-
-    const offscreen = document.createElement('canvas')
-    const cache = { img: null as ImageData | null }
-
     let rafId: number
     let running = true
-    let lastT = 0
-    let isVisible = true
-
-    const io = new IntersectionObserver(
-      ([entry]) => { isVisible = entry.isIntersecting },
-      { threshold: 0.1 },
-    )
-    io.observe(canvas)
-
-    const resize = () => {
-      if (!canvas) return
-      canvas.width  = canvas.clientWidth
-      canvas.height = canvas.clientHeight
-    }
-    resize()
-    const ro = new ResizeObserver(resize)
-    ro.observe(canvas)
 
     function loop(t: number) {
       if (!running) return
-      if (!isVisible) { rafId = requestAnimationFrame(loop); return }
 
-      const dt = Math.min(t - lastT, 50)
-      lastT = t
       const c = cam.current
-
-      if (canvas!.width === 0 || canvas!.height === 0) {
-        rafId = requestAnimationFrame(loop)
-        return
-      }
+      if (c.lastT === 0) c.lastT = t
+      const dt = Math.min(t - c.lastT, 50)
+      c.lastT = t
 
       // Smooth serpentine canyon flight
       c.vx = 2.2
@@ -277,7 +189,13 @@ export function VoxelDemoColor() {
       const terrainAtCam = heightmap[ty * HMAP + tx]
       const camH = Math.max(terrainAtCam + 68, 108 + 25 * Math.sin(t * 0.0003))
 
-      renderVoxelColor(ctx, canvas!, c.x, c.y, c.angle, camH, t, offscreen, cache)
+      // Direct in-place update of uniforms
+      const u = uniformsRef.current
+      u.uCamPos[0] = c.x
+      u.uCamPos[1] = c.y
+      u.uAngle = c.angle
+      u.uCamH = camH
+
       rafId = requestAnimationFrame(loop)
     }
 
@@ -285,16 +203,17 @@ export function VoxelDemoColor() {
     return () => {
       running = false
       cancelAnimationFrame(rafId)
-      ro.disconnect()
-      io.disconnect()
     }
   }, [])
 
   return (
     <Panel title="VOXEL SPECTRAL // CHROMATIC SHIFT">
-      <canvas
-        ref={canvasRef}
-        style={{ width: '100%', height: '100%', imageRendering: 'pixelated', display: 'block' }}
+      <ShaderPanel
+        fragmentShader={VOXEL_COLOR_SHADER}
+        uniforms={uniformsRef.current}
+        textureData={{ data: heightmap, width: HMAP, height: HMAP }}
+        title=""
+        attribution="Voxel Raymarching by Antigravity (GPU-Migration)"
       />
     </Panel>
   )
@@ -302,52 +221,29 @@ export function VoxelDemoColor() {
 
 // ── Voxel Demo B&W Panel Component ───────────────────────────────────────────
 export function VoxelDemoBW() {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
   const cam = useRef({
     x: 350, y: 150,
-    vx: -1.2, vy: 1.0,
-    angle: 2.1, va: -0.001,
-    lastImpulse: -5000,
+    angle: 2.1,
+    lastT: 0,
+  })
+
+  // Stable uniforms reference for zero-rerender WebGL updates
+  const uniformsRef = useRef({
+    uCamPos: [350.0, 150.0],
+    uAngle: 2.1,
+    uCamH: 100.0,
   })
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')!
-    if (!ctx) return
-
-    const offscreen = document.createElement('canvas')
-    const cache = { img: null as ImageData | null }
-
     let rafId: number
     let running = true
-    let isVisible = true
-
-    const io = new IntersectionObserver(
-      ([entry]) => { isVisible = entry.isIntersecting },
-      { threshold: 0.1 },
-    )
-    io.observe(canvas)
-
-    const resize = () => {
-      if (!canvas) return
-      canvas.width  = canvas.clientWidth
-      canvas.height = canvas.clientHeight
-    }
-    resize()
-    const ro = new ResizeObserver(resize)
-    ro.observe(canvas)
 
     function loop(t: number) {
       if (!running) return
-      if (!isVisible) { rafId = requestAnimationFrame(loop); return }
 
       const c = cam.current
-
-      if (canvas!.width === 0 || canvas!.height === 0) {
-        rafId = requestAnimationFrame(loop)
-        return
-      }
+      if (c.lastT === 0) c.lastT = t
+      c.lastT = t
 
       // Smooth circular orbit path around map center (256, 256)
       const orbitRadius = 160
@@ -361,7 +257,13 @@ export function VoxelDemoBW() {
       const terrainAtCam = heightmap[ty * HMAP + tx]
       const camH = Math.max(terrainAtCam + 72, 115 + 20 * Math.cos(t * 0.0002))
 
-      renderVoxelBW(ctx, canvas!, c.x, c.y, c.angle, camH, offscreen, cache)
+      // Direct in-place update of uniforms
+      const u = uniformsRef.current
+      u.uCamPos[0] = c.x
+      u.uCamPos[1] = c.y
+      u.uAngle = c.angle
+      u.uCamH = camH
+
       rafId = requestAnimationFrame(loop)
     }
 
@@ -369,16 +271,17 @@ export function VoxelDemoBW() {
     return () => {
       running = false
       cancelAnimationFrame(rafId)
-      ro.disconnect()
-      io.disconnect()
     }
   }, [])
 
   return (
     <Panel title="VOXEL SURVEY // ORTHOGONAL MONOCHROME">
-      <canvas
-        ref={canvasRef}
-        style={{ width: '100%', height: '100%', imageRendering: 'pixelated', display: 'block' }}
+      <ShaderPanel
+        fragmentShader={VOXEL_BW_SHADER}
+        uniforms={uniformsRef.current}
+        textureData={{ data: heightmap, width: HMAP, height: HMAP }}
+        title=""
+        attribution="Voxel Raymarching by Antigravity (GPU-Migration)"
       />
     </Panel>
   )
