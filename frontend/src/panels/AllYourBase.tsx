@@ -40,7 +40,6 @@ function AllYourBase() {
           ref={videoRef}
           src={VIDEO_SRC}
           autoPlay
-          loop
           playsInline
           style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
         />

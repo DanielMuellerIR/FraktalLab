@@ -108,6 +108,19 @@ function AmiModPanel() {
     };
   }, [player]);
 
+  // Caching und Autoplay-Auswahl bei Mount
+  useEffect(() => {
+    // Falls kein anderes Video oder Mod-Player läuft, wählen wir einen zufälligen Track und spielen ihn automatisch ab.
+    const isVidPlaying = !!document.querySelector<HTMLVideoElement>('video:not([muted])');
+    const isOtherModPlaying = !!(window as any).fraktallab_mod_playing;
+    
+    if (!isVidPlaying && !isOtherModPlaying) {
+      const randIdx = Math.floor(Math.random() * TRACKS.length);
+      setTrackIdx(randIdx);
+      shouldAutoPlayRef.current = true;
+    }
+  }, []);
+
   // ── Track laden und initialisieren ──────────────────────────────────────────
   useEffect(() => {
     let active = true;
@@ -133,8 +146,18 @@ function AmiModPanel() {
       }
 
       // Subscriptions (Registrierung der Player-Ereignisse)
+      let lastPos = 0;
       player.watchRows((pos, row) => {
         if (active) {
+          // Erkennen, wenn der Song zum Anfang zurückspringt (Loop-Ende erreicht)
+          const totalPatterns = player.mod?.length || 1;
+          if (pos < lastPos || (totalPatterns === 1 && row === 0 && currentRowRef.current === 63)) {
+            player.stop();
+            setPlaying(false);
+            (window as any).fraktallab_mod_playing = false;
+            return;
+          }
+          lastPos = pos;
           currentRowRef.current = row;
           
           // Nur rendern, wenn sich das Pattern (die Position) wirklich ändert

@@ -738,6 +738,7 @@ export default function App() {
       const tag = (e.target as HTMLElement).tagName
       if (e.code === 'Space' && tag !== 'INPUT' && tag !== 'TEXTAREA' && !reviewMode) {
         e.preventDefault()
+        if (isAudioPlaying()) return
         setLayout(current => { doSwitch(current); return current })
       }
     }
@@ -821,7 +822,10 @@ export default function App() {
         {/* Layout-Wechsel-Button — nur auf Desktop, im Review-Modus ausgeblendet */}
         {!reviewMode && (
           <button
-            onClick={() => setLayout(current => { doSwitch(current); return current })}
+            onClick={() => {
+              if (isAudioPlaying()) return;
+              setLayout(current => { doSwitch(current); return current });
+            }}
             title="Zufälliges neues Layout generieren (auch: Leertaste)"
             className="hidden md:inline-flex border border-green-800 text-green-600 text-xs px-2 py-0.5
                        hover:border-green-600 hover:text-green-200 transition-colors"
