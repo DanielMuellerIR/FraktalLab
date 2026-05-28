@@ -5,7 +5,7 @@ interface WebGLPoolItem {
   visible: boolean;
 }
 
-const MAX_GL_CONTEXTS = 6;
+const MAX_GL_CONTEXTS = 16;
 const activePool: WebGLPoolItem[] = [];
 
 /**

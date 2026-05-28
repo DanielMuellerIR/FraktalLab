@@ -32,6 +32,7 @@ function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData
 
   // Status for WebGL Context Pool eviction
   const [hasContext, setHasContext] = useState(true)
+  const [wakeTrigger, setWakeTrigger] = useState(0)
 
   // Track mouse coordinates for iMouse Shadertoy uniform
   const mouseRef = useRef({ x: 0, y: 0, clickX: 0, clickY: 0, active: false })
@@ -346,7 +347,7 @@ function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData
         }
       } catch (_) {}
     }
-  }, [fragmentShader, uniformsKeys, hasContext, panelId, textureData?.data, textureData?.width, textureData?.height])
+  }, [fragmentShader, uniformsKeys, wakeTrigger, panelId, textureData?.data, textureData?.width, textureData?.height])
 
   // Mouse Listeners mapping coordinates matching Shadertoy specifications
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -393,22 +394,22 @@ function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
-        {hasContext ? (
-          <>
-            <canvas
-              ref={canvasRef}
-              style={{ width: '100%', height: '100%', display: 'block' }}
-            />
-            {attribution && (
-              <div className="absolute bottom-1 left-2 px-1 bg-black/60 border border-green-950/20 text-[8px] font-mono text-green-700/60 rounded select-none pointer-events-none uppercase tracking-wider">
-                {attribution}
-              </div>
-            )}
-          </>
-        ) : (
+        <canvas
+          ref={canvasRef}
+          style={{ width: '100%', height: '100%', display: 'block' }}
+        />
+        {attribution && hasContext && (
+          <div className="absolute bottom-1 left-2 px-1 bg-black/60 border border-green-950/20 text-[8px] font-mono text-green-700/60 rounded select-none pointer-events-none uppercase tracking-wider">
+            {attribution}
+          </div>
+        )}
+        {!hasContext && (
           <div
-            onClick={() => setHasContext(true)} // Clicking wakes up the context
-            className="absolute inset-0 flex flex-col items-center justify-center p-4 border border-dashed border-green-950/40 text-center cursor-pointer group hover:bg-green-950/10 active:bg-green-950/20 transition-all duration-200"
+            onClick={() => {
+              setHasContext(true)
+              setWakeTrigger(prev => prev + 1)
+            }} // Clicking wakes up the context
+            className="absolute inset-0 flex flex-col items-center justify-center p-4 bg-black/90 border border-dashed border-green-950/40 text-center cursor-pointer group hover:bg-green-950/10 active:bg-green-950/20 transition-all duration-200 z-10"
           >
             {/* Hacker decoration brackets */}
             <div className="absolute top-4 left-4 w-4 h-4 border-t-2 border-l-2 border-green-900 group-hover:border-green-600 transition-colors" />

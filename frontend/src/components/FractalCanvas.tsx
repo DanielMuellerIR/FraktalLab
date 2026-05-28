@@ -37,7 +37,7 @@ export default memo(function FractalCanvas() {
     nextCenterX:   0,
     nextCenterY:   0,
   })
-  const rafRef = useRef<number>(0)
+
 
   useEffect(() => {
     const container = containerRef.current
@@ -163,7 +163,6 @@ export default memo(function FractalCanvas() {
               ;(s as any).locTime = performance.now()
             }
 
-            rafRef.current = requestAnimationFrame(frame)
             return
           }
 

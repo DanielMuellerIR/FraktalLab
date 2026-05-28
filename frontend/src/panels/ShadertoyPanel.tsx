@@ -272,9 +272,9 @@ const RETRO_WAVE_SHADER = `
       }
       
       if (hit) {
-        // Procedural grid calculations with anti-aliasing (smoothstep) and distance-dependent thickness
-        float thick = 0.02 + 0.012 * t_dist;
-        float blur = 0.015;
+        // Constant world-space grid thickness to prevent lines from expanding and merging in the distance
+        float thick = 0.016;
+        float blur = 0.008;
         float gx = 1.0 - smoothstep(thick - blur, thick + blur, min(fract(hitPos.x * 5.0), 1.0 - fract(hitPos.x * 5.0)));
         float gz = 1.0 - smoothstep(thick - blur, thick + blur, min(fract(hitPos.z * 5.0), 1.0 - fract(hitPos.z * 5.0)));
         float grid = max(gx, gz);

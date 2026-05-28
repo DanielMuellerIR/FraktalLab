@@ -446,8 +446,8 @@ export const FractalElephant = makeFractalScene(
   'ELEPHANT VALLEY // SCANNING',
   'mandelbrot',
   [
-    { cx: -0.16,   cy: 1.0405 },
-    { cx: -0.1701, cy: 1.0365 },
+    { cx: 0.275,   cy: 0.0 },
+    { cx: 0.275,   cy: 0.001 },
   ],
   null,
   140,

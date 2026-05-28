@@ -244,8 +244,8 @@ function NeuralLinkDecoderPanel() {
         // Draw outer ripple pulse
         if (node.pulsePhase > 0) {
           node.pulsePhase = Math.max(0, node.pulsePhase - dt * 2.0)
-          const rippleRadius = node.radius + (1.0 - node.pulsePhase) * 16.0
-          ctx.strokeStyle = `rgba(74, 222, 128, ${node.pulsePhase})`
+          const rippleRadius = Math.max(0.1, node.radius + (1.0 - Math.min(1.0, node.pulsePhase)) * 16.0)
+          ctx.strokeStyle = `rgba(74, 222, 128, ${Math.min(1.0, node.pulsePhase)})`
           ctx.lineWidth = 1
           ctx.beginPath()
           ctx.arc(nx, ny, rippleRadius, 0, Math.PI * 2)

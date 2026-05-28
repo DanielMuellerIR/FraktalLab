@@ -438,7 +438,9 @@ function makeVoxelScene(
 
         float hitZ = -1.0;
         float hitHeight = 0.0;
-        for (float z = 1.0; z < 600.0; z += 1.0 + z * 0.015) {
+        float z = 1.0;
+        for (int i = 0; i < 300; i++) {
+            if (z >= 600.0) break;
             vec2 wpos = uCamPos + vec2(rdx * z, rdy * z);
             float wz = uCamH + (fragCoord.y - horizon) * z / scale;
             
@@ -450,6 +452,7 @@ function makeVoxelScene(
                 hitHeight = th;
                 break;
             }
+            z += 1.0 + z * 0.015;
         }
 
         if (hitZ < 0.0) {

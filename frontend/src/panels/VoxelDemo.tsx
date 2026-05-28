@@ -49,7 +49,8 @@ const VOXEL_COLOR_SHADER = `
 
     float hitZ = -1.0;
     float hitHeight = 0.0;
-    for (float z = 1.0; z < 150.0; z += 1.0) {
+    for (int i = 1; i < 150; i++) {
+        float z = float(i);
         vec2 wpos = uCamPos + vec2(rdx * z, rdy * z);
         float wz = uCamH + (fragCoord.y - horizon) * z / scale;
         
@@ -117,7 +118,8 @@ const VOXEL_BW_SHADER = `
 
     float hitZ = -1.0;
     float hitHeight = 0.0;
-    for (float z = 1.0; z < 150.0; z += 1.0) {
+    for (int i = 1; i < 150; i++) {
+        float z = float(i);
         vec2 wpos = uCamPos + vec2(rdx * z, rdy * z);
         float wz = uCamH + (fragCoord.y - horizon) * z / scale;
         
