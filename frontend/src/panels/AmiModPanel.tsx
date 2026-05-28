@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import Panel from '../ui/Panel';
 import { ModPlayer } from '../utils/modplayer/player';
 import { Mod, Note } from '../utils/modplayer/mod';
+import { subscribe } from '../utils/raf-coordinator';
+
 
 // ─── Musik-Tracks ─────────────────────────────────────────────────────────────
 interface Track {
@@ -77,15 +79,22 @@ export default function AmiModPanel() {
   const [mod, setMod] = useState<Mod | null>(null);
 
   // Sequencer-Status
-  const [currentRow, setCurrentRow] = useState(0);
+  // Wir verwenden hier React State nur für die aktuelle Pattern-Position (currentPosition).
+  // Für die Zeile (currentRow) und die VU-Level (vuLevels) nutzen wir React-Refs.
+  // Das verhindert unnötige, häufige Re-Renderings der gesamten Tracker-Zeilen (60-mal pro Sekunde).
+  const currentRowRef = useRef(0);
   const [currentPosition, setCurrentPosition] = useState(0);
-  const [vuLevels, setVuLevels] = useState<VuLevels>([0, 0, 0, 0]);
+  const vuLevelsRef = useRef<VuLevels>([0, 0, 0, 0]);
+  
+  // HTML-Refs für direkten DOM-Zugriff
+  const vuBarsRef = useRef<(HTMLDivElement | null)[]>([]);
+  const statusRowRef = useRef<HTMLSpanElement>(null);
+  const rowsContainerRef = useRef<HTMLDivElement>(null);
 
   // ModPlayer einmalig für die Lebensdauer der Komponente erzeugen
   const [player] = useState(() => new ModPlayer());
   const playerRef = useRef<ModPlayer>(player);
   const shouldAutoPlayRef = useRef(false);
-  const rowsContainerRef = useRef<HTMLDivElement>(null);
 
   // ModPlayer beim Unmount entladen
   useEffect(() => {
@@ -101,9 +110,9 @@ export default function AmiModPanel() {
     setLoading(true);
     setLoadError(null);
     setPlaying(false);
-    setCurrentRow(0);
+    currentRowRef.current = 0;
     setCurrentPosition(0);
-    setVuLevels([0, 0, 0, 0]);
+    vuLevelsRef.current = [0, 0, 0, 0];
 
     player.load(TRACKS[trackIdx].url, `${BASE}audio/mod-player-worklet.js`).then(() => {
       if (!active) {
@@ -119,11 +128,45 @@ export default function AmiModPanel() {
         shouldAutoPlayRef.current = false;
       }
 
-      // Subscriptions
+      // Subscriptions (Registrierung der Player-Ereignisse)
       player.watchRows((pos, row) => {
         if (active) {
-          setCurrentPosition(pos);
-          setCurrentRow(row);
+          currentRowRef.current = row;
+          
+          // Nur rendern, wenn sich das Pattern (die Position) wirklich ändert
+          setCurrentPosition((prevPos) => {
+            if (prevPos !== pos) {
+              return pos;
+            }
+            return prevPos;
+          });
+
+          // Direkte DOM-Aktualisierung der Zeilen-Highlights
+          const container = rowsContainerRef.current;
+          if (container) {
+            // Alte aktive Zeile zurücksetzen
+            const prevActive = container.querySelector('[data-active="true"]');
+            if (prevActive) {
+              prevActive.setAttribute('data-active', 'false');
+            }
+            // Neue aktive Zeile markieren
+            const nextActive = container.querySelector(`[data-row-idx="${row}"]`);
+            if (nextActive) {
+              nextActive.setAttribute('data-active', 'true');
+              
+              // In die Mitte scrollen
+              const containerHeight = container.clientHeight;
+              const rowHeight = (nextActive as HTMLElement).clientHeight;
+              const rowTop = (nextActive as HTMLElement).offsetTop;
+              container.scrollTop = rowTop - (containerHeight / 2) + (rowHeight / 2);
+            }
+          }
+
+          // Status-Zeile unten direkt aktualisieren
+          const statusRow = statusRowRef.current;
+          if (statusRow) {
+            statusRow.innerText = `${row.toString().padStart(2, '0')}/63`;
+          }
         }
       });
 
@@ -131,11 +174,8 @@ export default function AmiModPanel() {
         if (active) {
           const ch = noteData.channel - 1;
           if (ch >= 0 && ch < 4) {
-            setVuLevels(prev => {
-              const next = [...prev] as VuLevels;
-              next[ch] = Math.max(next[ch], noteData.volume / 64);
-              return next;
-            });
+            // Lautstärke direkt im Ref eintragen (Wert 0.0 bis 1.0)
+            vuLevelsRef.current[ch] = Math.max(vuLevelsRef.current[ch], noteData.volume / 64);
           }
         }
       });
@@ -160,22 +200,26 @@ export default function AmiModPanel() {
     };
   }, [trackIdx, player]);
 
-  // VU-Meter abklingen lassen
+  // VU-Meter abklingen lassen über den zentralen rAF-Koordinator
   useEffect(() => {
-    let rAFId: number;
-    const decay = () => {
-      setVuLevels(prev => {
-        const next = prev.map(v => Math.max(0, v - 0.08)) as VuLevels;
-        if (next.every((v, i) => v === prev[i])) return prev;
-        return next;
-      });
-      rAFId = requestAnimationFrame(decay);
-    };
-    rAFId = requestAnimationFrame(decay);
-    return () => cancelAnimationFrame(rAFId);
+    const unsubscribe = subscribe(() => {
+      const levels = vuLevelsRef.current;
+      for (let i = 0; i < 4; i++) {
+        // VU-Wert reduzieren (Abklingeffekt)
+        levels[i] = Math.max(0, levels[i] - 0.08);
+        
+        // VU-Balken direkt im DOM zeichnen
+        const bar = vuBarsRef.current[i];
+        if (bar) {
+          const pct = Math.max(2, Math.round(levels[i] * 100));
+          bar.style.height = `${pct}%`;
+        }
+      }
+    });
+    return unsubscribe;
   }, []);
 
-  // Scroll active row into center of viewport
+  // Scrollt die aktive Zeile in die Mitte, wenn sich das Pattern ändert
   useEffect(() => {
     const container = rowsContainerRef.current;
     if (!container) return;
@@ -185,9 +229,9 @@ export default function AmiModPanel() {
     const rowHeight = activeRowEl.clientHeight;
     const rowTop = activeRowEl.offsetTop;
     container.scrollTop = rowTop - (containerHeight / 2) + (rowHeight / 2);
-  }, [currentRow]);
+  }, [currentPosition]);
 
-  // Play/Stop toggle
+  // Abspielen / Stoppen umschalten
   const handlePlayToggle = () => {
     const player = playerRef.current;
     if (!player || loading) return;
@@ -204,11 +248,6 @@ export default function AmiModPanel() {
     }
   };
 
-  // VU-Meter Balken-Höhe
-  function vuBarHeight(level: number): string {
-    return `${Math.max(2, Math.round(level * 100))}%`;
-  }
-
   // ── Tracker Tabelle berechnen ──────────────────────────────────────────────
   const patternIdxInTable = mod && currentPosition < mod.patternTable.length 
     ? mod.patternTable[currentPosition] 
@@ -219,7 +258,7 @@ export default function AmiModPanel() {
 
   const allRows = pattern ? pattern.rows : [];
 
-  // Instrumentenliste
+  // Instrumentenliste erstellen
   const instrumentsToDisplay = mod 
     ? mod.instruments.slice(1).map((inst, idx) => {
         const num = (idx + 1).toString(16).toUpperCase().padStart(2, '0');
@@ -232,7 +271,7 @@ export default function AmiModPanel() {
     <Panel title="AMIGA WORKBENCH // MOD PLAYER">
       <div className="flex flex-col h-full overflow-hidden bg-[#c0c0c0] text-black border-2 border-t-white border-l-white border-b-[#404040] border-r-[#404040] font-mono text-xs select-none p-0.5">
 
-        {/* ─── Amiga-Style Window Title Bar ────────────────────────────── */}
+        {/* ─── Amiga-Style Fenster-Titelleiste ────────────────────────────── */}
         <div className="bg-[#0055aa] text-white flex items-center justify-between px-2 py-0.5 border-b border-[#404040] shrink-0 font-bold text-[10px]">
           <div className="flex items-center gap-2">
             <div className="w-3.5 h-3 bg-[#c0c0c0] border border-b-[#404040] border-r-[#404040] border-t-white border-l-white cursor-pointer active:border-t-black active:border-l-black flex items-center justify-center text-[7px] text-black select-none">
@@ -253,14 +292,13 @@ export default function AmiModPanel() {
           </div>
         </div>
 
-        {/* ─── Controls Bar ────────────────────────────────────────────── */}
+        {/* ─── Steuerung (Controls Bar) ────────────────────────────────── */}
         <div className="flex items-center justify-between px-2 py-1 bg-[#c0c0c0] border-b border-[#808080] shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-neutral-800 text-[10px] font-bold">SONG:</span>
             <select
               value={trackIdx}
               onChange={(e) => {
-                // Audio-Context im User-Gesture-Callstack vorab aufwecken/erstellen
                 player.resumeContext();
                 setTrackIdx(Number(e.target.value));
                 shouldAutoPlayRef.current = true;
@@ -291,12 +329,12 @@ export default function AmiModPanel() {
           </div>
         </div>
 
-        {/* ─── Haupt-Content ───────────────────────────────────────────── */}
+        {/* ─── Hauptbereich ───────────────────────────────────────────── */}
         <div className="flex flex-1 overflow-hidden min-h-0 bg-[#808080] p-1 gap-1">
 
           {/* ── VU-Meter (links) ─────────────────────────────────────────── */}
           <div className="flex flex-col justify-center gap-2 px-1 bg-[#c0c0c0] border-2 border-t-white border-l-white border-b-neutral-700 border-r-neutral-700 shrink-0 w-9 py-1 rounded-sm">
-            {vuLevels.map((level, i) => (
+            {[0, 1, 2, 3].map((i) => (
               <div key={i} className="flex flex-col items-center gap-0.5">
                 <span className="text-neutral-700 font-bold text-[8px]">
                   CH{i + 1}
@@ -306,9 +344,10 @@ export default function AmiModPanel() {
                   style={{ height: '38px' }}
                 >
                   <div
-                    className="absolute bottom-0 left-0 right-0 transition-all duration-75"
+                    ref={(el) => { vuBarsRef.current[i] = el; }}
+                    className="absolute bottom-0 left-0 right-0"
                     style={{
-                      height: vuBarHeight(level),
+                      height: '2%',
                       background: 'linear-gradient(to top, #00aa00 0%, #00ff00 65%, #ffff00 65%, #ffaa00 85%, #ff0000 85%, #ff3333 100%)',
                     }}
                   />
@@ -319,7 +358,7 @@ export default function AmiModPanel() {
 
           {/* ── Tracker-Tabelle (Mitte) ──────────────────────────────────── */}
           <div className="flex-1 overflow-hidden flex flex-col min-w-0 bg-[#000022] border-2 border-t-neutral-700 border-l-neutral-700 border-b-white border-r-white">
-            {/* Spaltenkopf */}
+            {/* Spaltenköpfe */}
             <div
               className="flex items-center bg-[#0033aa] text-white border-b border-black shrink-0 px-1 py-0.5 font-bold"
               style={{ fontSize: '11px' }}
@@ -336,7 +375,7 @@ export default function AmiModPanel() {
               ))}
             </div>
 
-            {/* Rows */}
+            {/* Zeilen (Rows) */}
             <div
               ref={rowsContainerRef}
               className="flex-1 overflow-y-auto no-scrollbar"
@@ -346,6 +385,73 @@ export default function AmiModPanel() {
                 .no-scrollbar::-webkit-scrollbar {
                   display: none;
                 }
+                
+                /* Optimiertes Styling für die Tracker-Zeilen */
+                .mod-row {
+                  font-size: 11px;
+                  line-height: 1.3;
+                  transition: background-color 0.05s ease;
+                }
+                .mod-row[data-active="true"] {
+                  background-color: #0044bb !important;
+                  color: #ffffff !important;
+                }
+                .mod-row[data-active="false"] {
+                  background-color: transparent !important;
+                  color: #00aa00 !important;
+                }
+                
+                /* Zeilennummer */
+                .mod-row-idx {
+                  color: #737373;
+                }
+                .mod-row[data-active="true"] .mod-row-idx {
+                  color: #ffffff !important;
+                }
+                
+                /* Notenblock-Container */
+                .mod-note-block {
+                  color: #005500;
+                }
+                .mod-note-block.has-note {
+                  color: #ffffff;
+                }
+                .mod-row[data-active="true"] .mod-note-block {
+                  color: #ffffff !important;
+                }
+                
+                /* Notenname */
+                .mod-note-name {
+                  color: inherit;
+                }
+                .mod-note-block.has-note .mod-note-name {
+                  color: #aaeebb;
+                }
+                .mod-row[data-active="true"] .mod-note-name {
+                  color: #ffffff !important;
+                }
+                
+                /* Instrument */
+                .mod-inst {
+                  color: inherit;
+                }
+                .mod-inst.has-inst {
+                  color: #ffcc00;
+                }
+                .mod-row[data-active="true"] .mod-inst {
+                  color: #ffff55 !important;
+                }
+                
+                /* Effekt */
+                .mod-fx {
+                  color: inherit;
+                }
+                .mod-fx.has-fx {
+                  color: #00ccff;
+                }
+                .mod-row[data-active="true"] .mod-fx {
+                  color: #55ffff !important;
+                }
               `}</style>
               {loading ? (
                 <div className="h-full flex items-center justify-center text-[#00ccff] animate-pulse text-xs">
@@ -353,20 +459,15 @@ export default function AmiModPanel() {
                 </div>
               ) : allRows.length > 0 ? (
                 allRows.map((row, absoluteRow) => {
-                  const isActive = absoluteRow === currentRow;
+                  const isActive = absoluteRow === currentRowRef.current;
                   return (
                     <div
                       key={absoluteRow}
+                      data-row-idx={absoluteRow}
                       data-active={isActive ? "true" : "false"}
-                      className="flex items-center px-1"
-                      style={{
-                        fontSize: '11px',
-                        background: isActive ? '#0044bb' : 'transparent',
-                        color: isActive ? '#ffffff' : '#00aa00',
-                        lineHeight: '1.3',
-                      }}
+                      className="mod-row flex items-center px-1"
                     >
-                      <span className={`w-9 shrink-0 font-bold ${isActive ? 'text-white' : 'text-neutral-500'}`}>
+                      <span className="mod-row-idx w-9 shrink-0 font-bold">
                         {absoluteRow.toString(16).toUpperCase().padStart(2, '0')}
                       </span>
                       {row.notes.map((note, ci) => {
@@ -374,29 +475,26 @@ export default function AmiModPanel() {
                         const inst = formatInstrument(note);
                         const fx = formatEffect(note);
                         const hasNote = noteName !== '---';
+                        const hasInst = inst !== '--';
+                        const hasFx = fx !== '000';
                         return (
                           <span
                             key={ci}
-                            className="flex-1 text-center"
+                            className={`mod-note-block flex-1 text-center font-bold ${hasNote ? 'has-note' : ''}`}
                             style={{
                               minWidth: 0,
-                              color: isActive
-                                ? '#ffffff'
-                                : hasNote
-                                  ? '#ffffff'
-                                  : '#005500',
                               fontVariantNumeric: 'tabular-nums',
                             }}
                           >
-                            <span style={{ color: isActive ? '#ffffff' : hasNote ? '#aaeebb' : undefined }}>
+                            <span className="mod-note-name">
                               {noteName}
                             </span>
                             {' '}
-                            <span style={{ color: isActive ? '#ffff55' : inst !== '--' ? '#ffcc00' : undefined }}>
+                            <span className={`mod-inst ${hasInst ? 'has-inst' : ''}`}>
                               {inst}
                             </span>
                             {' '}
-                            <span style={{ color: isActive ? '#55ffff' : fx !== '000' ? '#00ccff' : undefined }}>
+                            <span className={`mod-fx ${hasFx ? 'has-fx' : ''}`}>
                               {fx}
                             </span>
                           </span>
@@ -462,8 +560,8 @@ export default function AmiModPanel() {
               </div>
               <div className="flex justify-between text-neutral-700 font-bold">
                 <span>ROW:</span>
-                <span className="text-black">
-                  {currentRow.toString().padStart(2, '0')}/63
+                <span ref={statusRowRef} className="text-black">
+                  {currentRowRef.current.toString().padStart(2, '0')}/63
                 </span>
               </div>
               <div className="flex justify-between text-neutral-700 font-bold">
