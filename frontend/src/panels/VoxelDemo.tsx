@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 import ShaderPanel from '../ui/ShaderPanel'
 
@@ -151,7 +151,10 @@ const VOXEL_BW_SHADER = `
 `
 
 // ── Voxel Demo Color Panel Component ─────────────────────────────────────────
-export function VoxelDemoColor() {
+// memo: AGENTS.md "alle Standalone-Panels in React.memo wrappen" (PERF-11).
+// VoxelDemoColor + VoxelDemoBW waren vor diesem Audit die einzigen Ausreisser,
+// siehe AUDIT_FINDINGS.md F-004 / H-03.
+function VoxelDemoColorImpl() {
   const cam = useRef({
     x: 200, y: 300,
     vx: 1.5, vy: 0.8,
@@ -222,7 +225,7 @@ export function VoxelDemoColor() {
 }
 
 // ── Voxel Demo B&W Panel Component ───────────────────────────────────────────
-export function VoxelDemoBW() {
+function VoxelDemoBWImpl() {
   const cam = useRef({
     x: 350, y: 150,
     angle: 2.1,
@@ -288,3 +291,9 @@ export function VoxelDemoBW() {
     </Panel>
   )
 }
+
+// Memo-Wrapper als benannte Exporte. Komponenten haben keine Props (ausser
+// optional onComplete) → Standard-Equality reicht. Verhindert unbeabsichtigtes
+// Remount der rAF-Loop und Heightmap-Init bei Parent-Re-Render.
+export const VoxelDemoColor = memo(VoxelDemoColorImpl)
+export const VoxelDemoBW = memo(VoxelDemoBWImpl)

@@ -125,6 +125,10 @@ export default memo(function FractalCanvas() {
           ;(s as any).boundaryFrame = 0
         }
 
+        // Zaehler fuer setAttribute-Throttling (AUDIT_FINDINGS.md H-08).
+        // data-zoom* werden nur jeden 8. Frame ans DOM geschrieben — die
+        // Playwright-Tests pollen ohnehin, eventual consistency reicht.
+        let attrTick = 0
         const frame = () => {
           if (cancelled) return
 
@@ -214,8 +218,10 @@ export default memo(function FractalCanvas() {
 
             // Aktuellen Frame immer auf Canvas ausgeben
             ctx.putImageData(imgData, 0, 0)
-            canvas.setAttribute('data-zoom', s.zoom.toString())
-            canvas.setAttribute('data-zoom-direction', s.fading ? '0' : '1')
+            if ((attrTick++ & 7) === 0) {
+              canvas.setAttribute('data-zoom', s.zoom.toString())
+              canvas.setAttribute('data-zoom-direction', s.fading ? '0' : '1')
+            }
 
             // Übergang starten: Snapshot beider Frames vorbereiten
             if (s.fading && !(s as any).hasSnapshots) {

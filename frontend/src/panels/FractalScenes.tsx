@@ -306,8 +306,12 @@ function makeFractalScene(
 
           if (colorTransform) applyTransform(pixels, colorTransform)
           ctx.putImageData(imgData, 0, 0)
-          canvas.setAttribute('data-zoom', s.zoom.toString())
-          canvas.setAttribute('data-zoom-direction', s.zoomDirection.toString())
+          // data-zoom* nur jeden 8. Frame schreiben — Tests pollen,
+          // brauchen keine 60-Hz-Genauigkeit (AUDIT_FINDINGS.md H-08).
+          if ((s.frameCount & 7) === 0) {
+            canvas.setAttribute('data-zoom', s.zoom.toString())
+            canvas.setAttribute('data-zoom-direction', s.zoomDirection.toString())
+          }
         } catch (err) {
           console.error('[FractalScenes] Render error:', err)
           return
