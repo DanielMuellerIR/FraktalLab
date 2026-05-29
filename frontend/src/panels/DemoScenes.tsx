@@ -29,6 +29,12 @@ function makeScene(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   postDraw?: (ctx: CanvasRenderingContext2D, W: number, H: number, t: number, s: any) => void,
   pixelated: boolean = false,
+  // Optionaler FPS-Cap fuer teure CPU-Szenen. Default = ungetaktet (60 Hz
+  // via rAF). Beispiel: 30 halbiert die Frame-Last fuer Szenen, die bei
+  // 30 fps visuell nicht wahrnehmbar schlechter aussehen (z. B.
+  // ThreeBodyScene mit 480 000 RGBA-Bytes pro Frame). Siehe
+  // AUDIT_FINDINGS.md H-04.
+  fpsCap?: number,
 ): React.NamedExoticComponent<any> {
   return React.memo(function Scene() {
     const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -95,6 +101,10 @@ function makeScene(
       stateRef.current = mkState(initW, initH)
 
       let img: ImageData | null = null
+      // FPS-Cap: minimaler Abstand zwischen zwei Draw-Calls in Millisekunden.
+      // 0 = kein Cap (jeder rAF-Tick rendert).
+      const minDt = fpsCap && fpsCap > 0 ? 1000 / fpsCap : 0
+      let lastDrawT = 0
 
       function loop(t: number) {
         if (!alive) return
@@ -103,6 +113,10 @@ function makeScene(
         if (canvas.width === 0 || canvas.height === 0) {
           return
         }
+
+        // FPS-Cap respektieren — frueh raus, ohne draw/putImageData/drawImage.
+        if (minDt > 0 && (t - lastDrawT) < minDt) return
+        lastDrawT = t
 
         const { W, H } = getInternalSize()
 
@@ -1105,7 +1119,11 @@ export const ThreeBodyScene = makeScene(
       const b = balls[i]
       offCtx.fillText(`M-${i+1}`, b.bx + fontSize * 1.2, b.by - fontSize * 1.2)
     }
-  }
+  },
+  false, // pixelated default
+  30,    // FPS-Cap: ThreeBodyScene rendert CPU-seitig 480 000 RGBA-Bytes
+         // pro Frame. 30 fps reichen visuell (langsame Bahn-Drift), halbieren
+         // die Frame-Last. AUDIT_FINDINGS.md H-04.
 )
 
 // ── Effekt 8: Lissajous — animierte Kurve mit Nachleucht-Spur ────────────────
