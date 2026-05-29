@@ -206,6 +206,12 @@ function AmiModPanel() {
   // Track-Wechsel — angezeigter Name + Tracker passten dann nicht zum
   // hoerbaren Song.
   const loadGenRef = useRef(0);
+  // Loop-Ende-Detektion in watchRows: wenn die Position des Worklets
+  // unerwartet zurueckspringt UND es nicht durch User-Scrubbing
+  // verursacht wurde, gilt der Song als am Ende. Beide Werte werden als
+  // Ref gefuehrt, damit der Scrub-Handler sie aktualisieren kann.
+  const lastPosRef = useRef(0);
+  const justScrubbedRef = useRef(false);
 
   // User-Uploads (Drop / File-Picker / Folder-Picker). Object-URLs werden
   // bei Unmount aktiv freigegeben (siehe useEffect weiter unten).
@@ -319,18 +325,32 @@ function AmiModPanel() {
       // Subscriptions (Registrierung der Player-Ereignisse).
       // Closures nutzen myMod / myGen — kein Zugriff mehr auf das mutable
       // player.mod aus Callbacks heraus.
-      let lastPos = 0;
+      // lastPos liegt in einem Ref, nicht im Closure — der Scrubber-
+      // Handler kann es aktualisieren, sodass ein User-initiiertes
+      // Rueckwaertsspringen nicht als "Song zu Ende" missinterpretiert wird.
+      lastPosRef.current = 0;
+      justScrubbedRef.current = false;
       player.watchRows((pos, row) => {
         if (active && myGen === loadGenRef.current) {
-          // Erkennen, wenn der Song zum Anfang zurückspringt (Loop-Ende erreicht)
+          // Wenn der User gerade gescrubbt hat: keine Loop-Ende-Detektion.
+          // Stattdessen nur State synchronisieren und die Flag wieder
+          // freigeben fuer den naechsten Tick.
+          if (justScrubbedRef.current) {
+            justScrubbedRef.current = false;
+            lastPosRef.current = pos;
+          }
+          // Erkennen, wenn der Song zum Anfang zurückspringt (Loop-Ende erreicht).
+          // Nur dann auto-stoppen, wenn die alte Position nahe am Songende
+          // lag — sonst sind harmlose Pattern-Breaks zu falschen Stops geworden.
           const totalPatterns = myMod.length || 1;
-          if (pos < lastPos || (totalPatterns === 1 && row === 0 && currentRowRef.current === 63)) {
+          const loopedBack = pos < lastPosRef.current && lastPosRef.current >= myMod.length - 1;
+          if (loopedBack || (totalPatterns === 1 && row === 0 && currentRowRef.current === 63)) {
             player.stop();
             setPlaying(false);
             (window as any).fraktallab_mod_playing = false;
             return;
           }
-          lastPos = pos;
+          lastPosRef.current = pos;
           currentRowRef.current = row;
           
           // Nur rendern, wenn sich das Pattern (die Position) wirklich ändert
@@ -600,6 +620,12 @@ function AmiModPanel() {
       (window as any).fraktallab_mod_playing = false;
       releaseAudioFocus(AUDIO_ID);
     } else {
+      // Worklet beginnt bei 'play' wieder von Position 0/Row 0. lastPosRef
+      // muss daher zurueckgesetzt werden, sonst feuert die Loop-Ende-
+      // Detektion sofort wieder (pos=0 < lastPos vom letzten Auto-Stop)
+      // und kein Audio wird hoerbar.
+      lastPosRef.current = 0;
+      justScrubbedRef.current = false;
       player.resumeContext();
       requestAudioFocus(AUDIO_ID);
       player.play();
@@ -774,7 +800,12 @@ function AmiModPanel() {
               onChange={(e) => {
                 const newPos = Number(e.target.value);
                 // Optimistisches UI-Update — der Worklet zieht via setRow
-                // beim naechsten Tick nach.
+                // beim naechsten Tick nach. justScrubbedRef verhindert,
+                // dass die folgende watchRows-Loop-Ende-Detektion das
+                // Rueckwaertsspringen mit dem natuerlichen Song-Wrap
+                // verwechselt und faelschlich stoppt.
+                justScrubbedRef.current = true;
+                lastPosRef.current = newPos;
                 setCurrentPosition(newPos);
                 currentRowRef.current = 0;
                 player.setRow(newPos, 0);
