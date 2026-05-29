@@ -754,6 +754,40 @@ function AmiModPanel() {
           </div>
         </div>
 
+        {/* ─── Positionsregler (Scrubber) ─────────────────────────────────
+            Range-Slider ueber die Pattern-Positionen des aktuellen Mods.
+            Springen via player.setRow(pos, 0). Hilfreich zum Debuggen
+            verdaechtiger Mods (Pattern-Wechsel reproduzierbar einzeln
+            anhoeren) und zum schnellen Navigieren. */}
+        {mod && mod.length > 1 && (
+          <div className="flex items-center gap-2 px-2 py-1 bg-[#c0c0c0] border-b border-[#808080] shrink-0">
+            <span className="text-neutral-800 text-[9px] font-bold shrink-0">
+              POS
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={mod.length - 1}
+              step={1}
+              value={currentPosition}
+              disabled={loading}
+              onChange={(e) => {
+                const newPos = Number(e.target.value);
+                // Optimistisches UI-Update — der Worklet zieht via setRow
+                // beim naechsten Tick nach.
+                setCurrentPosition(newPos);
+                currentRowRef.current = 0;
+                player.setRow(newPos, 0);
+              }}
+              className="flex-1 h-1 cursor-pointer accent-[#0055aa] disabled:opacity-50"
+              aria-label="Position im Song"
+            />
+            <span className="text-neutral-800 text-[9px] font-bold shrink-0 tabular-nums">
+              {String(currentPosition + 1).padStart(2, '0')}/{String(mod.length).padStart(2, '0')}
+            </span>
+          </div>
+        )}
+
         {/* ─── Hauptbereich ───────────────────────────────────────────── */}
         <div className="flex flex-1 overflow-hidden min-h-0 bg-[#808080] p-1 gap-1">
 
