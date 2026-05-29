@@ -174,7 +174,6 @@ export default function EnhancePhoto() {
 
       const img       = new Image()
       img.crossOrigin = 'anonymous'
-      img.src         = PHOTOS[next]
 
       img.onload = () => {
         if (cancel) return
@@ -202,6 +201,8 @@ export default function EnhancePhoto() {
         // Ladefehler → kurz warten, dann nächstes Bild versuchen
         if (!cancel) safeTimeout(runCycle, 200)
       }
+
+      img.src         = PHOTOS[next]
     }
 
     resize()

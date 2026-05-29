@@ -134,9 +134,9 @@ function ThermonuclearWarPanel() {
     ro.observe(container)
 
     // ── Simulation States (Refs for high performance rendering loop) ───────────────────
-    const missilesRef = useRef<Missile[]>([])
-    const ripplesRef = useRef<ImpactRipple[]>([])
-    const particlesRef = useRef<Particle[]>([])
+    const missilesRef = { current: [] as Missile[] }
+    const ripplesRef = { current: [] as ImpactRipple[] }
+    const particlesRef = { current: [] as Particle[] }
     
     let missileIdSeq = 0
     let simTime = 0.0

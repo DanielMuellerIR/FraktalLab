@@ -1,4 +1,5 @@
 import { memo,  useEffect, useRef } from 'react'
+import Panel from '../ui/Panel'
 import { getWasmModule } from '../utils/wasm-loader'
 import { subscribe } from '../utils/raf-coordinator'
 
@@ -313,13 +314,15 @@ function FractalJulia() {
   }, [])
 
   return (
-    <div ref={containerRef} style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
-      <canvas
-        ref={canvasRef}
-        data-testid="fractal-julia-canvas"
-        style={{ display: 'block', width: '100%', height: '100%', imageRendering: 'auto' }}
-      />
-    </div>
+    <Panel title="WASM FRACTAL JULIA // RECURSIVE LATENT ENGINE">
+      <div ref={containerRef} style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
+        <canvas
+          ref={canvasRef}
+          data-testid="fractal-julia-canvas"
+          style={{ display: 'block', width: '100%', height: '100%', imageRendering: 'auto' }}
+        />
+      </div>
+    </Panel>
   )
 }
 

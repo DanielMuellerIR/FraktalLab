@@ -41,12 +41,14 @@ function makeScene(
       let alive = true
       let unsubscribe: (() => void) | null = null
 
+      // Start loop initially
+      unsubscribe = subscribe(loop)
+
       // IntersectionObserver: Animation pausieren wenn Panel nicht sichtbar ist
-      let isVisible = true
       const io = new IntersectionObserver(
         ([entry]) => {
-          isVisible = entry.isIntersecting
-          if (isVisible) {
+          const visible = entry.isIntersecting
+          if (visible) {
             if (!unsubscribe && alive) {
               unsubscribe = subscribe(loop)
             }
@@ -182,7 +184,7 @@ const FIRE_SHADER = `
     float a = 0.5;
     vec2 shift = vec2(100.0);
     mat2 rot = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.5));
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 4; i++) {
       v += a * noise(p);
       p = rot * p * 2.0 + shift;
       a *= 0.5;

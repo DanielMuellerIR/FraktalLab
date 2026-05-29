@@ -28,7 +28,7 @@ const REAL_EARTH_SHADER = `
     float v = 0.0;
     float a = 0.5;
     vec3 shift = vec3(100.0);
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 4; i++) {
       v += a * noise(p);
       p = p * 2.0 + shift;
       a *= 0.5;
@@ -78,9 +78,9 @@ const REAL_EARTH_SHADER = `
       vec3 earthCol;
       if (isLand) {
         // Natural Land colors (green/brown)
-        vec3 forest = vec3(0.08, 0.35, 0.12);
-        vec3 sand = vec3(0.42, 0.48, 0.25);
-        vec3 snow = vec3(0.95, 0.95, 0.98);
+        vec3 forest = vec3(0.06, 0.48, 0.16); // Vibrant emerald forest
+        vec3 sand = vec3(0.52, 0.46, 0.28);   // Natural earth/sand tone
+        vec3 snow = vec3(0.96, 0.96, 0.98);   // Crisp polar ice cap
         
         float detail = noise(rotatedP * 12.0);
         earthCol = mix(sand, forest, smoothstep(0.3, 0.7, detail));
@@ -91,8 +91,8 @@ const REAL_EARTH_SHADER = `
       } else {
         // Ocean depth coloring (shallow shore vs deep waters)
         float detail = noise(rotatedP * 8.0);
-        vec3 deepOcean = vec3(0.02, 0.08, 0.26);
-        vec3 coastWater = vec3(0.08, 0.34, 0.54);
+        vec3 deepOcean = vec3(0.005, 0.03, 0.16);  // Deep abyssal navy blue
+        vec3 coastWater = vec3(0.04, 0.26, 0.46); // Luminous cyan coastal waters
         earthCol = mix(deepOcean, coastWater, smoothstep(0.2, 0.8, detail));
       }
       

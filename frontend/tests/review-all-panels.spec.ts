@@ -83,7 +83,7 @@ test.describe('Review Mode - Visual Panel Verification', () => {
   })
 
   test('Verify and screenshot all panels in review mode', async ({ page }) => {
-    test.setTimeout(150000)
+    test.setTimeout(300000)
     page.on('console', (msg) => {
       const type = msg.type()
       const text = msg.text()
@@ -97,8 +97,19 @@ test.describe('Review Mode - Visual Panel Verification', () => {
       }
     })
 
+    page.on('requestfailed', (request) => {
+      console.error('[REQUEST FAILED]', request.url(), request.failure()?.errorText)
+    })
+
     // Go to homepage and wait to load
     await page.goto(BASE_URL, { waitUntil: 'load' })
+
+    // Clear review storage states to start fresh on panel 0
+    await page.evaluate(() => {
+      localStorage.removeItem('fraktallab_review_mode')
+      localStorage.removeItem('fraktallab_review_idx')
+    })
+    await page.reload({ waitUntil: 'load' })
     await page.waitForTimeout(1000)
 
     // Enter review mode
@@ -133,8 +144,9 @@ test.describe('Review Mode - Visual Panel Verification', () => {
       // Wait for rendering to settle (especially for WASM compilation / slow startup panels)
       await page.waitForTimeout(1500)
 
-      // Take screenshot of the panel
-      const screenshotPath = path.join(__dirname, 'screenshots', 'panels', `${String(i + 1).padStart(2, '0')}_${panelName}.png`)
+      // Take screenshot of the panel (sanitize name to prevent slashes from creating subdirectories)
+      const safePanelName = panelName.replace(/[^a-zA-Z0-9 _-]/g, '_')
+      const screenshotPath = path.join(__dirname, 'screenshots', 'panels', `${String(i + 1).padStart(2, '0')}_${safePanelName}.png`)
       await activePanel.screenshot({ path: screenshotPath })
 
       // Check canvas stddev if a canvas is present
@@ -151,9 +163,18 @@ test.describe('Review Mode - Visual Panel Verification', () => {
         console.log(`  ✓ Text-only panel`)
       }
 
-      // Navigate to the next panel
-      await page.keyboard.press('ArrowRight')
+      // Navigate to the next panel (using the NEXT button in the review footer)
+      const nextBtn = page.locator('button:has-text("NEXT")').first()
+      await expect(nextBtn).toBeVisible()
+      await nextBtn.click()
       await page.waitForTimeout(300)
+
+      // Reload the page periodically to prevent WebGL context exhaustion (every 4 panels)
+      if ((i + 1) % 4 === 0 && (i + 1) < totalPanels) {
+        console.log(`Reloading page to flush WebGL contexts (after panel ${i + 1})...`)
+        await page.reload({ waitUntil: 'load' })
+        await page.waitForTimeout(1500)
+      }
     }
 
     if (failures.length > 0) {

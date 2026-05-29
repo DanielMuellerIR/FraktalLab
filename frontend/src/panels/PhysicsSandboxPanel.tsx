@@ -177,8 +177,7 @@ function PhysicsSandboxPanel() {
     window.addEventListener('touchend', onMouseUp)
 
     // Attraktor-Position als Ref halten, um Rerender-Verzögerung im Loop zu umgehen
-    const attrPosRef = useRef({ x: 150, y: 150, active: true, mass: 6.0 })
-    attrPosRef.current = { x: canvas.width / 2, y: canvas.height / 2, active: true, mass: 6.0 }
+    const attrPosRef = { current: { x: canvas.width / 2, y: canvas.height / 2, active: true, mass: 6.0 } }
 
     // ── Haupt-Simulations- und Renderloop ────────────────────────────────────
     let lastT = 0

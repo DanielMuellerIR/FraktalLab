@@ -671,8 +671,21 @@ export default function App() {
 
 
   // ── Review-Modus-State ─────────────────────────────────────────────────────
-  const [reviewMode, setReviewMode] = useState(false)
-  const [reviewIdx,  setReviewIdx]  = useState(0)
+  const [reviewMode, setReviewMode] = useState(() => {
+    return localStorage.getItem('fraktallab_review_mode') === 'true'
+  })
+  const [reviewIdx,  setReviewIdx]  = useState(() => {
+    const val = localStorage.getItem('fraktallab_review_idx')
+    return val ? parseInt(val, 10) : 0
+  })
+
+  useEffect(() => {
+    localStorage.setItem('fraktallab_review_mode', String(reviewMode))
+  }, [reviewMode])
+
+  useEffect(() => {
+    localStorage.setItem('fraktallab_review_idx', String(reviewIdx))
+  }, [reviewIdx])
   // Aktuelle Bewertungsauswahl (noch nicht gespeichert, nur UI-State)
   const [reviewRating, setReviewRating] = useState<'up' | 'down' | null>(null)
   // useRef für das Textarea verhindert Re-Renders beim Tippen

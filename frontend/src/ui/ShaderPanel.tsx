@@ -17,6 +17,7 @@ interface ShaderPanelProps {
     width?: number
     height?: number
   }
+  noPanel?: boolean
 }
 
 const VERTEX_SHADER_SOURCE = `
@@ -26,7 +27,7 @@ const VERTEX_SHADER_SOURCE = `
   }
 `
 
-function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData }: ShaderPanelProps) {
+function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData, noPanel = false }: ShaderPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -38,8 +39,11 @@ function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData
   const mouseRef = useRef({ x: 0, y: 0, clickX: 0, clickY: 0, active: false })
 
   // Keep a unique ID for the pool registration
-  const panelIdRef = useRef(() => `shader-panel-${Math.random().toString(36).substr(2, 9)}`)
-  const panelId = panelIdRef.current()
+  const panelIdRef = useRef<string | null>(null)
+  if (!panelIdRef.current) {
+    panelIdRef.current = `shader-panel-${Math.random().toString(36).substr(2, 9)}`
+  }
+  const panelId = panelIdRef.current
 
   // Store custom uniforms in ref to prevent stale closures and avoid unnecessary WebGL teardowns
   const currentUniformsRef = useRef(uniforms)
@@ -52,6 +56,7 @@ function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData
     let isVisible = true
     let gl: WebGLRenderingContext | null = null
     let program: WebGLProgram | null = null
+    let tex: WebGLTexture | null = null
     let unsubscribeRaf: (() => void) | null = null
 
     // Helper: Compile individual shaders
@@ -158,7 +163,7 @@ function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData
       gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0)
 
       if (textureData && textureData.data) {
-        const tex = gl.createTexture()
+        tex = gl.createTexture()
         gl.activeTexture(gl.TEXTURE0)
         gl.bindTexture(gl.TEXTURE_2D, tex)
         if (textureData.data instanceof Uint8Array) {
@@ -259,6 +264,44 @@ function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData
         }
       }
 
+      if (gl && tex && textureData && textureData.data) {
+        gl.activeTexture(gl.TEXTURE0)
+        gl.bindTexture(gl.TEXTURE_2D, tex)
+        if (textureData.data instanceof HTMLCanvasElement) {
+          gl.texImage2D(
+            gl.TEXTURE_2D,
+            0,
+            gl.RGBA,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            textureData.data
+          )
+        } else if (textureData.data instanceof Uint8Array) {
+          gl.texImage2D(
+            gl.TEXTURE_2D,
+            0,
+            gl.LUMINANCE,
+            textureData.width || 256,
+            textureData.height || 128,
+            0,
+            gl.LUMINANCE,
+            gl.UNSIGNED_BYTE,
+            textureData.data
+          )
+        } else if (textureData.data instanceof HTMLImageElement) {
+          if (textureData.data.complete && textureData.data.naturalWidth !== 0) {
+            gl.texImage2D(
+              gl.TEXTURE_2D,
+              0,
+              gl.RGBA,
+              gl.RGBA,
+              gl.UNSIGNED_BYTE,
+              textureData.data
+            )
+          }
+        }
+      }
+
       gl.drawArrays(gl.TRIANGLES, 0, 6)
     }
 
@@ -342,6 +385,7 @@ function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData
       releaseWebGLSlot(panelId)
       try {
         if (gl) {
+          if (tex) gl.deleteTexture(tex)
           const ext = gl.getExtension('WEBGL_lose_context')
           if (ext) ext.loseContext()
         }
@@ -384,51 +428,59 @@ function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData
     mouseRef.current.clickY = -Math.abs(mouseRef.current.clickY)
   }
 
+  const content = (
+    <div
+      ref={containerRef}
+      className="w-full h-full overflow-hidden relative bg-black select-none cursor-crosshair"
+      onMouseMove={handleMouseMove}
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+    >
+      {hasContext && (
+        <canvas
+          ref={canvasRef}
+          style={{ width: '100%', height: '100%', display: 'block' }}
+        />
+      )}
+      {attribution && hasContext && (
+        <div className="absolute bottom-1 left-2 px-1 bg-black/60 border border-green-950/20 text-[8px] font-mono text-green-700/60 rounded select-none pointer-events-none uppercase tracking-wider">
+          {attribution}
+        </div>
+      )}
+      {!hasContext && (
+        <div
+          onClick={() => {
+            setHasContext(true)
+            setWakeTrigger(prev => prev + 1)
+          }} // Clicking wakes up the context
+          className="absolute inset-0 flex flex-col items-center justify-center p-4 bg-black/90 border border-dashed border-green-950/40 text-center cursor-pointer group hover:bg-green-950/10 active:bg-green-950/20 transition-all duration-200 z-10"
+        >
+          {/* Hacker decoration brackets */}
+          <div className="absolute top-4 left-4 w-4 h-4 border-t-2 border-l-2 border-green-900 group-hover:border-green-600 transition-colors" />
+          <div className="absolute top-4 right-4 w-4 h-4 border-t-2 border-r-2 border-green-900 group-hover:border-green-600 transition-colors" />
+          <div className="absolute bottom-4 left-4 w-4 h-4 border-b-2 border-l-2 border-green-900 group-hover:border-green-600 transition-colors" />
+          <div className="absolute bottom-4 right-4 w-4 h-4 border-b-2 border-r-2 border-green-900 group-hover:border-green-600 transition-colors" />
+
+          <div className="text-green-800 group-hover:text-green-500 font-mono text-[10px] tracking-widest font-bold mb-2 transition-colors uppercase">
+            [ GPU CONTEXT EVACUATED ]
+          </div>
+          <div className="text-neutral-500 group-hover:text-neutral-300 font-mono text-[9px] transition-colors leading-relaxed">
+            SLOT EVICTED TO CONSERVE POWER.<br />
+            CLICK INSIDE GRID TO AWAKEN INTERLUDE.
+          </div>
+        </div>
+      )}
+    </div>
+  )
+
+  if (noPanel) {
+    return content
+  }
+
   return (
     <Panel title={title}>
-      <div
-        ref={containerRef}
-        className="w-full h-full overflow-hidden relative bg-black select-none cursor-crosshair"
-        onMouseMove={handleMouseMove}
-        onMouseDown={handleMouseDown}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-      >
-        {hasContext && (
-          <canvas
-            ref={canvasRef}
-            style={{ width: '100%', height: '100%', display: 'block' }}
-          />
-        )}
-        {attribution && hasContext && (
-          <div className="absolute bottom-1 left-2 px-1 bg-black/60 border border-green-950/20 text-[8px] font-mono text-green-700/60 rounded select-none pointer-events-none uppercase tracking-wider">
-            {attribution}
-          </div>
-        )}
-        {!hasContext && (
-          <div
-            onClick={() => {
-              setHasContext(true)
-              setWakeTrigger(prev => prev + 1)
-            }} // Clicking wakes up the context
-            className="absolute inset-0 flex flex-col items-center justify-center p-4 bg-black/90 border border-dashed border-green-950/40 text-center cursor-pointer group hover:bg-green-950/10 active:bg-green-950/20 transition-all duration-200 z-10"
-          >
-            {/* Hacker decoration brackets */}
-            <div className="absolute top-4 left-4 w-4 h-4 border-t-2 border-l-2 border-green-900 group-hover:border-green-600 transition-colors" />
-            <div className="absolute top-4 right-4 w-4 h-4 border-t-2 border-r-2 border-green-900 group-hover:border-green-600 transition-colors" />
-            <div className="absolute bottom-4 left-4 w-4 h-4 border-b-2 border-l-2 border-green-900 group-hover:border-green-600 transition-colors" />
-            <div className="absolute bottom-4 right-4 w-4 h-4 border-b-2 border-r-2 border-green-900 group-hover:border-green-600 transition-colors" />
-
-            <div className="text-green-800 group-hover:text-green-500 font-mono text-[10px] tracking-widest font-bold mb-2 transition-colors uppercase">
-              [ GPU CONTEXT EVACUATED ]
-            </div>
-            <div className="text-neutral-500 group-hover:text-neutral-300 font-mono text-[9px] transition-colors leading-relaxed">
-              SLOT EVICTED TO CONSERVE POWER.<br />
-              CLICK INSIDE GRID TO AWAKEN INTERLUDE.
-            </div>
-          </div>
-        )}
-      </div>
+      {content}
     </Panel>
   )
 }

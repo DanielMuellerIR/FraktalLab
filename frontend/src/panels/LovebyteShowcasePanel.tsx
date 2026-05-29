@@ -65,11 +65,11 @@ export const LovebyteShowcasePanel = React.memo(function LovebyteShowcasePanel()
       rightLabel={active.expr}
     >
       <div className="w-full h-full relative bg-black">
-        {/* We reuse ShaderPanel and simply switch the shader source prop, triggering a compilation reload */}
         <ShaderPanel
           fragmentShader={active.shader}
           title="" // Hide title since Panel title handles it
           attribution="256B Sizecoding Showcase (eigene Effekte)"
+          noPanel={true}
         />
         
         {/* Hacker styling overlay */}
