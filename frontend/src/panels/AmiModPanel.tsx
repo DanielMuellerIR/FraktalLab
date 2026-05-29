@@ -24,8 +24,12 @@ interface Track {
   name: string;
   url: string;
   // Optionale Metadaten (nur fuer mitgelieferte Defaults sinnvoll gesetzt).
+  // arranger ist beibehalten fuer Faelle, in denen Komponist != Arranger
+  // (z. B. Speedball 2: Komposition Simon Rogers, Amiga-Arrangement
+  // Richard Joseph). publisher = Spiele-Verlag oder Demoszene-Gruppe.
   composer?: string;
   arranger?: string;
+  publisher?: string;
   year?: string;
   // Markiert User-Uploads. Wird genutzt, um beim Unmount Object-URLs wieder
   // freizugeben und im UI das User-/Default-Segment optisch zu trennen.
@@ -38,10 +42,25 @@ const BASE = import.meta.env.BASE_URL;
 // Endung .mod (kanonisch); Apache MIME-Type ist in der .htaccess gesetzt.
 // Encoded URLs (Spaces als %20), weil fetch zwar tolerant ist, aber manche
 // Server-Konfigurationen sonst patzig sind.
+//
+// Urheberangaben: Best-Effort recherchiert (siehe Audit-Session 2026-05-29
+// und Wikipedia / Hardcore Gaming 101 / Khinsider als Quellen). Diese
+// Attribution dient als "good faith"-Hinweis und ist keine Lizenz. Im
+// Footer steht ein entsprechender Disclaimer, takedown-on-request gilt.
 const DEFAULT_TRACKS: Track[] = [
-  { id: 'speedball2', name: 'Speedball 2',       url: `${BASE}audio/Speedball%202.mod`,       composer: 'Simon Rogers',         arranger: 'Richard Joseph',       year: '1990' },
-  { id: 'stardust',   name: 'Stardust Memories', url: `${BASE}audio/Stardust%20Memories.mod`, composer: 'Volker Tripp (Jester)', arranger: 'Volker Tripp (Jester)', year: '1992' },
-  { id: 'lotus2',     name: 'Lotus 2',           url: `${BASE}audio/Lotus%202.mod`,           composer: 'Barry Leitch',          arranger: 'Barry Leitch',          year: '1991' }
+  { id: 'agony',         name: 'Agony (Intro)',                url: `${BASE}audio/agony-Intro.mod`,                composer: 'Tim Wright (CoLD SToRAGE)', arranger: 'Tim Wright',          publisher: 'Psygnosis / Art & Magic',     year: '1992' },
+  { id: 'lotus2',        name: 'Lotus 2',                      url: `${BASE}audio/Lotus2.mod`,                     composer: 'Barry Leitch',              arranger: 'Barry Leitch',        publisher: 'Magnetic Fields / Gremlin',   year: '1991' },
+  { id: 'lotus3',        name: 'Lotus 3 (Title)',              url: `${BASE}audio/Lotus3-Title.mod`,               composer: 'Barry Leitch',              arranger: 'Barry Leitch',        publisher: 'Magnetic Fields / Gremlin',   year: '1992' },
+  { id: 'rtype',         name: 'R-Type',                       url: `${BASE}audio/Rtype.mod`,                      composer: 'Chris Hülsbeck',            arranger: 'Chris Hülsbeck',      publisher: 'Factor 5 / Activision',       year: '1989' },
+  { id: 'simon',         name: 'Simon the Sorcerer (Village)', url: `${BASE}audio/Simon_the_Sorcerer-Village.mod`, composer: 'Mark McLeod & Adam Gilmore',arranger: 'Mark McLeod',         publisher: 'Adventure Soft',              year: '1993' },
+  { id: 'speedball2',    name: 'Speedball 2',                  url: `${BASE}audio/Speedball%202.mod`,              composer: 'Simon Rogers',              arranger: 'Richard Joseph',      publisher: 'Bitmap Brothers / Image Works', year: '1990' },
+  { id: 'stardust',      name: 'Stardust Memories',            url: `${BASE}audio/Stardust%20Memories.mod`,        composer: 'Volker Tripp (Jester)',     arranger: 'Volker Tripp (Jester)', publisher: 'Sanity (demoscene)',         year: '1992' },
+  { id: 'turrican',      name: 'Turrican',                     url: `${BASE}audio/TURRICAN.MOD`,                   composer: 'Chris Hülsbeck',            arranger: 'Chris Hülsbeck',      publisher: 'Rainbow Arts',                year: '1990' },
+  { id: 'turrican-ii',   name: 'Turrican II',                  url: `${BASE}audio/turrican%20ii.mod`,              composer: 'Chris Hülsbeck',            arranger: 'Chris Hülsbeck',      publisher: 'Rainbow Arts',                year: '1991' },
+  { id: 'turrican-2-1',  name: 'Turrican II — Level 2.1',      url: `${BASE}audio/turrican%202.1.mod`,             composer: 'Chris Hülsbeck',            arranger: 'Chris Hülsbeck',      publisher: 'Rainbow Arts',                year: '1991' },
+  { id: 'turrican-2-3',  name: 'Turrican II — Level 2.3',      url: `${BASE}audio/turrican%202.3.mod`,             composer: 'Chris Hülsbeck',            arranger: 'Chris Hülsbeck',      publisher: 'Rainbow Arts',                year: '1991' },
+  { id: 'turrican-end',  name: 'Turrican — End Part',          url: `${BASE}audio/turrican%20end-part.mod`,        composer: 'Chris Hülsbeck',            arranger: 'Chris Hülsbeck',      publisher: 'Rainbow Arts',                year: '1990' },
+  { id: 'turrican-hs',   name: 'Turrican — Highscore',         url: `${BASE}audio/turrican%20highscore.mod`,       composer: 'Chris Hülsbeck',            arranger: 'Chris Hülsbeck',      publisher: 'Rainbow Arts',                year: '1990' },
 ];
 
 // Heuristik fuer MOD-Dateinamen: moderne .mod-Endung ODER klassische
@@ -947,17 +966,27 @@ function AmiModPanel() {
                   {mod?.name || '---'}
                 </span>
               </div>
-              {/* Fuer User-Uploads gibt es keine Metadaten — Strich anzeigen. */}
+              {/* Fuer User-Uploads gibt es keine Metadaten — Strich anzeigen.
+                  ARRANGER nur einblenden, wenn er sich vom Composer unter-
+                  scheidet (z. B. Speedball 2: Simon Rogers / Richard Joseph). */}
               <div className="flex justify-between text-neutral-700 font-bold">
                 <span>COMPOSER:</span>
                 <span className="text-black truncate max-w-[100px]" title={allTracks[trackIdx]?.composer || ''}>
                   {allTracks[trackIdx]?.composer || '—'}
                 </span>
               </div>
+              {allTracks[trackIdx]?.arranger && allTracks[trackIdx]?.arranger !== allTracks[trackIdx]?.composer && (
+                <div className="flex justify-between text-neutral-700 font-bold">
+                  <span>ARRANGER:</span>
+                  <span className="text-black truncate max-w-[100px]" title={allTracks[trackIdx]?.arranger || ''}>
+                    {allTracks[trackIdx]?.arranger}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between text-neutral-700 font-bold">
-                <span>ARRANGER:</span>
-                <span className="text-black truncate max-w-[100px]" title={allTracks[trackIdx]?.arranger || ''}>
-                  {allTracks[trackIdx]?.arranger || '—'}
+                <span>PUBLISHER:</span>
+                <span className="text-black truncate max-w-[100px]" title={allTracks[trackIdx]?.publisher || ''}>
+                  {allTracks[trackIdx]?.publisher || '—'}
                 </span>
               </div>
               <div className="flex justify-between text-neutral-700 font-bold">
@@ -975,7 +1004,7 @@ function AmiModPanel() {
           className="bg-[#c0c0c0] border-t border-neutral-500 px-2 py-0.5 shrink-0 flex items-center justify-between text-neutral-700 font-bold"
           style={{ fontSize: '8px' }}
         >
-          <span>♦ AMIGA PROTRACKER RENDERER ♦ NON-COMMERCIAL FAN-ARRANGEMENTS FROM MODARCHIVE</span>
+          <span>♦ AMIGA PROTRACKER RENDERER ♦ TECH SHOWCASE — MUSIC © RESPECTIVE COMPOSERS &amp; PUBLISHERS</span>
           <span>
             {playing && (
               <span className="text-[#008800] animate-pulse">▶ ACTIVE</span>
