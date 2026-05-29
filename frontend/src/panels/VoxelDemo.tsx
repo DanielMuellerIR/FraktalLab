@@ -1,6 +1,8 @@
 import { memo, useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 import ShaderPanel from '../ui/ShaderPanel'
+// rAF-Loops laufen ueber den zentralen raf-coordinator. Siehe AUDIT_FINDINGS.md H-05.
+import { subscribe } from '../utils/raf-coordinator'
 
 const HMAP = 512
 const heightmap = new Uint8Array(HMAP * HMAP)
@@ -170,7 +172,8 @@ function VoxelDemoColorImpl() {
   })
 
   useEffect(() => {
-    let rafId: number
+    // unsubscribe-Funktion aus subscribe(); null wenn nicht angemeldet.
+    let unsubscribe: (() => void) | null = null
     let running = true
 
     function loop(t: number) {
@@ -201,13 +204,13 @@ function VoxelDemoColorImpl() {
       u.uAngle = c.angle
       u.uCamH = camH
 
-      rafId = requestAnimationFrame(loop)
+      // Rekursiver rAF-Aufruf entfaellt: subscribe ruft loop() bei jedem Tick.
     }
 
-    rafId = requestAnimationFrame(loop)
+    unsubscribe = subscribe(loop)
     return () => {
       running = false
-      cancelAnimationFrame(rafId)
+      if (unsubscribe) unsubscribe()
     }
   }, [])
 
@@ -240,7 +243,8 @@ function VoxelDemoBWImpl() {
   })
 
   useEffect(() => {
-    let rafId: number
+    // unsubscribe-Funktion aus subscribe(); null wenn nicht angemeldet.
+    let unsubscribe: (() => void) | null = null
     let running = true
 
     function loop(t: number) {
@@ -269,13 +273,13 @@ function VoxelDemoBWImpl() {
       u.uAngle = c.angle
       u.uCamH = camH
 
-      rafId = requestAnimationFrame(loop)
+      // Rekursiver rAF-Aufruf entfaellt: subscribe ruft loop() bei jedem Tick.
     }
 
-    rafId = requestAnimationFrame(loop)
+    unsubscribe = subscribe(loop)
     return () => {
       running = false
-      cancelAnimationFrame(rafId)
+      if (unsubscribe) unsubscribe()
     }
   }, [])
 

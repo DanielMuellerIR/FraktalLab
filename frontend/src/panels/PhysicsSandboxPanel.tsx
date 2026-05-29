@@ -1,5 +1,8 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import Panel from '../ui/Panel'
+import { subscribe } from '../utils/raf-coordinator'
+
+// Frame-Loop laeuft ueber den zentralen raf-coordinator (siehe AUDIT_FINDINGS.md H-05).
 
 // ── Typen und Schnittstellen ──────────────────────────────────────────────────
 
@@ -55,8 +58,11 @@ function PhysicsSandboxPanel() {
     const canvas: HTMLCanvasElement = _canvas
     const ctx: CanvasRenderingContext2D = _ctx
 
-    let rafId: number
+    // Cleanup-Funktion vom raf-coordinator
+    let unsubscribe: (() => void) | null = null
     let alive = true
+    // Flag, damit der erste Frame den lastT-Wert frisch setzt (kein 1.-Frame-Sprung)
+    let firstFrame = true
 
     // Dynamische Anpassung an Containergröße
     const resize = () => {
@@ -184,6 +190,9 @@ function PhysicsSandboxPanel() {
 
     function loop(t: number) {
       if (!alive) return
+
+      // Erster Frame nach Subscribe: lastT initialisieren, damit dt nicht riesig wird
+      if (firstFrame) { lastT = t; firstFrame = false }
 
       const dt = Math.min((t - lastT) / 1000, 0.05) // Cap auf max 50ms (20fps)
       lastT = t
@@ -459,11 +468,10 @@ function PhysicsSandboxPanel() {
       ctx.textAlign = 'right'
       ctx.fillText('SYS: PHYSICS SANDBOX 2D', W - 10, 20)
       ctx.fillText(`FIELD: ${W}px x ${H}px`, W - 10, 32)
-
-      rafId = requestAnimationFrame(loop)
     }
 
-    rafId = requestAnimationFrame((t) => { lastT = t; loop(t) })
+    // Beim zentralen raf-coordinator anmelden
+    unsubscribe = subscribe(loop)
 
     // Mouse Move und Drag Listener synchronisieren
     const handleMove = (e: MouseEvent) => {
@@ -511,7 +519,7 @@ function PhysicsSandboxPanel() {
 
     return () => {
       alive = false
-      cancelAnimationFrame(rafId)
+      if (unsubscribe) unsubscribe()
       ro.disconnect()
       canvas.removeEventListener('mousedown', handleStart)
       window.removeEventListener('mousemove', handleMove)

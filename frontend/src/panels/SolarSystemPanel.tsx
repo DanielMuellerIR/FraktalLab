@@ -1,5 +1,9 @@
 import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
+// Zentraler rAF-Coordinator: bündelt alle Panel-Animationen in einer einzigen
+// requestAnimationFrame-Schleife, statt dass jedes Panel seine eigene rAF-Loop
+// startet. Spart Wechsel-Overhead und reduziert Jitter (siehe AUDIT_FINDINGS.md H-05).
+import { subscribe } from '../utils/raf-coordinator'
 
 // ── Planetendaten (Wissenschaftlich + Anzeige) ────────────────────────────────
 // au:     reale Halbachse in Astronomischen Einheiten
@@ -145,7 +149,8 @@ function SolarSystemPanel() {
     // Typ-Narrowing: TypeScript erkennt ctx in Closures nicht als non-null
     const ctx: CanvasRenderingContext2D = _ctx
 
-    let rafId: number
+    // Unsubscribe-Handle vom zentralen raf-coordinator; null = nicht abonniert.
+    let unsubscribe: (() => void) | null = null
     let running = true
 
     // ── ResizeObserver: Canvas-Auflösung == Container-Größe ──────────────────
@@ -188,8 +193,8 @@ function SolarSystemPanel() {
       const H = canvas!.height
 
       // Canvas noch nicht initialisiert → warten
+      // (subscribe ruft loop automatisch beim nächsten Tick erneut auf)
       if (W === 0 || H === 0) {
-        rafId = requestAnimationFrame(loop)
         return
       }
 
@@ -463,14 +468,14 @@ function SolarSystemPanel() {
         ctx.fillText(line, padX, ly)
       })
 
-      rafId = requestAnimationFrame(loop)
     }
 
-    rafId = requestAnimationFrame(loop)
+    // Beim zentralen rAF-Coordinator abonnieren — loop wird bei jedem Tick automatisch aufgerufen.
+    unsubscribe = subscribe(loop)
 
     return () => {
       running = false
-      cancelAnimationFrame(rafId)
+      if (unsubscribe) unsubscribe()
       ro.disconnect()
     }
   }, [])

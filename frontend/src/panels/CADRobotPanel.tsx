@@ -1,5 +1,8 @@
 import { memo, useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
+// rAF-Loop laeuft nicht mehr direkt ueber requestAnimationFrame, sondern wird
+// am zentralen raf-coordinator angemeldet. Siehe AUDIT_FINDINGS.md H-05.
+import { subscribe } from '../utils/raf-coordinator'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CADRobotPanel: Simuliert eine CAD-Software — vier 3D-Wireframe-Figuren
@@ -517,7 +520,8 @@ function CADRobotPanel() {
     const canvas: HTMLCanvasElement = _canvas
     const ctx: CanvasRenderingContext2D = _ctx
 
-    let rafId: number
+    // unsubscribe-Funktion aus subscribe(); null wenn aktuell nicht angemeldet.
+    let unsubscribe: (() => void) | null = null
     let alive = true
 
     const resize = () => {
@@ -902,9 +906,13 @@ function CADRobotPanel() {
     }
 
     let lastT = 0
+    let firstFrame = true
     function loop(t: number) {
       if (!alive) return
 
+      // Beim ersten Frame lastT setzen, damit dt im ersten Tick 0 ist
+      // (entspricht dem alten Verhalten vor dem subscribe-Wrapper).
+      if (firstFrame) { lastT = t; firstFrame = false }
       const dt = Math.min((t - lastT) / 1000, 0.08)
       lastT = t
 
@@ -963,14 +971,15 @@ function CADRobotPanel() {
       drawModeLabel(W, modelAlpha)
       drawStatusBar(W, H, MODELS[modelIdx])
 
-      rafId = requestAnimationFrame(loop)
+      // Rekursiver rAF-Aufruf entfaellt: subscribe ruft loop() bei jedem Tick.
     }
 
-    rafId = requestAnimationFrame((t) => { lastT = t; loop(t) })
+    // Erste Anmeldung am zentralen raf-coordinator.
+    unsubscribe = subscribe(loop)
 
     return () => {
       alive = false
-      cancelAnimationFrame(rafId)
+      if (unsubscribe) unsubscribe()
       ro.disconnect()
     }
   }, [])

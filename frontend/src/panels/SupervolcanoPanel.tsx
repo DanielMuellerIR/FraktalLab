@@ -1,5 +1,8 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import Panel from '../ui/Panel'
+// Zentraler rAF-Coordinator: bündelt alle Panel-Animationen in einer einzigen
+// requestAnimationFrame-Schleife. Siehe AUDIT_FINDINGS.md H-05.
+import { subscribe } from '../utils/raf-coordinator'
 
 function SupervolcanoPanel() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -15,7 +18,8 @@ function SupervolcanoPanel() {
     const canvas: HTMLCanvasElement = _canvas
     const ctx: CanvasRenderingContext2D = _ctx
 
-    let rafId: number
+    // Unsubscribe-Handle vom zentralen raf-coordinator; null = nicht abonniert.
+    let unsubscribe: (() => void) | null = null
     let alive = true
 
     // Generate procedural geothermal landmass map
@@ -339,15 +343,19 @@ function SupervolcanoPanel() {
       ctx.textAlign = 'right'
       ctx.fillText('SUPERVOLCANO SEISMIC MAP', W - 12, 22)
       ctx.fillText('ZOOM: NORTH AMERICA REGION [A-1]', W - 12, 36)
-
-      rafId = requestAnimationFrame(loop)
     }
 
-    rafId = requestAnimationFrame((t) => { lastT = t; loop(t) })
+    // Initial-Tick: lastT setzen, danach normale Loop ausführen.
+    // Beim zentralen rAF-Coordinator abonnieren — loop wird bei jedem Tick automatisch aufgerufen.
+    let firstTick = true
+    unsubscribe = subscribe((t) => {
+      if (firstTick) { lastT = t; firstTick = false }
+      loop(t)
+    })
 
     return () => {
       alive = false
-      cancelAnimationFrame(rafId)
+      if (unsubscribe) unsubscribe()
       ro.disconnect()
     }
   }, [])

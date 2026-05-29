@@ -753,8 +753,8 @@ export const DotCloudScene = React.memo(function DotCloudScene() {
     if (!_ctx) return
     const ctx: CanvasRenderingContext2D = _ctx
 
-    let rafId = 0
-    let isVisible = true
+    // Migration auf zentralen raf-coordinator (AUDIT_FINDINGS.md H-05).
+    let unsubscribe: (() => void) | null = null
     let nodes: NeuralNode2D[] = []   // lazy-init beim ersten Frame
     let nextPulseAt = 0
     let pulseEndAt  = -1
@@ -767,14 +767,17 @@ export const DotCloudScene = React.memo(function DotCloudScene() {
     })
     ro.observe(canvas)
 
-    // IntersectionObserver: rAF-Loop pausieren wenn unsichtbar
-    const io = new IntersectionObserver(([e]) => { isVisible = e.isIntersecting })
+    // IntersectionObserver: rAF-Subscription pausieren wenn unsichtbar
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) {
+        if (!unsubscribe) unsubscribe = subscribe(loop)
+      } else {
+        if (unsubscribe) { unsubscribe(); unsubscribe = null }
+      }
+    })
     io.observe(canvas)
 
     const loop = (t: number) => {
-      rafId = requestAnimationFrame(loop)
-      if (!isVisible) return
-
       const W = canvas.width
       const H = canvas.height
       if (W === 0 || H === 0) return
@@ -859,9 +862,9 @@ export const DotCloudScene = React.memo(function DotCloudScene() {
       }
     }
 
-    rafId = requestAnimationFrame(loop)
+    unsubscribe = subscribe(loop)
     return () => {
-      cancelAnimationFrame(rafId)
+      if (unsubscribe) unsubscribe()
       ro.disconnect()
       io.disconnect()
     }
@@ -1134,12 +1137,16 @@ export const LissajousScene = () => {
   useEffect(() => {
     const canvas = canvasRef.current!
     const ctx = canvas.getContext('2d')!
-    let raf: number
+    // Migration auf zentralen raf-coordinator (AUDIT_FINDINGS.md H-05).
+    let unsubscribe: (() => void) | null = null
     let alive = true
 
-    let isVisible = true
     const io = new IntersectionObserver(([e]) => {
-      isVisible = e.isIntersecting
+      if (e.isIntersecting) {
+        if (!unsubscribe && alive) unsubscribe = subscribe(loop)
+      } else {
+        if (unsubscribe) { unsubscribe(); unsubscribe = null }
+      }
     })
     io.observe(canvas)
 
@@ -1156,8 +1163,6 @@ export const LissajousScene = () => {
 
     function loop(t: number) {
       if (!alive) return
-      raf = requestAnimationFrame(loop)
-      if (!isVisible) return
 
       const W = canvas.width
       const H = canvas.height
@@ -1218,10 +1223,10 @@ export const LissajousScene = () => {
       ctx.fillText(`SIGNAL TRACE // LISSAJOUS Ω // FREQ_X: ${freqX.toFixed(2)} // FREQ_Y: ${freqY.toFixed(2)}`, 10, H - 10)
     }
 
-    raf = requestAnimationFrame(loop)
+    unsubscribe = subscribe(loop)
     return () => {
       alive = false
-      cancelAnimationFrame(raf)
+      if (unsubscribe) unsubscribe()
       ro.disconnect()
       io.disconnect()
     }

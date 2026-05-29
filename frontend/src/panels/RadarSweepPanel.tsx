@@ -1,5 +1,8 @@
 import { memo, useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
+// Zentraler rAF-Coordinator: bündelt alle Panel-Animationen in einer einzigen
+// requestAnimationFrame-Schleife. Siehe AUDIT_FINDINGS.md H-05.
+import { subscribe } from '../utils/raf-coordinator'
 
 // ── Konstanten ───────────────────────────────────────────────────────────────
 
@@ -79,12 +82,20 @@ function RadarSweepPanel() {
     if (!_ctx) return
     const ctx: CanvasRenderingContext2D = _ctx
 
-    let rafId: number
+    // Unsubscribe-Handle vom zentralen raf-coordinator; null = nicht abonniert.
+    let unsubscribe: (() => void) | null = null
     let alive = true
 
-    let isVisible = true
+    // IntersectionObserver: bei Unsichtbarkeit komplett vom rAF-Coordinator abmelden,
+    // statt nur Frames ohne Zeichnen zu verbrauchen.
     const io = new IntersectionObserver(
-      ([entry]) => { isVisible = entry.isIntersecting },
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          if (!unsubscribe && alive) unsubscribe = subscribe(loop)
+        } else {
+          if (unsubscribe) { unsubscribe(); unsubscribe = null }
+        }
+      },
       { threshold: 0.1 },
     )
     io.observe(canvas)
@@ -104,11 +115,11 @@ function RadarSweepPanel() {
 
     function loop(t: number) {
       if (!alive) return
-      if (!isVisible) { rafId = requestAnimationFrame(loop); return }
 
       const W = canvas.width
       const H = canvas.height
-      if (W === 0 || H === 0) { rafId = requestAnimationFrame(loop); return }
+      // Canvas noch nicht initialisiert → einfach skippen, nächster Tick kommt automatisch.
+      if (W === 0 || H === 0) { return }
 
       const cx = W / 2
       const cy = H / 2
@@ -352,15 +363,14 @@ function RadarSweepPanel() {
         const bearingDeg = Math.round((sweepAngle * 180 / Math.PI) % 360)
         ctx.fillText(`BEARING: ${bearingDeg.toString().padStart(3, '0')}°`, W - 8, 4)
       }
-
-      rafId = requestAnimationFrame(loop)
     }
 
-    rafId = requestAnimationFrame(loop)
+    // Beim zentralen rAF-Coordinator abonnieren — loop wird bei jedem Tick automatisch aufgerufen.
+    unsubscribe = subscribe(loop)
 
     return () => {
       alive = false
-      cancelAnimationFrame(rafId)
+      if (unsubscribe) { unsubscribe(); unsubscribe = null }
       ro.disconnect()
       io.disconnect()
     }

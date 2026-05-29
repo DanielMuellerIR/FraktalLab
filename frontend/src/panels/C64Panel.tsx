@@ -1,5 +1,7 @@
 import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
+// rAF-Loop laeuft ueber den zentralen raf-coordinator. Siehe AUDIT_FINDINGS.md H-05.
+import { subscribe } from '../utils/raf-coordinator'
 
 // ── C64-Palette (VICE values) ──────────────────────────────────
 const PAL: string[] = [
@@ -78,7 +80,8 @@ function C64Panel() {
     const ctx: CanvasRenderingContext2D  = _ctx
 
     let active = true
-    let rafId  = 0
+    // unsubscribe-Funktion aus subscribe(); null wenn nicht angemeldet.
+    let unsubscribe: (() => void) | null = null
 
     // ── Resize ───────────────────────────────────────────────────────────────
     function resize() {
@@ -434,7 +437,9 @@ function C64Panel() {
       if (!active) return
 
       const { W, H } = layout()
-      if (W === 0 || H === 0) { rafId = requestAnimationFrame(loop); return }
+      // Bei Null-Groesse einfach diesen Tick ueberspringen; subscribe ruft loop()
+      // automatisch beim naechsten Frame erneut auf.
+      if (W === 0 || H === 0) return
       if (phaseStart === 0) phaseStart = now
 
       const elapsed = now - phaseStart
@@ -535,14 +540,14 @@ function C64Panel() {
         }
       }
 
-      rafId = requestAnimationFrame(loop)
+      // Rekursiver rAF-Aufruf entfaellt: subscribe ruft loop() bei jedem Tick.
     }
 
-    rafId = requestAnimationFrame(loop)
+    unsubscribe = subscribe(loop)
 
     return () => {
       active = false
-      cancelAnimationFrame(rafId)
+      if (unsubscribe) unsubscribe()
       ro.disconnect()
     }
   }, [])
