@@ -156,3 +156,69 @@ Was definitiv in `AGENTS.md` bleibt (agent-agnostischer Einstiegspunkt):
 
 Vorschlag nicht ohne Freigabe umsetzen — Auslagerung ist mechanisch, aber Routenwahl ist Auftraggeber-Entscheidung.
 
+---
+
+# Phase 2 — Hypothesen zum Ruckeln
+
+> Tiefenlesung der Fraktal-Stack-Dateien, App-Layout-Pfad, raf-coordinator, VoxelDemo, DemoScenes/ThreeBodyScene. F-001/F-002 sind bereits gefixt (`3961b99`), zählen hier nicht mehr.
+
+## Priorisierte Hypothesen
+
+| ID | Verdacht | Datei : Zeile | Belegt durch | Erwartete Wirkung | Fix-Aufwand |
+|----|----------|---------------|--------------|-------------------|-------------|
+| **H-01** | `findBoundaryNonBlack` in `FractalScenes` läuft **ohne Throttling** pro Frame, sobald `zoomDirection === 1 && zoom > 8`. In `FractalCanvas.tsx:188` wird derselbe Aufruf nur jeden 4. Frame gemacht. O(maxRadius)-Scan + zusätzliche Nachbar-Checks. 10 Mini-Fraktal-Komponenten potenziell parallel im Layout. | `FractalScenes.tsx:287` | Direkte Inspektion. Kein `frameCount % N`-Gate vor dem Call sichtbar. | hoch | 3 Zeilen (Throttle-Counter analog `FractalCanvas`) |
+| **H-02** | `isLowDetail()` läuft **jedes Frame** in `FractalScenes` und `FractalJulia`. Auch mit Map-Pooling (F-001/F-002 gefixt) bleiben ~30 000 pro-Frame Sample-Iterationen + Map-Hash-Ops. Throttling auf 1/8 oder 1/16 reicht für Bidirektional-Zoom-Logik problemlos. | `FractalScenes.tsx:306`, `FractalJulia.tsx:268` | Direkte Inspektion. Branch wird nach jedem Render-Tick durchlaufen. | mittel–hoch | 3 Zeilen pro Datei |
+| **H-03** | `VoxelDemo.tsx` Komponenten **ohne `React.memo`** (einzige Ausreißer) **und** mit eigenem `requestAnimationFrame` statt `raf-coordinator`. Bei Parent-Re-Render: Re-Mount → rAF-Stop → Heightmap-Init neu → rAF-Start. Treffer-Wahrscheinlichkeit bei Layout-Slides. | `VoxelDemo.tsx:154,225` (Exports), `:169–208` (eigene rAF-Loop) | Direkte Inspektion. F-004 bereits gemeldet. | mittel | 2 Zeilen Memo-Wrapper + Migration auf `subscribe()` |
+| **H-04** | `ThreeBodyScene` ist nach QW-03 zwar auf 400×300, aber **weiterhin CPU** und ohne FPS-Cap. Renderfüllung 480 000 RGBA-Bytes pro Frame. Wenn 2+ DemoScenes im Layout, summiert sich das. | `DemoScenes.tsx:873–906` | Direkte Inspektion. GL-03-Migration steht für ThreeBodyScene noch aus. | mittel | (a) 30-FPS-Throttle im `draw`-Pfad: einfach. (b) GPU-Migration: separate Session. |
+| **H-05** | **18 Panels nutzen weiterhin direkt `requestAnimationFrame`** statt `raf-coordinator`. Globaler Pause-Switch (App.tsx setzt während Slide `setPaused(true)`) greift nur bei 11 von 29 Panels. Während des 520 ms-Slide laufen Voxel/Elite/CADRobot/DNA/Solarsystem/Radar/usw. weiter. | `VoxelDemo.tsx`, `CADRobotPanel`, `DNAHelix`, `ElitePanel`, `NeuralNetPanel`, `OscilloscopePanel`, `ParallaxPanel`, `PhysicsSandboxPanel`, `RadarSweepPanel`, `RetroErrorPanel`, `SolarSystemPanel`, `StockTickerPanel`, `SupervolcanoPanel`, `ThermonuclearWarPanel`, `TrafficMonitor`, `VectorHudPanel`, `C64Panel`, `DemoScenes` (Mischfall) | Phase-1-Investigator-Auswertung. | hoch im Slide-Übergang, mittel sonst | mittel (~20 Mini-Migrationen, jeweils `requestAnimationFrame` durch `subscribe()` ersetzen) |
+| **H-06** | `handleSkipSlot` (und `handleSkipMobileSlot`) **ohne `useCallback`** in App.tsx. Closure pro App-Render neu, an `PanelSlot` weitergereicht. Memo-Equality scheitert, PanelSlot rendert neu mit. | `App.tsx:561` ff. | Direkte Inspektion. Memo-Wert flach, Callback ist die einzige instabile Prop. | niedrig–mittel (nur während Layout-Slide) | 2 × `useCallback(…, [])` |
+| **H-07** | **Regressions-Verdacht:** Commit `5264baf` (v1.2.6, 28 Dateien — CADRobot/Globe/Daggerfall-Rewrites + 7 neue Panels + WebGL-Migrationen + Review-Mode-Umbau) korrespondiert mit dem vom Auftraggeber geschilderten „vor einigen Tagen lief es flüssig". | `git show 5264baf` | Git-Log + Statistik aus Phase 1. | unbekannt (Phase 3) | Baseline-Messung gegen Pre-Commit nötig |
+| **H-08** | `canvas.setAttribute('data-zoom', …)` und `data-zoom-direction` **pro Frame** in `FractalCanvas` und `FractalScenes`. DOM-Mutation pro Frame, ohne dass jemand polled. | `FractalCanvas.tsx:217–218`, `FractalScenes.tsx:298–299` | Direkte Inspektion. | niedrig | entweder löschen oder nur jeden N-ten Frame schreiben |
+| **H-09** | **DPI/devicePixelRatio:** kein expliziter `* devicePixelRatio`-Hook in Canvas-Size-Logik gesehen. Auf Retina rendert die App vermutlich in CSS-Pixeln und der Browser skaliert hoch — kann visuell unscharf wirken, ist aber **performance-freundlich**. Nur zu erwähnen, falls Schärfe-Feedback kommt. | (gesamt) | Negativ-Befund — keine `devicePixelRatio`-Multiplikation gefunden | gering (Performance) / kontextabhängig (Optik) | (keiner empfohlen) |
+
+## Hypothesen-Cluster und Pareto
+
+**Drei Stellschrauben mit höchstem Hebel:**
+
+1. **H-01 (Boundary unthrottled) + H-02 (isLowDetail unthrottled)** — gemeinsam vermutlich der größte CPU-Block der Fraktal-Panels nach dem Map-Fix. Beide trivial fixbar. Erwartung: spürbar weniger CPU-Last in Layouts mit 2+ Fraktal-Mini-Panels.
+
+2. **H-05 (raf-coordinator nur partial)** — strukturell wichtig, **aber Aufwand mittel** (~20 Dateien). Während Layout-Slide doppeltes Rendering trotz `contain: paint`. Diskutieren: gezielt nur die teuersten (VoxelDemo, CADRobot, NeuralNet, ParallaxPanel, RadarSweep, SolarSystem) migrieren — der Rest ist CPU-arm.
+
+3. **H-03 (VoxelDemo Memo + Coord-Migration) + H-04 (ThreeBody CPU/FPS-Cap)** — Einzel-Panels, jeweils niedrig hängende Frucht.
+
+**Phase-3-Mess-Prioritäten:**
+
+- **M-01-Variante:** Layout mit 3 Fraktal-Mini-Panels + Fraktal-Hero (Review-Modus). Erwartung H-01/H-02 schlagen durch.
+- **M-02-Variante:** Layout mit VoxelDemo + ThreeBodyScene + 2 weiteren GFX. Erwartung H-04/H-05 schlagen durch.
+- **M-Baseline:** Pre-`5264baf`-Commit identische Messungen. H-07 prüfen.
+
+## Nicht-Befunde (zur Beruhigung)
+
+- WASM-`render()`/`render_julia()` allokieren rust-seitig nichts pro Frame.
+- WASM-Modul-Größe ~23 KB (Cargo Release-Profil korrekt).
+- Crossfade-Buffer in `FractalCanvas` werden persistent gehalten (F-007 entkräftet — drei `ImageData`-Triple in `syncSize()`, reuse pro Frame; **keine** `new ImageData` im rAF-Body).
+- `raf-coordinator.ts` selbst hat keinen Re-Init-Bug (Modul-Scope, persistent).
+- PanelSlot-Keys (`${layout.id}-text-${i}`, `${layout.id}-gfx-${i}`) sind stabil über Layout-Wechsel, solange `layout.id` stabil bleibt → kein versehentliches Remount.
+- POOL_TEXT / POOL_GFX werden memoed angelegt.
+
+---
+
+## Phase-2-Stopp
+
+Empfehlung zur Freigabe für die nächste Iteration (Quick-Wins vor Mess-Phase, da geringe Eingriffstiefe und große Wahrscheinlichkeit, dass Phase-3-Messungen sonst durch dieselben Hotspots verzerrt sind):
+
+- **H-01 fixen** — `findBoundaryNonBlack`-Throttle in `FractalScenes.tsx:287` (3 Zeilen).
+- **H-02 fixen** — `isLowDetail`-Throttle in `FractalScenes.tsx:306` und `FractalJulia.tsx:268` (je 3 Zeilen).
+- **H-03 fixen** — `React.memo`-Wrap auf `VoxelDemo`-Exports (2 Zeilen).
+- **H-06 fixen** — `useCallback` auf `handleSkipSlot` / `handleSkipMobileSlot` in App.tsx (2 Zeilen).
+
+Optional in dieser Runde:
+- **H-08 fixen** — DOM-Attribute pro Frame entfernen (Cosmetic-Cleanup, niedrige Wirkung).
+- **H-04 (Throttle-Variante)** — 30-FPS-Cap auf `ThreeBodyScene`.
+
+Größere Stücke für eigene Sessions:
+- **H-05** — Massen-Migration der 18 verbliebenen Panels auf `raf-coordinator`. Eigene Session sinnvoll.
+- **H-07-Verifikation** — Phase-3-Baseline-Messung gegen `5264baf^`.
+
+Bitte angeben, welche der Hypothesen-Fixes vor Phase 3 implementiert werden sollen.
+
