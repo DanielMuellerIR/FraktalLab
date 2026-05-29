@@ -220,5 +220,37 @@ Größere Stücke für eigene Sessions:
 - **H-05** — Massen-Migration der 18 verbliebenen Panels auf `raf-coordinator`. Eigene Session sinnvoll.
 - **H-07-Verifikation** — Phase-3-Baseline-Messung gegen `5264baf^`.
 
-Bitte angeben, welche der Hypothesen-Fixes vor Phase 3 implementiert werden sollen.
+---
+
+## Iter.-2-Abschluss (Session-Ende 2026-05-29)
+
+Alle in Phase 1 + Phase 2 identifizierten Befunde wurden in derselben Session umgesetzt. Commit-Übersicht (Branch `audit/2026-05-29`, 24 Commits, App-Version `1.6.0`):
+
+| Befund | Commit | Beschreibung |
+|---|---|---|
+| F-001 / F-002 | `3961b99` | `isLowDetail` Map-Hoist (Modul-Konstante + `clear()`) |
+| H-01 / H-02 | `de74281` | `findBoundaryNonBlack` `% 4` + `isLowDetail` `% 8` + Cache |
+| H-03 / H-08 | `c65ec3b` | `VoxelDemo` `React.memo` + `data-zoom*` setAttribute alle 8 Frames |
+| H-04 | `7833455` | `ThreeBodyScene` 30-FPS-Cap via `makeScene(..., fpsCap)` |
+| H-05 | `743d12b` | 20 Panels auf zentralen `raf-coordinator` migriert |
+| H-06 | erledigt vor Audit | `handleSkipSlot`/`handleSkipMobileSlot` schon mit `useCallback` |
+| H-07 | offen | Mess-Baseline gegen Pre-`5264baf` — Phase 3 |
+| H-11 (neu) | `c780297` | Aspect-preserving Coord-Mapping in Tunnel/Rotozoom/Metaballs/Plasma |
+| ProTracker-Reintegration | `034811e`, `c18cb4d`, `0d6e2bd` | Standalone-Hybrid: kein ScriptProcessor-Fallback, echte VU-Pegel, EMA, Race-Fix |
+| ProTracker-Features | `553347a`, `614d5b5`, `164a7ca`, `569bd90`, `c42659f`, `c931285` | Drop/Picker, Scrubber, 13-Track-Set + Attribution |
+| GlitchOverlay | `cefcb23` | VHS-Aesthetik + Performance-Refactor (Scanlines als CSS, rAF nur in Episoden) |
+| Review-Marker | `ddd2327`, `240db85`, `8ffe494` | Panel-Marker in Title-Bar, größer, CamelCase, inactive-dim weg |
+| Doku | `07f6e0b`, `9e95e38`, `0a7013d`, `40d7d77` | AUDIT_FINDINGS + AGENTS.md-Sync |
+
+### Offen für die nächste Session
+
+1. **Phase 3 — Mess-Baseline** (H-07): Worktree für `5264baf^`, Playwright + CDP Frame-Timing, M-01..M-06 fahren, `PERF_NOTES.md` mit Vergleichstabellen.
+2. **Phase 5 — Demoscene-Tiefenaudit**: Treffsicherheit, Tiefe, Variation der DEMO-01..04-Panels und der neuen demoscene-inspirierten Panels prüfen. Wegfall-Kandidaten markieren.
+3. **AGENTS.md-Auslagerungs-Vorschlag** (siehe Sektion Q-A oben): mechanische Umsetzung erst nach Freigabe.
+4. **Optional H-09** (DPI/`devicePixelRatio`-Handling): kontextabhängig, nur falls Schärfe-Feedback kommt.
+
+### Test-Status
+
+User hat zwischen Iter.-1- und Iter.-2-Fixes manuell getestet und Verbesserungen bestätigt (Fraktal-Cluster, ProTracker, GlitchOverlay, Aspect-Fix). Ein erneuter Komplett-Test der gesamten App nach H-05 (rAF-Migration aller verbliebenen 20 Panels) steht für die nächste Session aus.
+
 
