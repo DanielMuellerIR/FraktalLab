@@ -13,36 +13,46 @@ const JULIA_PARAMS = [
   { cx:  0.285,  cy:  0.013,   label: 'SNOWFLAKE' },
 ]
 
+// Wiederverwendete Map fuer isLowDetail(). Bewusst auf Modul-Ebene, NICHT pro
+// Aufruf neu angelegt: isLowDetail() laeuft im rAF-Loop nach jedem Render-Tick,
+// pro Frame entstehen ~30 000 Map.set-Operationen. Eine frische Map pro Frame
+// summiert sich zu spuerbarem GC-Druck (siehe AUDIT_FINDINGS.md F-002). JS ist
+// single-threaded und der Aufruf laeuft synchron durch -- clear() am Eingang
+// reicht.
+const _isLowDetailCounts = new Map<number, number>()
+
 function isLowDetail(pixels: Uint8ClampedArray): boolean {
   let black = 0
-  const colorCounts = new Map<number, number>()
+  // Map wiederverwenden statt neu allokieren.
+  const colorCounts = _isLowDetailCounts
+  colorCounts.clear()
   const sampleStep = 64 // Sample every 16th pixel (RGBA = 4 bytes)
   let total = 0
-  
+
   for (let i = 0; i < pixels.length; i += sampleStep) {
     const r = pixels[i]
     const g = pixels[i + 1]
     const b = pixels[i + 2]
-    
+
     if (r === 0 && g === 0 && b === 0) {
       black++
     }
-    
+
     const colorKey = (r << 16) | (g << 8) | b
     colorCounts.set(colorKey, (colorCounts.get(colorKey) || 0) + 1)
     total++
   }
-  
+
   if (total === 0) return true
   if (black / total > 0.95) return true
-  
+
   let maxCount = 0
   for (const count of colorCounts.values()) {
     if (count > maxCount) {
       maxCount = count
     }
   }
-  
+
   if (maxCount / total > 0.95) return true
   return false
 }
