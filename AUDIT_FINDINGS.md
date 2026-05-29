@@ -1,8 +1,8 @@
 # AUDIT_FINDINGS.md — FraktalLab
 
-> Audit-Branch: `audit/2026-05-29`. Phase 1 abgeschlossen. Stand: 2026-05-29.
-> Quelle: Inspektion gegen `AGENTS.md` (v1.2.7) und `blueprint_audit.md`.
-> Methode: Read-only, drei parallele Investigator-Agents + Spot-Checks.
+> **Status 2026-05-29 (Session-Ende):** Phasen 1 + 2 vollstaendig abgeschlossen. Sämtliche identifizierten Befunde (F-001..F-008, H-01..H-08, H-11) sind in Commits umgesetzt — siehe AGENTS.md Sektion "Code-Audit-Befunde" für die Status-Tabelle. App-Version `1.6.0` auf Branch `audit/2026-05-29`. **Offen für die nächste Session:** Phase 3 (Mess-Baseline gegen Pre-`5264baf`-Commit), Phase 5 (Demoscene-Panel-Tiefen-Audit, Wegfall-Kandidaten).
+
+> Audit-Branch: `audit/2026-05-29`. Quelle: Inspektion gegen `AGENTS.md` (v1.2.7) und `blueprint_audit.md`. Methode: Read-only, drei parallele Investigator-Agents + Spot-Checks.
 
 ---
 

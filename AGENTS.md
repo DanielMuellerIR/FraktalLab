@@ -3,7 +3,7 @@
 Universelle Referenz für alle Coding-Agents und KI-Modelle.
 Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 
-> **Hinweis für die nächste Session:** Diese Datei wurde nach einem Code-Audit (2026-05-28) überarbeitet und nach einem zweiten Audit (2026-05-29, Branch `audit/2026-05-29`) auf den aktuellen Stand gebracht. Der Action-Plan-Block weiter unten ist überwiegend abgearbeitet — siehe Status-Tabellen direkt unter jeder Sektion. Aktive Performance-Untersuchung in `AUDIT_FINDINGS.md`.
+> **Hinweis für die nächste Session:** Die Datei wurde am 2026-05-28 nach einem ersten Code-Audit und am 2026-05-29 nach einem zweiten Audit (Branch `audit/2026-05-29`, 23 Commits) überarbeitet. Phase 1 (Inventur) und Phase 2 (Hypothesen + Fixes) sind abgeschlossen. Sämtliche Quick-Wins, Performance-Hypothesen H-01…H-08 und H-11 sind umgesetzt. **Offen:** Phase 3 = Mess-Baseline gegen Pre-`5264baf`-Commit; Phase 5 = Demoscene-Panel-Inhaltliches-Audit. Details siehe `AUDIT_FINDINGS.md`. Status-Tabellen pro Sektion sind ebenfalls aktualisiert.
 
 ---
 
@@ -16,7 +16,7 @@ Thematischer Rahmen: Ein fiktives „Neural Intrusion Dashboard", das Hacker-Kli
 
 **Speed-first-Regel:** Jedes Feature muss in einer einzigen Session vollständig lauffähig implementiert werden können. Features, die das nicht schaffen, werden auf kleineres Scope reduziert oder verschoben. Keine halbfertigen Implementierungen.
 
-Aktueller Stand: **v1.2.7**. Deployment auf Netcup-Webspace (Apache).
+Aktueller Stand: **v1.6.0** (auf Audit-Branch `audit/2026-05-29`; `main` ist auf v1.2.7). Deployment auf Netcup-Webspace (Apache).
 
 ---
 
@@ -158,27 +158,44 @@ server/                     Express Prod-Server (wird auf Netcup nicht genutzt)
 
 Diese Sektion dokumentiert die Ergebnisse einer vollständigen Inspektion der Hauptdateien. Hypothesen aus früheren Versionen dieser Datei sind hier verifiziert oder verworfen.
 
-### Verifizierte Antipatterns (zu fixen — siehe Action Plan)
+> **Status (Iter. 2, 2026-05-29):** Sämtliche unten gelisteten Antipatterns AUDIT-01..10 sind in der Audit-Iteration 2 behoben. Die Tabelle bleibt als historischer Nachweis bestehen — alle Punkte haben jetzt das Häkchen.
 
-| ID | Datei : Zeile | Problem |
+### Verifizierte Antipatterns (Status 2026-05-29: alle behoben)
+
+| ID | Datei : Zeile | Problem | Status |
+|---|---|---|---|
+| AUDIT-01 | `wasm/src/lib.rs` : 32–61 | `render()` (Mandelbrot) allokiert pro Aufruf `vec![0u8; ...]`, gibt Vec zurück. Pro-Frame-Allokation + Memcopy über WASM-Grenze. | ✅ behoben (Buffer-Sharing wie `render_julia`, alle Aufrufer migriert) |
+| AUDIT-02 | `wasm/src/lib.rs` : 86–135 | `render_julia()` ist korrekt: nimmt `&mut [u8]`, schreibt in vom Caller bereitgestelltem Buffer. Diese Variante ist Referenz für AUDIT-01. | ✅ Referenz |
+| AUDIT-03 | `components/FractalCanvas.tsx` : 149 | `new Uint8ClampedArray(render(...))` pro Frame — Kopie der WASM-Ausgabe. Behebung gekoppelt an AUDIT-01. | ✅ behoben |
+| AUDIT-04 | `components/FractalCanvas.tsx` : 103, 173, 191 | `new ImageData(...)` pro Frame mehrfach. Sollte einmalig beim Mount erfolgen, danach Buffer wiederverwenden. | ✅ behoben (Crossfade-Buffer persistent) |
+| AUDIT-05 | `components/FractalCanvas.tsx` (gesamt) | **Kein IntersectionObserver.** Panel rendert auch unsichtbar — größter Einzel-Hotspot bei Layout-Übergängen. | ✅ behoben (IO + raf-coordinator) |
+| AUDIT-06 | `panels/DemoScenes.tsx` : 799–800 | `ThreeBodyScene` läuft auf 640×480 = 307k Pixel internal — 4× teurer als alle anderen DemoScenes. | ✅ Auflösung auf 400×300 + zusätzlich 30-FPS-Cap (Commit `7833455`) |
+| AUDIT-07 | `App.tsx` : 1066–1083 | Während Slide-Animation (520 ms) sind `prevLayout` UND `layout` parallel im DOM. Alle Panels beider Layouts rendern gleichzeitig — doppelte Last für 520 ms pro Switch. | ✅ `contain: paint` plus globaler `raf-coordinator`-Pause-Switch fuer alle Panels (Iter. 2) |
+| AUDIT-08 | gesamt | Kein zentraler `rAF`-Coordinator. Jedes Panel registriert eigenen Loop. Bei 24+ Panels = 24+ separate Callbacks. Browser bündelt sie zwar, aber globale Throttling-Steuerung fehlt. | ✅ vollständig migriert (Commit `743d12b`) |
+| AUDIT-09 | AGENTS.md (vorher) | Doku-Fehler: COEP wurde als `require-corp` dokumentiert, tatsächlich ist es `credentialless` in `.htaccess` und `vite.config.ts`. **In dieser Version korrigiert.** | ✅ behoben |
+| AUDIT-10 | `components/FractalCanvas.tsx` : 52 | `MAX_PIXELS = 480000` (ca. 800×600). Korrekt im Sinne der Pixel-Quality-Policy (Kategorie B = scharf). Nicht senken — stattdessen WASM-Buffer-Sharing fixen, dann sind 480k Pixel günstig. | ✅ Bewertung bestätigt, kein Senken nötig |
+
+### Neue Befunde aus Iter. 2 (2026-05-29)
+
+| ID | Beschreibung | Status |
 |---|---|---|
-| AUDIT-01 | `wasm/src/lib.rs` : 32–61 | `render()` (Mandelbrot) allokiert pro Aufruf `vec![0u8; ...]`, gibt Vec zurück. Pro-Frame-Allokation + Memcopy über WASM-Grenze. |
-| AUDIT-02 | `wasm/src/lib.rs` : 86–135 | `render_julia()` ist korrekt: nimmt `&mut [u8]`, schreibt in vom Caller bereitgestelltem Buffer. Diese Variante ist Referenz für AUDIT-01. |
-| AUDIT-03 | `components/FractalCanvas.tsx` : 149 | `new Uint8ClampedArray(render(...))` pro Frame — Kopie der WASM-Ausgabe. Behebung gekoppelt an AUDIT-01. |
-| AUDIT-04 | `components/FractalCanvas.tsx` : 103, 173, 191 | `new ImageData(...)` pro Frame mehrfach. Sollte einmalig beim Mount erfolgen, danach Buffer wiederverwenden. |
-| AUDIT-05 | `components/FractalCanvas.tsx` (gesamt) | **Kein IntersectionObserver.** Panel rendert auch unsichtbar — größter Einzel-Hotspot bei Layout-Übergängen. |
-| AUDIT-06 | `panels/DemoScenes.tsx` : 799–800 | `ThreeBodyScene` läuft auf 640×480 = 307k Pixel internal — 4× teurer als alle anderen DemoScenes. |
-| AUDIT-07 | `App.tsx` : 1066–1083 | Während Slide-Animation (520 ms) sind `prevLayout` UND `layout` parallel im DOM. Alle Panels beider Layouts rendern gleichzeitig — doppelte Last für 520 ms pro Switch. |
-| AUDIT-08 | gesamt | Kein zentraler `rAF`-Coordinator. Jedes Panel registriert eigenen Loop. Bei 24+ Panels = 24+ separate Callbacks. Browser bündelt sie zwar, aber globale Throttling-Steuerung fehlt. |
-| AUDIT-09 | AGENTS.md (vorher) | Doku-Fehler: COEP wurde als `require-corp` dokumentiert, tatsächlich ist es `credentialless` in `.htaccess` und `vite.config.ts`. **In dieser Version korrigiert.** |
-| AUDIT-10 | `components/FractalCanvas.tsx` : 52 | `MAX_PIXELS = 480000` (ca. 800×600). Korrekt im Sinne der Pixel-Quality-Policy (Kategorie B = scharf). Nicht senken — stattdessen WASM-Buffer-Sharing fixen, dann sind 480k Pixel günstig. |
+| F-001 / F-002 | `isLowDetail()` allokierte `Map<number,number>` pro Frame in `FractalScenes` + `FractalJulia` — bei 800×600 ~30 000 `Map.set`/Frame, GC-Druck mit mehreren Fraktal-Panels. | ✅ Modul-Konstante + `clear()` (`3961b99`) |
+| H-01 | `findBoundaryNonBlack` in `FractalScenes` lief jedes Frame, in `FractalCanvas` war es bereits gedrosselt. | ✅ `% 4` Throttle (`de74281`) |
+| H-02 | `isLowDetail` lief jedes Frame, Ergebnis wird nur alle paar Sekunden ausgewertet. | ✅ `% 8` Throttle + Cache (`de74281`) |
+| H-03 | `VoxelDemoColor` / `VoxelDemoBW` ohne `React.memo`. | ✅ Memo (`c65ec3b`) |
+| H-04 | `ThreeBodyScene` 60-fps CPU-Render (480 000 RGBA-Bytes/Frame). | ✅ 30-FPS-Cap via neuer `makeScene(..., fpsCap)` (`7833455`) |
+| H-05 | 18 Panels weiterhin mit eigenem `requestAnimationFrame` statt zentraler raf-coordinator. | ✅ alle migriert (`743d12b`) |
+| H-08 | `canvas.setAttribute('data-zoom*')` pro Frame in den drei Fraktal-Pfaden — Playwright-Tests pollen ohnehin. | ✅ alle 8 Frames (`c65ec3b`) |
+| H-11 | Tunnel/Rotozoom/Metaballs/Plasma-Shader nutzten anisotropisches Coord-Mapping → Verzerrung bei nicht-4:3-Panels. | ✅ aspect-preserving Mapping (`c780297`) |
+| ProTracker | ScriptProcessorNode-Fallback lief auf Main-Thread und konnte die ganze Seite bremsen; VU-Bars zeigten nur Note-Trigger statt echte Pegel. | ✅ Hybrid-Reintegration aus Standalone (`034811e`, `c18cb4d`) |
+| Track-Mismatch | Concurrent `ModPlayer.load()`-Calls fuehrten zu Track-/UI-/Audio-Mismatch beim schnellen Wechsel. | ✅ Generation-Guards + atomare `play(modOverride)` (`0d6e2bd`) |
 
 ### Bestätigte Stärken (NICHT anrühren)
 
 Folgende Implementierungen sind solide und sollen erhalten bleiben:
 
 - **`panels/FractalJulia.tsx`** — Referenz-Implementierung. Gemeinsamer Buffer (Z. 134–136), IntersectionObserver, Auflösungs-Management, bidirektionaler Zoom mit `isLowDetail()`-Detection. Pattern für andere Fraktal-Panels.
-- **`utils/modplayer/`** — Vollständiger ProTracker-MOD-Player in TypeScript. Header-Validierung (Z. 17–28 in `loader.ts`), AudioWorklet auf modernen Browsern, ScriptProcessorNode-Fallback für Kompatibilität. Alle Standardeffekte implementiert (Arpeggio, Vibrato, Slides, Portamento). **Macht libopenmpt-WASM überflüssig — Roadmap-Punkt erledigt.**
+- **`utils/modplayer/`** — Vollständiger ProTracker-MOD-Player in TypeScript. Header-Validierung in `loader.ts`, AudioWorklet jetzt Pflicht (ScriptProcessorNode-Fallback wurde in Iter. 2 entfernt, da Main-Thread-blockierend). Alle Standardeffekte implementiert (Arpeggio, Vibrato, Slides, Portamento). **Macht libopenmpt-WASM überflüssig.** Standalone-Variante in `p_modplayer_singlehtml/` — Verbesserungen werden zwischen den Projekten hybridisiert.
 - **`utils/wasm-loader.ts`** — Korrekter Singleton. WASM wird einmal geladen, alle Panels teilen sich das Modul.
 - **`utils/shared-audio.ts`** — Singleton AudioContext mit iOS-Audio-Session-Konfiguration. Genau richtig.
 - **`Cargo.toml`** — `opt-level = 3` und `lto = true` ergeben ein 23 KB WASM-Binary. Saubere Release-Konfiguration.
@@ -511,10 +528,11 @@ Die Visualtests (`tests/panel-check.spec.ts`, `tests/review-all-panels.spec.ts`)
 
 # Action Plan — Performance & Architektur (mittelfristig)
 
-> **Status-Übersicht (2026-05-29):**
-> - PERF-10 ⚠ Partial — `raf-coordinator.ts` existiert, 11 von 29 rAF-nutzenden Dateien migriert. Rest siehe `AUDIT_FINDINGS.md` (F-003).
-> - PERF-11 ⚠ Fast erledigt — 51 von 52 Panels mit `React.memo`. Ausreißer: `VoxelDemo.tsx` (F-004).
-> - PERF-12 offen — Performance-Recording nach diesem Audit fällig.
+> **Status-Übersicht (2026-05-29, Iter. 2):**
+> - PERF-10 ✅ Vollständig — alle Canvas-/Shader-Panels nutzen jetzt den zentralen `raf-coordinator`. Letzte 20 Migrationen in Commit `743d12b`. Globaler `setPaused`-Switch greift für die ganze App.
+> - PERF-11 ✅ Vollständig — 52/52 Panels mit `React.memo`, inkl. `VoxelDemo` (Commit `c65ec3b`).
+> - PERF-12 offen — Performance-Recording nach Phase-3-Mess-Baseline fällig.
+> - Bonus: H-01/H-02 (Map-Pooling + Throttling in Fraktal-Stack, `de74281` + `3961b99`), H-04 (ThreeBodyScene 30-FPS-Cap, `7833455`), H-08 (`data-zoom*`-DOM-Drosselung, `c65ec3b`) sind in dieser Iteration mit umgesetzt.
 
 Diese Punkte gehen über die Quick-Wins hinaus und sind eigenständige Sessions.
 
@@ -570,12 +588,13 @@ Nach QW-01 bis QW-09: Chrome DevTools Performance-Recording während eines Layou
 
 # Action Plan — WebGL-Infrastruktur (Voraussetzung für Demoszene-Shader)
 
-> **Status-Übersicht (2026-05-29):**
+> **Status-Übersicht (2026-05-29, Iter. 2):**
 > - GL-01 ✅ `ui/ShaderPanel.tsx` vorhanden (~488 LOC)
 > - GL-02 ✅ `utils/webgl-pool.ts` (LRU, `MAX_GL_CONTEXTS=16`)
-> - GL-03 ⚠ Partial — migriert: PlasmaDemo, Tunnel, Metaballs, Rotozoom, Fire. Offen: ThreeBodyScene (weiter CPU)
-> - GL-04 ⚠ VoxelScenes (Thermal, Lava) auf ShaderPanel; `VoxelDemo` (Color, BW) noch CPU
+> - GL-03 ⚠ Partial — migriert: PlasmaDemo, Tunnel, Metaballs, Rotozoom, Fire. **ThreeBodyScene** weiter CPU, jetzt aber via `fpsCap=30` in `makeScene` gedeckelt (Commit `7833455`). Volle GPU-Migration steht noch aus.
+> - GL-04 ⚠ VoxelScenes (Thermal, Lava) auf ShaderPanel; `VoxelDemo` (Color, BW) ebenfalls über ShaderPanel mit `memo`-Wrapper (Commit `c65ec3b`). `imageRendering: pixelated` ist in beiden ShaderPanels nicht mehr explizit gesetzt (Kategorie-B-Verhalten).
 > - GL-05 offen (optional)
+> - Bonus 2026-05-29: vier GPU-Shader (Tunnel/Rotozoom/Metaballs/Plasma) hatten anisotropisches Coord-Mapping → Verzerrung bei nicht-4:3-Panels. Aspect-preserving Fix in Commit `c780297` (Audit-Befund **H-11**).
 
 ## GL-01 — `ShaderPanel.tsx` Basiskomponente
 
@@ -645,10 +664,22 @@ Shader-Sourcen als `.glsl`-Dateien in `frontend/public/shaders/`, geladen per `f
 
 # Action Plan — Demoszene-Integration (kurz-/mittelfristig)
 
-> **Status-Übersicht (2026-05-29):**
+> **Status-Übersicht (2026-05-29, Iter. 2):**
 > - DEMO-01..04 ✅ Panels existieren: `ShadertoyPanel`, `TixyPanel`, `IQTechniquePanel`, `LovebyteShowcasePanel`. Inhaltliche Tiefe noch nicht auditiert (Phase 5).
-> - DEMO-05 offen (Lizenz-JSON)
-> - DEMO-06 offen (Audio-Fokus-Modell)
+> - DEMO-05 offen (Lizenz-JSON).
+> - DEMO-06 ✅ Teilweise (Audio-Fokus): `utils/audio-focus.ts` mit `requestAudioFocus`/`releaseAudioFocus` ist in Verwendung; `AmiModPanel` und `AllYourBase` respektieren es. Erweiterung auf weitere Audio-Panels offen.
+>
+> **Zusätzliche ProTracker-Verbesserungen (Iter. 2)** — siehe `audit/2026-05-29`-Branch und Standalone-Projekt `p_modplayer_singlehtml`:
+> - **Hybrid-Reintegration aus Standalone-Player** (`034811e`): ScriptProcessorNode-Fallback entfernt, AudioWorklet jetzt Pflicht. Echte Per-Channel-VU-Pegel direkt aus dem Worklet (~47 Posts/sec, `'levels'`-Message). Asymmetrische, zeitbasierte EMA-Glaettung der VU-Bars (`c18cb4d`).
+> - **Race-Fix bei Track-Wechsel** (`0d6e2bd`): Generationen-Counter in `ModPlayer.load` + atomare `play(modOverride)`-Übergabe + Effect-Generation-Guard verhindert Mismatch zwischen UI-State und hörbarem Track.
+> - **Drag & Drop + File/Folder-Picker** (`553347a`): Drop ueber gesamtes Panel inkl. rekursivem Ordner-Traversal via `webkitGetAsEntry`. "LOAD…"-Button (File-Picker) und "DIR…"-Button (Folder-Picker). Object-URLs werden bei Unmount revoked. Dropdown gruppiert Defaults + User-Uploads via `<optgroup>`.
+> - **Positionsregler (Scrubber)** (`614d5b5`, `164a7ca`, `569bd90`): Range-Slider mit Amiga-Bevel-Optik, Klick-zur-Position via `onPointerDown`, robuster Backward-Scrub-Fix (`lastPosRef` + `justScrubbedRef` verhindern False-Auto-Stop).
+> - **Default-Tracks erweitert** (`c42659f`, `c931285`): 13 klassische Game-MOD-Tracks (Agony, Lotus 2/3, R-Type, Simon the Sorcerer, Speedball 2, Stardust Memories, Turrican-Reihe) mit Composer-/Publisher-/Year-Attribution. Footer-Disclaimer "TECH SHOWCASE — MUSIC © RESPECTIVE COMPOSERS & PUBLISHERS" statt frueherer Modarchive-Aussage.
+> - **MIME für `.mod`** in `frontend/public/.htaccess` ergänzt; `.dat` bleibt aus Historie-Gründen unterstützt.
+>
+> **GlitchOverlay** (`cefcb23`) ebenfalls in Iter. 2 überarbeitet: VHS-Aesthetik (Tracking-Bands, Chroma-Bleed in Magenta/Cyan, Dropouts, Capstan-Wobble), Performance-Refactor (Scanlines als CSS-Gradient statt 360 fillRect/Frame, rAF nur in aktiven Episoden via `raf-coordinator.subscribe`).
+>
+> **Standalone-ProTracker-Projekt:** Der Player wurde nach `~/local/Arbeit/Viben/p_modplayer_singlehtml/` extrahiert (Single-HTML-File, ~36 KB minified, eigene `AGENTS.md`). Verbesserungen wandern bei Bedarf zwischen den Projekten hin und zurück.
 
 Diese Punkte ergänzen das bestehende Inventar mit kuratierten Demoszene-Inhalten.
 
