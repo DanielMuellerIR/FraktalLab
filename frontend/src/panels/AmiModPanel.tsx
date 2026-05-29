@@ -787,6 +787,79 @@ function AmiModPanel() {
             anhoeren) und zum schnellen Navigieren. */}
         {mod && mod.length > 1 && (
           <div className="flex items-center gap-2 px-2 py-1 bg-[#c0c0c0] border-b border-[#808080] shrink-0">
+            <style>{`
+              /* Amiga-Workbench-Look fuer den Positionsregler. Tailwind kann
+                 die Range-Pseudoclasses nicht direkt, daher inline-CSS. */
+              .ami-range {
+                -webkit-appearance: none;
+                appearance: none;
+                background: transparent;
+                /* Grosse Hitbox: 18px Hoehe statt nativer ~3-4 px. So
+                   landen Klicks auf den Track zuverlaessig im Slider. */
+                height: 18px;
+                padding: 0;
+                margin: 0;
+                cursor: pointer;
+              }
+              .ami-range:disabled { opacity: 0.5; cursor: not-allowed; }
+              /* Track (Webkit). Inset-Bevel: dunkel oben/links, hell
+                 unten/rechts → wirkt eingelassen wie ein Workbench-Slot. */
+              .ami-range::-webkit-slider-runnable-track {
+                height: 6px;
+                background: #808080;
+                border-top: 1px solid #404040;
+                border-left: 1px solid #404040;
+                border-bottom: 1px solid #ffffff;
+                border-right: 1px solid #ffffff;
+              }
+              .ami-range::-moz-range-track {
+                height: 6px;
+                background: #808080;
+                border-top: 1px solid #404040;
+                border-left: 1px solid #404040;
+                border-bottom: 1px solid #ffffff;
+                border-right: 1px solid #ffffff;
+              }
+              /* Thumb (Webkit) — Amiga-Button-Optik: hell oben/links,
+                 dunkel unten/rechts. Aktiv = invertiert (gedrueckter Look). */
+              .ami-range::-webkit-slider-thumb {
+                -webkit-appearance: none;
+                appearance: none;
+                width: 14px;
+                height: 16px;
+                background: #c0c0c0;
+                border-top: 2px solid #ffffff;
+                border-left: 2px solid #ffffff;
+                border-bottom: 2px solid #404040;
+                border-right: 2px solid #404040;
+                margin-top: -6px;
+                cursor: pointer;
+              }
+              .ami-range:active::-webkit-slider-thumb {
+                border-top: 2px solid #404040;
+                border-left: 2px solid #404040;
+                border-bottom: 2px solid #ffffff;
+                border-right: 2px solid #ffffff;
+              }
+              .ami-range::-moz-range-thumb {
+                width: 12px;
+                height: 14px;
+                background: #c0c0c0;
+                border-top: 2px solid #ffffff;
+                border-left: 2px solid #ffffff;
+                border-bottom: 2px solid #404040;
+                border-right: 2px solid #404040;
+                border-radius: 0;
+                cursor: pointer;
+              }
+              .ami-range:active::-moz-range-thumb {
+                border-top: 2px solid #404040;
+                border-left: 2px solid #404040;
+                border-bottom: 2px solid #ffffff;
+                border-right: 2px solid #ffffff;
+              }
+              .ami-range:focus { outline: none; }
+            `}</style>
             <span className="text-neutral-800 text-[9px] font-bold shrink-0">
               POS
             </span>
@@ -810,7 +883,29 @@ function AmiModPanel() {
                 currentRowRef.current = 0;
                 player.setRow(newPos, 0);
               }}
-              className="flex-1 h-1 cursor-pointer accent-[#0055aa] disabled:opacity-50"
+              onPointerDown={(e) => {
+                // Robuster Klick-zur-Position-Sprung: einige Browser-
+                // Varianten reagieren auf Track-Klicks ausserhalb des
+                // Thumbs nur mit einem kleinen Schritt statt einem
+                // direkten Sprung. Wir berechnen die Zielposition aus der
+                // Klick-X-Koordinate relativ zum Slider und triggern den
+                // Sprung manuell. Der native Drag-Pfad funktioniert
+                // anschliessend wie gewohnt (onChange feuert weiter).
+                if (loading) return;
+                const target = e.currentTarget;
+                const rect = target.getBoundingClientRect();
+                if (rect.width <= 0) return;
+                const pct = (e.clientX - rect.left) / rect.width;
+                const clamped = Math.max(0, Math.min(1, pct));
+                const newPos = Math.round(clamped * (mod.length - 1));
+                if (newPos === currentPosition) return;
+                justScrubbedRef.current = true;
+                lastPosRef.current = newPos;
+                setCurrentPosition(newPos);
+                currentRowRef.current = 0;
+                player.setRow(newPos, 0);
+              }}
+              className="ami-range flex-1"
               aria-label="Position im Song"
             />
             <span className="text-neutral-800 text-[9px] font-bold shrink-0 tabular-nums">
