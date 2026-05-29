@@ -952,8 +952,17 @@ export default function App() {
                           onClick={() => goToPanel(idx)}
                         >
                           <Comp />
-                          <div className="absolute bottom-1 right-2 pointer-events-none select-none text-[8px] font-mono text-green-700/60 uppercase bg-black/60 px-1.5 py-0.5 border border-green-950/20">
-                            #{idx + 1}
+                          {/* Review-Mode-Marker: Index + Kurzname des Panels.
+                              Sitzt oben rechts ueber der Title-Bar des Panels
+                              (rechte Seite dort ist leer, ausser dem Pulse-
+                              Dot). Hoher Kontrast, gut lesbar — frueher unten
+                              rechts mit zu wenig Kontrast und ohne Kurzname.
+                              Kurzname hilft beim Verweisen auf Panels in
+                              Konversationen. */}
+                          <div className="absolute top-1 right-7 z-20 pointer-events-none select-none flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider bg-black/80 border border-green-700/40 px-1.5 py-[1px] rounded-sm">
+                            <span className="text-green-500 font-bold">#{idx + 1}</span>
+                            <span className="text-green-700">·</span>
+                            <span className="text-green-300">{panel.name}</span>
                           </div>
                         </div>
                       )
