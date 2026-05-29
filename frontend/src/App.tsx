@@ -959,7 +959,7 @@ export default function App() {
                               rechts mit zu wenig Kontrast und ohne Kurzname.
                               Kurzname hilft beim Verweisen auf Panels in
                               Konversationen. */}
-                          <div className="absolute top-0.5 right-7 z-20 pointer-events-none select-none flex items-center gap-1 font-mono text-xs uppercase tracking-widest bg-black/80 border border-green-700/40 px-1.5 py-[1px] rounded-sm">
+                          <div className="absolute top-0.5 right-7 z-20 pointer-events-none select-none flex items-center gap-1 font-mono text-xs tracking-wider bg-black/80 border border-green-700/40 px-1.5 py-[1px] rounded-sm">
                             <span className="text-green-500 font-bold">#{idx + 1}</span>
                             <span className="text-green-700">·</span>
                             <span className="text-green-300">{panel.name}</span>
