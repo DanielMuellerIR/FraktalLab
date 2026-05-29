@@ -536,12 +536,18 @@ const TUNNEL_SHADER = `
 
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float ts = iTime;
-    
-    // Skalierung passend zur originalen CPU-Auflösung für identische Wellenformen
+
+    // Skalierung passend zur originalen CPU-Aufloesung fuer identische Wellenformen.
+    // ASPECT-PRESERVING: einheitlicher Skalenfaktor in beiden Achsen, sonst werden
+    // radiale Muster (Ringe, Kreise) bei nicht-4:3-Panels zu Ellipsen verzerrt.
+    // p ist im virtuellen 320x240-Raum, zentriert auf der Canvas-Mitte; auf
+    // breiteren/hoeheren Panels zeigt der Tunnel ueber den 320/240-Rand hinaus
+    // mehr Inhalt statt zu strecken.
     float originalW = min(iResolution.x, 320.0);
     float originalH = min(iResolution.y, 240.0);
-    vec2 p = fragCoord.xy * vec2(originalW, originalH) / iResolution.xy;
-    
+    float scale = min(iResolution.x / originalW, iResolution.y / originalH);
+    vec2 p = (fragCoord.xy - iResolution.xy * 0.5) / scale + vec2(originalW, originalH) * 0.5;
+
     float cx = p.x - originalW / 2.0;
     float cy = p.y - originalH / 2.0;
     float r = length(vec2(cx, cy)) + 0.001;
@@ -587,15 +593,16 @@ const ROTOZOOM_SHADER = `
 
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float ts = iTime;
-    
-    // Skalierung passend zur originalen CPU-Auflösung für identische Wellenformen
+
+    // Aspect-preserving virtual coords (siehe TUNNEL_SHADER).
     float originalW = min(iResolution.x, 320.0);
     float originalH = min(iResolution.y, 240.0);
-    vec2 p = fragCoord.xy * vec2(originalW, originalH) / iResolution.xy;
-    
+    float scale = min(iResolution.x / originalW, iResolution.y / originalH);
+    vec2 p = (fragCoord.xy - iResolution.xy * 0.5) / scale + vec2(originalW, originalH) * 0.5;
+
     float cx = p.x - originalW / 2.0;
     float cy = p.y - originalH / 2.0;
-    
+
     float z = 0.04 + 0.03 * sin(ts * 0.5);
     float cVal = cos(ts * 0.6) * z;
     float sVal = sin(ts * 0.6) * z;
@@ -652,9 +659,13 @@ const METABALLS_SHADER = `
 
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float ts = iTime;
+    // Aspect-preserving virtual coords (siehe TUNNEL_SHADER): einheitlicher
+    // Skalenfaktor in beiden Achsen, damit Metaball-Kreise nicht zu Ellipsen
+    // werden, wenn das Panel nicht 4:3 ist.
     float originalW = 200.0;
     float originalH = 150.0;
-    vec2 p = fragCoord.xy * vec2(originalW, originalH) / iResolution.xy;
+    float scale = min(iResolution.x / originalW, iResolution.y / originalH);
+    vec2 p = (fragCoord.xy - iResolution.xy * 0.5) / scale + vec2(originalW, originalH) * 0.5;
     
     float sum = 0.0;
     vec3 colorSum = vec3(0.0);
