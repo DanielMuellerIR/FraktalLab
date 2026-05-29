@@ -1,4 +1,4 @@
-import { memo,  useEffect, useRef, useState } from 'react';
+import { memo,  useEffect, useMemo, useRef, useState } from 'react';
 import Panel from '../ui/Panel';
 import { ModPlayer } from '../utils/modplayer/player';
 import { Mod, Note } from '../utils/modplayer/mod';
@@ -9,22 +9,90 @@ const AUDIO_ID = 'ami-mod-player';
 
 
 // ─── Musik-Tracks ─────────────────────────────────────────────────────────────
+//
+// Es gibt zwei Quellen fuer MODs:
+//   1. DEFAULT_TRACKS — mitgelieferte MODs aus frontend/public/audio/.
+//   2. User-Uploads zur Laufzeit — per Drag&Drop, File-Picker oder
+//      Folder-Picker. Diese landen in einer separaten Liste im
+//      Component-State und werden ueber blob:-URLs geladen, sodass der
+//      bestehende fetch-basierte player.load()-Pfad weiterhin
+//      funktioniert.
+//
+// Beide Quellen erscheinen gemeinsam im Dropdown.
 interface Track {
   id: string;
   name: string;
   url: string;
-  composer: string;
-  arranger: string;
-  year: string;
+  // Optionale Metadaten (nur fuer mitgelieferte Defaults sinnvoll gesetzt).
+  composer?: string;
+  arranger?: string;
+  year?: string;
+  // Markiert User-Uploads. Wird genutzt, um beim Unmount Object-URLs wieder
+  // freizugeben und im UI das User-/Default-Segment optisch zu trennen.
+  isUser?: boolean;
 }
 
 const BASE = import.meta.env.BASE_URL;
 
-const TRACKS: Track[] = [
-  { id: '58072', name: 'Speedball 2', url: `${BASE}audio/track_58072.dat?v=1.0.3`, composer: 'Simon Rogers', arranger: 'Richard Joseph', year: '1990' },
-  { id: '142827', name: 'Stardust Memories', url: `${BASE}audio/track_142827.dat?v=1.0.3`, composer: 'Volker Tripp (Jester)', arranger: 'Volker Tripp (Jester)', year: '1992' },
-  { id: '87180', name: 'Bootup', url: `${BASE}audio/track_87180.dat?v=1.0.3`, composer: 'Barry Leitch', arranger: 'Barry Leitch', year: '1991' }
+// Mitgelieferte Default-Tracks. Dateien liegen unter frontend/public/audio/.
+// Endung .mod (kanonisch); Apache MIME-Type ist in der .htaccess gesetzt.
+// Encoded URLs (Spaces als %20), weil fetch zwar tolerant ist, aber manche
+// Server-Konfigurationen sonst patzig sind.
+const DEFAULT_TRACKS: Track[] = [
+  { id: 'speedball2', name: 'Speedball 2',       url: `${BASE}audio/Speedball%202.mod`,       composer: 'Simon Rogers',         arranger: 'Richard Joseph',       year: '1990' },
+  { id: 'stardust',   name: 'Stardust Memories', url: `${BASE}audio/Stardust%20Memories.mod`, composer: 'Volker Tripp (Jester)', arranger: 'Volker Tripp (Jester)', year: '1992' },
+  { id: 'lotus2',     name: 'Lotus 2',           url: `${BASE}audio/Lotus%202.mod`,           composer: 'Barry Leitch',          arranger: 'Barry Leitch',          year: '1991' }
 ];
+
+// Heuristik fuer MOD-Dateinamen: moderne .mod-Endung ODER klassische
+// Amiga-Konvention mit Praefix "mod." (z. B. "mod.elysium").
+function isModName(name: string): boolean {
+  const n = name.toLowerCase();
+  return n.endsWith('.mod') || n.startsWith('mod.');
+}
+
+// Liest rekursiv alle Files aus einem DataTransfer — inklusive Ordnern.
+// Browser-API: DataTransferItem.webkitGetAsEntry() → FileEntry oder
+// DirectoryEntry. Ordner werden via DirectoryReader.readEntries() in
+// Batches durchlaufen (deshalb die while-Schleife).
+async function collectDroppedFiles(dt: DataTransfer): Promise<File[]> {
+  const out: File[] = [];
+  const items = dt.items;
+  // Pruefen, ob webkitGetAsEntry verfuegbar ist (Chrome, Edge, Safari, neuere FF).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (items && items.length && typeof (items[0] as any).webkitGetAsEntry === 'function') {
+    const entries: any[] = [];
+    for (let i = 0; i < items.length; i++) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const entry = (items[i] as any).webkitGetAsEntry();
+      if (entry) entries.push(entry);
+    }
+    for (const entry of entries) await walkEntry(entry, out);
+    return out;
+  }
+  // Fallback: keine Entry-API → nur direkt gedroppte Dateien, keine Ordner.
+  for (let i = 0; i < dt.files.length; i++) out.push(dt.files[i]);
+  return out;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function walkEntry(entry: any, out: File[]): Promise<void> {
+  if (entry.isFile) {
+    const file: File = await new Promise((res, rej) => entry.file(res, rej));
+    out.push(file);
+    return;
+  }
+  if (entry.isDirectory) {
+    const reader = entry.createReader();
+    // readEntries liefert in Batches, leeres Array signalisiert das Ende.
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const batch: any[] = await new Promise((res, rej) => reader.readEntries(res, rej));
+      if (!batch.length) break;
+      for (const child of batch) await walkEntry(child, out);
+    }
+  }
+}
 
 // Amiga-Frequenz-Perioden und Notennamen-Mapping
 const PERIODS = [
@@ -113,6 +181,41 @@ function AmiModPanel() {
   const playerRef = useRef<ModPlayer>(player);
   const shouldAutoPlayRef = useRef(false);
 
+  // User-Uploads (Drop / File-Picker / Folder-Picker). Object-URLs werden
+  // bei Unmount aktiv freigegeben (siehe useEffect weiter unten).
+  const [userTracks, setUserTracks] = useState<Track[]>([]);
+  // Drop-Overlay-Sichtbarkeit. dragDepth zaehlt verschachtelte
+  // dragenter/dragleave-Events, damit das Overlay nicht flackert, wenn
+  // die Maus ueber innere Elemente faehrt.
+  const [dragOver, setDragOver] = useState(false);
+  const dragDepthRef = useRef(0);
+  // Refs auf die unsichtbaren File-/Folder-Pickers — der Button-Klick
+  // delegiert per .click() an diese Inputs.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+
+  // Defaults + User-Uploads in einer einzigen Liste. Reihenfolge: zuerst
+  // Defaults (stabile Indizes), dann User-Uploads in Hinzufuege-Reihenfolge.
+  const allTracks = useMemo<Track[]>(
+    () => [...DEFAULT_TRACKS, ...userTracks],
+    [userTracks]
+  );
+
+  // Object-URLs der User-Tracks beim Unmount der Komponente freigeben.
+  // Wichtig: nicht jedes Mal beim Update von userTracks, sondern erst beim
+  // endgueltigen Verschwinden — sonst wuerde der gerade aktive Track die
+  // URL unter den Fuessen verlieren.
+  useEffect(() => {
+    return () => {
+      for (const t of userTracks) {
+        if (t.isUser && t.url.startsWith('blob:')) {
+          try { URL.revokeObjectURL(t.url); } catch (_) {}
+        }
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ModPlayer beim Unmount entladen und Audio-Fokus abonnieren
   useEffect(() => {
     const unsubscribe = registerAudioFocusListener((focusedId) => {
@@ -138,7 +241,7 @@ function AmiModPanel() {
     const isOtherModPlaying = !!(window as any).fraktallab_mod_playing;
     
     if (!isVidPlaying && !isOtherModPlaying) {
-      const randIdx = Math.floor(Math.random() * TRACKS.length);
+      const randIdx = Math.floor(Math.random() * DEFAULT_TRACKS.length);
       setTrackIdx(randIdx);
       shouldAutoPlayRef.current = false; // Keinen automatischen Start auslösen
     }
@@ -156,7 +259,7 @@ function AmiModPanel() {
     vuTargetsRef.current = [0, 0, 0, 0];
     activeRowElRef.current = null;
 
-    player.load(TRACKS[trackIdx].url, `${BASE}audio/mod-player-worklet.js`).then(() => {
+    player.load(allTracks[trackIdx].url, `${BASE}audio/mod-player-worklet.js`).then(() => {
       if (!active) {
         return;
       }
@@ -335,6 +438,109 @@ function AmiModPanel() {
     container.scrollTop = rowTop - (containerHeight / 2) + (rowHeight / 2);
   }, [currentPosition]);
 
+  // ── User-Upload-Handling ───────────────────────────────────────────────────
+  // Fuegt eine Liste von Files der User-Track-Liste hinzu. Filtert auf MOD-
+  // Dateinamen, erzeugt Object-URLs, dedupliziert per Name+Size. Anschliessend
+  // optional den ersten neu hinzugefuegten Track sofort laden.
+  const addUserFiles = (files: File[], playFirstAdded: boolean): Track | null => {
+    const fresh: { file: File; track: Track }[] = [];
+    setUserTracks((prev) => {
+      const next: Track[] = [...prev];
+      for (const f of files) {
+        if (!isModName(f.name)) continue;
+        // Duplikate (gleicher Name + gleiche Groesse) ueberspringen — sonst
+        // landen identische Dateien mehrfach im Dropdown.
+        const existing = next.find((t) => t.isUser && t.name === f.name && (t as any).__size === f.size);
+        if (existing) continue;
+        const objUrl = URL.createObjectURL(f);
+        const baseName = f.name.replace(/\.mod$/i, '').replace(/^mod\./i, '');
+        const track: Track = {
+          id: 'user:' + f.name + ':' + f.size,
+          name: baseName || f.name,
+          url: objUrl,
+          isUser: true,
+        };
+        // Groesse als nicht-sichtbares Property mitgeben fuer Dedup-Check.
+        (track as any).__size = f.size;
+        next.push(track);
+        fresh.push({ file: f, track });
+      }
+      return next;
+    });
+    if (!fresh.length) return null;
+    if (playFirstAdded) {
+      // setUserTracks wird asynchron. Index des neuen Tracks ergibt sich nach
+      // dem React-Render. Deshalb Index hier nach Anzahl bestehender Tracks
+      // berechnen — funktioniert weil setUserTracks oben "next" voll baut.
+      // Auswahl per Microtask, damit der State-Update durch ist.
+      const firstAddedName = fresh[0].track.name;
+      const firstAddedSize = (fresh[0].track as any).__size;
+      queueMicrotask(() => {
+        setUserTracks((prev) => {
+          const idxInList = prev.findIndex((t) => t.name === firstAddedName && (t as any).__size === firstAddedSize);
+          if (idxInList >= 0) {
+            shouldAutoPlayRef.current = true;
+            setTrackIdx(DEFAULT_TRACKS.length + idxInList);
+          }
+          return prev;
+        });
+      });
+    }
+    return fresh[0].track;
+  };
+
+  const onFilePickerChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    addUserFiles(files, true);
+    // Input-Wert zuruecksetzen, damit dieselbe Datei erneut waehlbar ist.
+    e.target.value = '';
+  };
+
+  const onFolderPickerChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+    const all = e.target.files ? Array.from(e.target.files) : [];
+    const mods = all.filter((f) => isModName(f.name));
+    if (mods.length) addUserFiles(mods, true);
+    e.target.value = '';
+  };
+
+  // ── Drag & Drop (Panel-weit) ──────────────────────────────────────────────
+  // dragenter/dragover muessen preventDefault aufrufen, damit drop ueberhaupt
+  // feuert. dragDepth zaehlt verschachtelte enter/leave-Events, damit das
+  // Overlay nicht flackert.
+  const onDragEnter: React.DragEventHandler = (e) => {
+    e.preventDefault();
+    dragDepthRef.current++;
+    if (!dragOver) setDragOver(true);
+  };
+  const onDragOver: React.DragEventHandler = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+  const onDragLeave: React.DragEventHandler = (e) => {
+    e.preventDefault();
+    dragDepthRef.current--;
+    if (dragDepthRef.current <= 0) {
+      dragDepthRef.current = 0;
+      setDragOver(false);
+    }
+  };
+  const onDrop: React.DragEventHandler = async (e) => {
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    setDragOver(false);
+    try {
+      const files = await collectDroppedFiles(e.dataTransfer);
+      const mods = files.filter((f) => isModName(f.name));
+      if (mods.length) addUserFiles(mods, true);
+    } catch (err) {
+      console.error('Drop-Verarbeitung fehlgeschlagen:', err);
+      // Fallback: nur direkt gedroppte Dateien, keine Ordner.
+      const direct = Array.from(e.dataTransfer.files || []);
+      const mods = direct.filter((f) => isModName(f.name));
+      if (mods.length) addUserFiles(mods, true);
+    }
+  };
+
   // Abspielen / Stoppen umschalten mit Audio-Fokus
   const handlePlayToggle = () => {
     const player = playerRef.current;
@@ -375,7 +581,25 @@ function AmiModPanel() {
 
   return (
     <Panel title="AMIGA WORKBENCH // MOD PLAYER">
-      <div className="flex flex-col h-full overflow-hidden bg-[#c0c0c0] text-black border-2 border-t-white border-l-white border-b-[#404040] border-r-[#404040] font-mono text-xs select-none p-0.5">
+      <div
+        className="relative flex flex-col h-full overflow-hidden bg-[#c0c0c0] text-black border-2 border-t-white border-l-white border-b-[#404040] border-r-[#404040] font-mono text-xs select-none p-0.5"
+        onDragEnter={onDragEnter}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+      >
+        {/* Drop-Overlay — wird waehrend eines Drag-Vorgangs ueber das Panel
+            sichtbar. pointer-events:none, damit die Drag-Events weiterhin
+            den darunterliegenden Panel-Container treffen. */}
+        {dragOver && (
+          <div
+            aria-hidden="true"
+            style={{ pointerEvents: 'none' }}
+            className="absolute inset-0 z-20 flex items-center justify-center bg-[#0055aa]/70 border-4 border-dashed border-white text-white font-bold text-sm"
+          >
+            DROP .MOD FILES OR FOLDER
+          </div>
+        )}
 
         {/* ─── Amiga-Style Fenster-Titelleiste ────────────────────────────── */}
         <div className="bg-[#0055aa] text-white flex items-center justify-between px-2 py-0.5 border-b border-[#404040] shrink-0 font-bold text-[10px]">
@@ -412,12 +636,59 @@ function AmiModPanel() {
               disabled={loading}
               className="bg-white border-2 border-t-neutral-600 border-l-neutral-600 border-b-white border-r-white text-black text-[10px] px-1 py-0.5 focus:outline-none cursor-pointer disabled:opacity-50"
             >
-              {TRACKS.map((t, idx) => (
-                <option key={t.id} value={idx}>
-                  {t.name}
-                </option>
-              ))}
+              {/* Defaults zuerst (Indizes 0..DEFAULT_TRACKS.length-1). */}
+              <optgroup label="Built-in">
+                {DEFAULT_TRACKS.map((t, idx) => (
+                  <option key={t.id} value={idx}>{t.name}</option>
+                ))}
+              </optgroup>
+              {/* User-Uploads danach, Indizes verschoben. Optgroup nur anzeigen,
+                  wenn der Nutzer ueberhaupt etwas hochgeladen hat. */}
+              {userTracks.length > 0 && (
+                <optgroup label="User MODs">
+                  {userTracks.map((t, i) => (
+                    <option key={t.id} value={DEFAULT_TRACKS.length + i}>{t.name}</option>
+                  ))}
+                </optgroup>
+              )}
             </select>
+            {/* Datei-Picker (einzelne .mod). Klick auf den sichtbaren Button
+                delegiert per .click() an das unsichtbare Input-Element. */}
+            <button
+              type="button"
+              title="Eigene .mod-Datei laden"
+              onClick={() => fileInputRef.current?.click()}
+              className="bg-[#c0c0c0] border-2 border-t-white border-l-white border-b-neutral-700 border-r-neutral-700 active:border-t-neutral-700 active:border-l-neutral-700 active:border-b-white active:border-r-white px-1.5 py-0.5 text-[10px] font-bold text-black cursor-pointer"
+            >
+              LOAD…
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".mod,application/octet-stream"
+              multiple
+              onChange={onFilePickerChange}
+              style={{ display: 'none' }}
+            />
+            {/* Ordner-Picker. webkitdirectory ist nicht-standard, wird aber
+                von allen modernen Desktop-Browsern unterstuetzt. */}
+            <button
+              type="button"
+              title="Ganzen Ordner mit .mod-Dateien laden"
+              onClick={() => folderInputRef.current?.click()}
+              className="bg-[#c0c0c0] border-2 border-t-white border-l-white border-b-neutral-700 border-r-neutral-700 active:border-t-neutral-700 active:border-l-neutral-700 active:border-b-white active:border-r-white px-1.5 py-0.5 text-[10px] font-bold text-black cursor-pointer"
+            >
+              DIR…
+            </button>
+            <input
+              ref={folderInputRef}
+              type="file"
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              {...({ webkitdirectory: '', directory: '' } as any)}
+              multiple
+              onChange={onFolderPickerChange}
+              style={{ display: 'none' }}
+            />
           </div>
           <div className="flex items-center gap-2">
             {mod && (
@@ -676,22 +947,23 @@ function AmiModPanel() {
                   {mod?.name || '---'}
                 </span>
               </div>
+              {/* Fuer User-Uploads gibt es keine Metadaten — Strich anzeigen. */}
               <div className="flex justify-between text-neutral-700 font-bold">
                 <span>COMPOSER:</span>
-                <span className="text-black truncate max-w-[100px]" title={TRACKS[trackIdx].composer}>
-                  {TRACKS[trackIdx].composer}
+                <span className="text-black truncate max-w-[100px]" title={allTracks[trackIdx]?.composer || ''}>
+                  {allTracks[trackIdx]?.composer || '—'}
                 </span>
               </div>
               <div className="flex justify-between text-neutral-700 font-bold">
                 <span>ARRANGER:</span>
-                <span className="text-black truncate max-w-[100px]" title={TRACKS[trackIdx].arranger}>
-                  {TRACKS[trackIdx].arranger}
+                <span className="text-black truncate max-w-[100px]" title={allTracks[trackIdx]?.arranger || ''}>
+                  {allTracks[trackIdx]?.arranger || '—'}
                 </span>
               </div>
               <div className="flex justify-between text-neutral-700 font-bold">
                 <span>YEAR:</span>
                 <span className="text-black">
-                  {TRACKS[trackIdx].year}
+                  {allTracks[trackIdx]?.year || '—'}
                 </span>
               </div>
             </div>

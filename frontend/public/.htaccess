@@ -5,11 +5,16 @@
     Header set Cross-Origin-Embedder-Policy "credentialless"
 </IfModule>
 
-# Tracker-Dateien als Binär ausliefern
+# Tracker-Dateien als Binär ausliefern.
+# .dat-Erweiterung bleibt aus Historiegründen unterstützt. .mod ist die
+# eigentliche kanonische Endung für ProTracker-Dateien — Apache hat dafür
+# per Default keinen MIME-Type, daher hier expliziter Eintrag, damit der
+# Browser den Body als ArrayBuffer bekommt und nicht als Text interpretiert.
 <IfModule mod_mime.c>
     AddType application/octet-stream .dat
+    AddType application/octet-stream .mod
 </IfModule>
-<FilesMatch "\.dat$">
+<FilesMatch "\.(dat|mod)$">
     SetEnv no-gzip 1
     Header unset Content-Encoding
 </FilesMatch>
