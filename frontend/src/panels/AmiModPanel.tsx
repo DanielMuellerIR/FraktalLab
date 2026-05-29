@@ -260,22 +260,45 @@ function AmiModPanel() {
     };
   }, [trackIdx, player]);
 
-  // VU-Meter: asymmetrische EMA gegen den vom Worklet gelieferten Peak-
-  // Zielwert. Aus dem Standalone-Player portiert (Hybrid-Reintegration,
-  // v0.3.2-Pattern).
-  //   - Attack (Anstieg)  0.35 → das Meter erkennt Peaks zuegig.
-  //   - Release (Abfall)  0.08 → das Auge folgt sanftem Fall.
-  // Zu hohe Werte → Flimmern, zu niedrige → traeges Meter.
+  // VU-Meter: asymmetrische, ZEITBASIERTE EMA gegen den vom Worklet
+  // gelieferten Peak-Zielwert.
+  //
+  // Erste Variante (aus Standalone v0.3.2 portiert) nutzte feste Per-Frame-
+  // Faktoren (Attack 0.35 / Release 0.08). Das funktioniert dort gut, weil
+  // der Standalone-Player allein laeuft und stabil ~60 fps tickt.
+  // In FraktalLab teilen sich >20 Panels den Hauptthread; unter Last sinkt
+  // die rAF-Rate, frame-count-basierte EMA schreitet entsprechend langsamer
+  // voran und das Meter wirkt extrem traege.
+  //
+  // Loesung: Decay-Faktor pro Tick aus `dt` (Millisekunden seit letztem
+  // Tick) und einer Zeitkonstante (tau) berechnen:
+  //     alpha = 1 - exp(-dt / tau)
+  // Bei doppeltem dt verdoppelt sich grob alpha, das Meter zieht
+  // automatisch nach.
+  //
+  // Tau-Werte snappier als die Standalone-Variante:
+  //   tau_attack  = 25 ms → bei 60 fps ~ alpha 0.49 (Meter springt fast
+  //                         auf Peak)
+  //   tau_release = 80 ms → bei 60 fps ~ alpha 0.19 (95 % Decay in
+  //                         ~240 ms — Auge folgt schnellem Fall, aber
+  //                         ohne Flimmern)
   useEffect(() => {
-    const VU_ATTACK = 0.35;
-    const VU_RELEASE = 0.08;
-    const unsubscribe = subscribe(() => {
+    const TAU_ATTACK_MS = 25;
+    const TAU_RELEASE_MS = 80;
+    let lastTickT = 0;
+    const unsubscribe = subscribe((t: number) => {
+      // Erster Tick: dt initialisieren statt grosser Initialwerte.
+      const dt = lastTickT === 0 ? 16.7 : Math.min(100, t - lastTickT);
+      lastTickT = t;
+      const aAttack = 1 - Math.exp(-dt / TAU_ATTACK_MS);
+      const aRelease = 1 - Math.exp(-dt / TAU_RELEASE_MS);
+
       const levels = vuLevelsRef.current;
       const targets = vuTargetsRef.current;
       for (let i = 0; i < 4; i++) {
         const target = targets[i];
         const cur = levels[i];
-        const a = target > cur ? VU_ATTACK : VU_RELEASE;
+        const a = target > cur ? aAttack : aRelease;
         levels[i] = cur + (target - cur) * a;
 
         // VU-Balken direkt im DOM zeichnen — nur schreiben, wenn sich der
