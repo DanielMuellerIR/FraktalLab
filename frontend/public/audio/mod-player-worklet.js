@@ -292,6 +292,18 @@ class ModPlayerWorklet extends AudioWorkletProcessor {
         this.publishRow = false;
         this.publishStop = false;
         this.publishNote = false;
+        // Echte VU-Pegel: pro Channel der maximale |Output| seit dem letzten
+        // Post ans Main-Thread. So zeigt das Meter, wie laut der Sample
+        // tatsaechlich gerade klingt (nicht nur den Note-Trigger).
+        this.publishLevels = false;
+        this.channelPeaks = [0, 0, 0, 0];
+        // process() laeuft pro Render-Block (typischerweise 128 Frames).
+        // Wir bundeln mehrere Blocks pro Level-Post, damit der MessagePort
+        // nicht mit 300+ Nachrichten/Sekunde geflutet wird.
+        // Bei 48000 Hz / 128 Frames = 375 Blocks/sec. levelBlockInterval=8
+        // ergibt ~47 Updates/sec — flüssig genug fürs Auge.
+        this.blocksUntilLevelPost = 0;
+        this.levelBlockInterval = 8;
     }
 
     onmessage(e) {
@@ -319,6 +331,13 @@ class ModPlayerWorklet extends AudioWorkletProcessor {
                 break;
             case 'enableNoteSubscription':
                 this.publishNote = true;
+                break;
+            case 'enableLevelSubscription':
+                // Aktiviert das echte VU-Tracking (siehe Konstruktor).
+                this.publishLevels = true;
+                break;
+            case 'disableLevelSubscription':
+                this.publishLevels = false;
                 break;
         }
     }
@@ -442,6 +461,21 @@ class ModPlayerWorklet extends AudioWorkletProcessor {
         const ch2 = this.channels[2].nextOutput();
         const ch3 = this.channels[3].nextOutput();
 
+        // Per-Channel-Peak fuer's VU-Meter mitfuehren — Maximum des
+        // Betrags des aktuellen Samples gegenueber dem bisherigen Peak.
+        // Wird in process() periodisch ans Main-Thread gepostet und
+        // dort als VU-Pegel angezeigt.
+        if (this.publishLevels) {
+            const a0 = ch0 < 0 ? -ch0 : ch0;
+            const a1 = ch1 < 0 ? -ch1 : ch1;
+            const a2 = ch2 < 0 ? -ch2 : ch2;
+            const a3 = ch3 < 0 ? -ch3 : ch3;
+            if (a0 > this.channelPeaks[0]) this.channelPeaks[0] = a0;
+            if (a1 > this.channelPeaks[1]) this.channelPeaks[1] = a1;
+            if (a2 > this.channelPeaks[2]) this.channelPeaks[2] = a2;
+            if (a3 > this.channelPeaks[3]) this.channelPeaks[3] = a3;
+        }
+
         // LRRL: 0 & 3 are Left, 1 & 2 are Right
         // 85% separation: main = 0.925, bleed = 0.075
         const main = 0.925;
@@ -477,6 +511,29 @@ class ModPlayerWorklet extends AudioWorkletProcessor {
                     for (let c = 0; c < numChannels; ++c) {
                         output[c][i] = monoValue;
                     }
+                }
+            }
+            // Nach jedem Render-Block: Level-Update an Main-Thread,
+            // aber nur alle levelBlockInterval Blocks (siehe Konstruktor).
+            // Wir senden ein Array mit Kopien der Peaks und resetten danach,
+            // damit der nächste Block einen frischen Maximalwert sammelt.
+            if (this.publishLevels) {
+                this.blocksUntilLevelPost++;
+                if (this.blocksUntilLevelPost >= this.levelBlockInterval) {
+                    this.port.postMessage({
+                        type: 'levels',
+                        peaks: [
+                            this.channelPeaks[0],
+                            this.channelPeaks[1],
+                            this.channelPeaks[2],
+                            this.channelPeaks[3]
+                        ]
+                    });
+                    this.channelPeaks[0] = 0;
+                    this.channelPeaks[1] = 0;
+                    this.channelPeaks[2] = 0;
+                    this.channelPeaks[3] = 0;
+                    this.blocksUntilLevelPost = 0;
                 }
             }
         } catch (e) {

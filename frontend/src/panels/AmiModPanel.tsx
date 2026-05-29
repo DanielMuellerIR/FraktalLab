@@ -87,12 +87,22 @@ function AmiModPanel() {
   // Das verhindert unnötige, häufige Re-Renderings der gesamten Tracker-Zeilen (60-mal pro Sekunde).
   const currentRowRef = useRef(0);
   const [currentPosition, setCurrentPosition] = useState(0);
+  // vuLevelsRef = das, was tatsaechlich gezeichnet wird (geglaettet).
+  // vuTargetsRef = der letzte rohe Peak-Wert aus dem Worklet (~47x/sec).
+  // Die rAF-Loop bewegt vuLevels zeitlich gedaempft Richtung vuTargets via
+  // asymmetrischer EMA (Attack 0.35 / Release 0.08). Pattern aus dem
+  // Standalone-Player portiert (Hybrid-Reintegration, ProTracker-Audit).
   const vuLevelsRef = useRef<VuLevels>([0, 0, 0, 0]);
-  
+  const vuTargetsRef = useRef<VuLevels>([0, 0, 0, 0]);
+
   // HTML-Refs für direkten DOM-Zugriff
   const vuBarsRef = useRef<(HTMLDivElement | null)[]>([]);
   const statusRowRef = useRef<HTMLSpanElement>(null);
   const rowsContainerRef = useRef<HTMLDivElement>(null);
+  // Aktuell hervorgehobene Tracker-Zeile gecacht, damit der watchRows-Callback
+  // nicht pro Row ein querySelector('[data-active="true"]') feuern muss
+  // (Layout-Thrash-Vermeidung, ProTracker-Audit-Befund).
+  const activeRowElRef = useRef<HTMLElement | null>(null);
 
   // Caching für Container- und Zeilenhöhe zur Vermeidung von Layout-Thrashing (Forced Reflow)
   const rowHeightRef = useRef<number>(15);
@@ -143,6 +153,8 @@ function AmiModPanel() {
     currentRowRef.current = 0;
     setCurrentPosition(0);
     vuLevelsRef.current = [0, 0, 0, 0];
+    vuTargetsRef.current = [0, 0, 0, 0];
+    activeRowElRef.current = null;
 
     player.load(TRACKS[trackIdx].url, `${BASE}audio/mod-player-worklet.js`).then(() => {
       if (!active) {
@@ -182,19 +194,23 @@ function AmiModPanel() {
             return prevPos;
           });
 
-          // Direkte DOM-Aktualisierung der Zeilen-Highlights
+          // Direkte DOM-Aktualisierung der Zeilen-Highlights.
+          // Vorher: pro Row-Event zweimal querySelector — einmal fuer die alte
+          // aktive Zeile, einmal fuer die neue. Bei ~50 Row-Events/Sekunde war
+          // das ein messbarer Layout-Thrash-Trigger (ProTracker-Audit).
+          // Jetzt: die letzte aktive Zeile in activeRowElRef cachen, nur die
+          // neue per data-row-idx-Selector holen.
           const container = rowsContainerRef.current;
           if (container) {
-            // Alte aktive Zeile zurücksetzen
-            const prevActive = container.querySelector('[data-active="true"]');
+            const prevActive = activeRowElRef.current;
             if (prevActive) {
               prevActive.setAttribute('data-active', 'false');
             }
-            // Neue aktive Zeile markieren
-            const nextActive = container.querySelector(`[data-row-idx="${row}"]`);
+            const nextActive = container.querySelector(`[data-row-idx="${row}"]`) as HTMLElement | null;
             if (nextActive) {
               nextActive.setAttribute('data-active', 'true');
-              
+              activeRowElRef.current = nextActive;
+
               // In die Mitte scrollen ohne Layout-Abfrage zur Vermeidung von forced reflows
               const containerHeight = containerHeightRef.current;
               const rowHeight = rowHeightRef.current;
@@ -211,14 +227,17 @@ function AmiModPanel() {
         }
       });
 
-      player.watchNotes((noteData) => {
-        if (active) {
-          const ch = noteData.channel - 1;
-          if (ch >= 0 && ch < 4) {
-            // Lautstärke direkt im Ref eintragen (Wert 0.0 bis 1.0)
-            vuLevelsRef.current[ch] = Math.max(vuLevelsRef.current[ch], noteData.volume / 64);
-          }
-        }
+      // VU-Pegel direkt aus dem Worklet (echtes Per-Channel-Peak ~47x/sec).
+      // Skala kommt im Bereich 0..~0.5 (siehe Channel.nextOutput() im Worklet)
+      // — *2 mappt grob nach 0..1. Wert landet in vuTargetsRef; die
+      // eigentliche zeitliche Glaettung macht der rAF-Loop (EMA).
+      player.watchLevels((peaks: number[]) => {
+        if (!active) return;
+        const targets = vuTargetsRef.current;
+        targets[0] = Math.min(1, peaks[0] * 2);
+        targets[1] = Math.min(1, peaks[1] * 2);
+        targets[2] = Math.min(1, peaks[2] * 2);
+        targets[3] = Math.min(1, peaks[3] * 2);
       });
 
       player.watchStop(() => {
@@ -241,15 +260,26 @@ function AmiModPanel() {
     };
   }, [trackIdx, player]);
 
-  // VU-Meter abklingen lassen über den zentralen rAF-Koordinator
+  // VU-Meter: asymmetrische EMA gegen den vom Worklet gelieferten Peak-
+  // Zielwert. Aus dem Standalone-Player portiert (Hybrid-Reintegration,
+  // v0.3.2-Pattern).
+  //   - Attack (Anstieg)  0.35 → das Meter erkennt Peaks zuegig.
+  //   - Release (Abfall)  0.08 → das Auge folgt sanftem Fall.
+  // Zu hohe Werte → Flimmern, zu niedrige → traeges Meter.
   useEffect(() => {
+    const VU_ATTACK = 0.35;
+    const VU_RELEASE = 0.08;
     const unsubscribe = subscribe(() => {
       const levels = vuLevelsRef.current;
+      const targets = vuTargetsRef.current;
       for (let i = 0; i < 4; i++) {
-        // VU-Wert snappier reduzieren (dynamischerer Abklingeffekt)
-        levels[i] = Math.max(0, levels[i] - 0.20);
-        
-        // VU-Balken direkt im DOM zeichnen
+        const target = targets[i];
+        const cur = levels[i];
+        const a = target > cur ? VU_ATTACK : VU_RELEASE;
+        levels[i] = cur + (target - cur) * a;
+
+        // VU-Balken direkt im DOM zeichnen — nur schreiben, wenn sich der
+        // Wert sichtbar geaendert hat (Reflow-Schutz).
         const bar = vuBarsRef.current[i];
         if (bar) {
           const pct = Math.max(2, Math.round(levels[i] * 100));
@@ -263,13 +293,17 @@ function AmiModPanel() {
     return unsubscribe;
   }, []);
 
-  // Scrollt die aktive Zeile in die Mitte, wenn sich das Pattern ändert,
-  // und misst einmalig die Höhen, um Layout-Thrashing beim Abspielen zu vermeiden.
+  // Scrollt die aktive Zeile in die Mitte, wenn sich das Pattern aendert,
+  // und misst einmalig die Hoehen, um Layout-Thrashing beim Abspielen zu
+  // vermeiden. Pattern-Wechsel bedeutet React-Re-Render der Tracker-Zeilen,
+  // d. h. das vorher gecachte activeRowElRef-Node ist nicht mehr im DOM —
+  // hier wird die neue Referenz frisch gefasst.
   useEffect(() => {
     const container = rowsContainerRef.current;
     if (!container) return;
     const activeRowEl = container.querySelector('[data-active="true"]') as HTMLElement;
     if (!activeRowEl) return;
+    activeRowElRef.current = activeRowEl;
     const containerHeight = container.clientHeight;
     const rowHeight = activeRowEl.clientHeight;
     containerHeightRef.current = containerHeight || 200;
