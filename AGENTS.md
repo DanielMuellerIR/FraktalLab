@@ -3,7 +3,7 @@
 Universelle Referenz für alle Coding-Agents und KI-Modelle.
 Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 
-> **Hinweis für die nächste Session:** Diese Datei wurde nach einem vollständigen Code-Audit (2026-05-28) überarbeitet. Die Sektion **„Action Plan — Quick-Wins (sofort, Code-Audit-basiert)"** weiter unten enthält die priorisierten, evidenzbasierten Aufgaben. Diese sind der Startpunkt für die nächste Coding-Session.
+> **Hinweis für die nächste Session:** Diese Datei wurde nach einem Code-Audit (2026-05-28) überarbeitet und nach einem zweiten Audit (2026-05-29, Branch `audit/2026-05-29`) auf den aktuellen Stand gebracht. Der Action-Plan-Block weiter unten ist überwiegend abgearbeitet — siehe Status-Tabellen direkt unter jeder Sektion. Aktive Performance-Untersuchung in `AUDIT_FINDINGS.md`.
 
 ---
 
@@ -259,7 +259,7 @@ POOL_GFX        VoxelDemoColor, VoxelDemoBW, VoxelThermal, VoxelLava, VoxelNeon,
                 FractalDendrite, FractalSwirl, FractalJulia
 ```
 
-Auskommentierte/temporär entfernte Einträge: `GlobePanel`, `VoxelMatrix`, `LissajousScene`, `OscilloscopePanel`. Siehe `App.tsx` Z. 68–79 für aktuellen Stand.
+Aktueller Stand siehe `App.tsx` Z. 68–79. (Hinweis: `GlobePanel`, `VoxelMatrix` via `NeuralNetPanel`-Re-Export, `LissajousScene` in `DemoScenes.tsx` und `OscilloscopePanel` als `SpectrogramPanel` sind aktiv — frühere „temporär entfernt"-Notiz hier war veraltet.)
 
 ---
 
@@ -284,7 +284,7 @@ Auto-Switch alle 1–3 Minuten mit Slide-Animation (OS-Desktop-Stil, 520ms). Des
 | ID | Problem | Priorität |
 |---|---|---|
 | ~~BUG-01~~ | ~~AllYourBase CORS~~ | ~~Hoch~~ — **behoben** |
-| ~~BUG-02~~ | ~~Panels pausieren nicht wenn unsichtbar~~ | ~~Mittel~~ — **behoben** (IntersectionObserver, außer `FractalCanvas` — siehe QW-02) |
+| ~~BUG-02~~ | ~~Panels pausieren nicht wenn unsichtbar~~ | ~~Mittel~~ — **behoben** (IntersectionObserver in allen Canvas-Panels inkl. `FractalCanvas`) |
 | BUG-03 | Mehrere Canvas-Animationen können auf schwächerer Hardware frame-droppen | Mittel — wird durch Action Plan adressiert |
 
 ---
@@ -352,9 +352,20 @@ Historischer Block aus Review-Modus-JSON.
 
 ---
 
-# Action Plan — Quick-Wins (sofort, Code-Audit-basiert)
+# Action Plan — Quick-Wins (Status: alle erledigt, Audit 2026-05-29)
 
-> **Dies ist der Startpunkt für die nächste Coding-Session.** Alle Befunde sind verifiziert (siehe „Code-Audit-Befunde"). Die Reihenfolge ist optimiert für Einzel-Session-Implementation. Speed-first-Regel gilt.
+> **Status:** QW-01 bis QW-09 sind im Code umgesetzt. Details unten zur Nachverfolgung. Neue Performance-Befunde der Folgesession in `AUDIT_FINDINGS.md`.
+>
+> **QW-Status-Übersicht (2026-05-29):**
+> - QW-01 ✅ WASM-Buffer-Sharing (`wasm/src/lib.rs:32,83`, Aufrufer migriert)
+> - QW-02 ✅ FractalCanvas: IO, Buffer-Sharing, `findBoundaryNonBlack`-Drosselung
+> - QW-03 ✅ ThreeBodyScene 400×300
+> - QW-04 ✅ `makeScene` Default `pixelated: false`
+> - QW-05 ✅ Fraktal-CSS-Filter `auto`, FractalJulia-Auflösung dynamisch
+> - QW-06 ✅ effektiv via GPU-Migration (PlasmaDemo, Tunnel, Metaballs, Rotozoom, Fire auf ShaderPanel)
+> - QW-07 ✅ Slide-Container `contain: paint`
+> - QW-08 ✅ COEP-Doku
+> - QW-09 ✅ Playwright-Tests aktiv
 
 ## QW-01 — WASM `render()` auf Buffer-Sharing umstellen
 
@@ -500,6 +511,11 @@ Die Visualtests (`tests/panel-check.spec.ts`, `tests/review-all-panels.spec.ts`)
 
 # Action Plan — Performance & Architektur (mittelfristig)
 
+> **Status-Übersicht (2026-05-29):**
+> - PERF-10 ⚠ Partial — `raf-coordinator.ts` existiert, 11 von 29 rAF-nutzenden Dateien migriert. Rest siehe `AUDIT_FINDINGS.md` (F-003).
+> - PERF-11 ⚠ Fast erledigt — 51 von 52 Panels mit `React.memo`. Ausreißer: `VoxelDemo.tsx` (F-004).
+> - PERF-12 offen — Performance-Recording nach diesem Audit fällig.
+
 Diese Punkte gehen über die Quick-Wins hinaus und sind eigenständige Sessions.
 
 ## PERF-10 — Zentraler rAF-Coordinator
@@ -553,6 +569,13 @@ Nach QW-01 bis QW-09: Chrome DevTools Performance-Recording während eines Layou
 ---
 
 # Action Plan — WebGL-Infrastruktur (Voraussetzung für Demoszene-Shader)
+
+> **Status-Übersicht (2026-05-29):**
+> - GL-01 ✅ `ui/ShaderPanel.tsx` vorhanden (~488 LOC)
+> - GL-02 ✅ `utils/webgl-pool.ts` (LRU, `MAX_GL_CONTEXTS=16`)
+> - GL-03 ⚠ Partial — migriert: PlasmaDemo, Tunnel, Metaballs, Rotozoom, Fire. Offen: ThreeBodyScene (weiter CPU)
+> - GL-04 ⚠ VoxelScenes (Thermal, Lava) auf ShaderPanel; `VoxelDemo` (Color, BW) noch CPU
+> - GL-05 offen (optional)
 
 ## GL-01 — `ShaderPanel.tsx` Basiskomponente
 
@@ -621,6 +644,11 @@ Shader-Sourcen als `.glsl`-Dateien in `frontend/public/shaders/`, geladen per `f
 ---
 
 # Action Plan — Demoszene-Integration (kurz-/mittelfristig)
+
+> **Status-Übersicht (2026-05-29):**
+> - DEMO-01..04 ✅ Panels existieren: `ShadertoyPanel`, `TixyPanel`, `IQTechniquePanel`, `LovebyteShowcasePanel`. Inhaltliche Tiefe noch nicht auditiert (Phase 5).
+> - DEMO-05 offen (Lizenz-JSON)
+> - DEMO-06 offen (Audio-Fokus-Modell)
 
 Diese Punkte ergänzen das bestehende Inventar mit kuratierten Demoszene-Inhalten.
 
