@@ -57,16 +57,34 @@ export class ModPlayer {
   private volume: number = 0.3;
   private workletUrl: string = 'audio/mod-player-worklet.js';
 
+  // Generationen-Zaehler fuer load(). Schuetzt vor folgender Race: zwei
+  // load(url) laufen ueberlappend, der spaeter gestartete (= aktuelle
+  // User-Auswahl) wartet auf fetch, in der Zwischenzeit kommt der frueher
+  // gestartete Fetch zurueck und ueberschreibt this.mod mit dem alten
+  // Track. UI-State zeigte dann z. B. "Track C", Worklet spielte aber B.
+  // Loesung: jeder load() merkt sich seine Generation. Nur die juengste
+  // darf this.mod schreiben.
+  private loadGen = 0;
+
   constructor(audioContext?: AudioContext) {
     this[AUDIO] = audioContext || null;
   }
 
-  /// Loads an Amiga ProTracker MOD file from a given url
+  /// Laedt eine MOD-Datei von einer URL. Schuetzt vor ueberlappenden Aufrufen:
+  /// wenn waehrend des Fetches ein neuer load() gestartet wird, verwirft
+  /// dieser hier sein Ergebnis (this.mod bleibt unveraendert oder wird vom
+  /// neuen load() gesetzt). Ohne dieses Guarding kann der Worklet
+  /// nachtraeglich den falschen Track abspielen.
   async load(url: string, workletUrl: string = 'audio/mod-player-worklet.js') {
+    const myGen = ++this.loadGen;
     this.unload(false);
 
     this.workletUrl = workletUrl;
-    this.mod = await loadMod(url);
+    const loaded = await loadMod(url);
+
+    // Inzwischen wurde ein neuer load() gestartet — Ergebnis verwerfen.
+    if (myGen !== this.loadGen) return;
+    this.mod = loaded;
   }
 
   private async setupAudio(workletUrl: string) {
@@ -293,8 +311,11 @@ export class ModPlayer {
     }
   }
 
-  /// Starts the playback of a MOD file from position 0, row 0
-  async play() {
+  /// Starts the playback of a MOD file from position 0, row 0.
+  /// modOverride: optionaler Mod, der explizit ans Worklet gesendet wird —
+  /// damit nicht aus this.mod gelesen wird (das zwischen .then() und dem
+  /// finalen postMessage durch einen ueberlappenden load() wechseln koennte).
+  async play(modOverride?: Mod) {
     if (this.playing) return;
 
     await this.setupAudio(this.workletUrl);
@@ -303,7 +324,7 @@ export class ModPlayer {
     this.resumeContext();
     this[WORKLET].port.postMessage({
       type: 'play',
-      mod: this.mod,
+      mod: modOverride ?? this.mod,
       sampleRate: this[AUDIO]?.sampleRate
     });
 

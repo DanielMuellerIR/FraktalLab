@@ -199,6 +199,13 @@ function AmiModPanel() {
   const [player] = useState(() => new ModPlayer());
   const playerRef = useRef<ModPlayer>(player);
   const shouldAutoPlayRef = useRef(false);
+  // Generation des aktuell gueltigen Track-Loads. Wird bei jedem trackIdx-
+  // Wechsel inkrementiert. Watcher-Callbacks und das spaete .then() vom
+  // Player.load() pruefen myGen gegen den aktuellen Wert, sodass stale
+  // Effects nichts mehr veraendern. Notwendig wegen Race bei schnellem
+  // Track-Wechsel — angezeigter Name + Tracker passten dann nicht zum
+  // hoerbaren Song.
+  const loadGenRef = useRef(0);
 
   // User-Uploads (Drop / File-Picker / Folder-Picker). Object-URLs werden
   // bei Unmount aktiv freigegeben (siehe useEffect weiter unten).
@@ -268,6 +275,11 @@ function AmiModPanel() {
 
   // ── Track laden und initialisieren ──────────────────────────────────────────
   useEffect(() => {
+    // Diese Effect-Instanz bekommt eine eigene Generation. Spaetere Effects
+    // bumpen den Counter; alle Callbacks dieses Effects pruefen ihren
+    // myGen gegen loadGenRef.current und kuendigen sich selbst, sobald sie
+    // stale sind. Wichtig wegen Race bei schnellem Track-Wechsel.
+    const myGen = ++loadGenRef.current;
     let active = true;
     setLoading(true);
     setLoadError(null);
@@ -279,26 +291,39 @@ function AmiModPanel() {
     activeRowElRef.current = null;
 
     player.load(allTracks[trackIdx].url, `${BASE}audio/mod-player-worklet.js`).then(() => {
-      if (!active) {
+      // Stale-Check: entweder Effect schon unmounted (active=false) oder
+      // ein neuer Track-Wechsel hat die Generation hochgesetzt.
+      if (!active || myGen !== loadGenRef.current) {
+        return;
+      }
+      // Mod lokal capturen, damit kein Callback spaeter player.mod liest,
+      // das durch einen ueberlappenden load() bereits ueberschrieben wurde.
+      const myMod = player.mod;
+      if (!myMod) {
+        // load() wurde vom Generation-Guard im Player verworfen — nichts tun.
         return;
       }
       setLoading(false);
-      setMod(player.mod);
+      setMod(myMod);
 
       if (shouldAutoPlayRef.current) {
         requestAudioFocus(AUDIO_ID);
-        player.play();
+        // Atomare Uebergabe: play() schickt myMod explizit ans Worklet,
+        // statt aus this.mod zu lesen.
+        player.play(myMod);
         setPlaying(true);
         (window as any).fraktallab_mod_playing = true;
         shouldAutoPlayRef.current = false;
       }
 
-      // Subscriptions (Registrierung der Player-Ereignisse)
+      // Subscriptions (Registrierung der Player-Ereignisse).
+      // Closures nutzen myMod / myGen — kein Zugriff mehr auf das mutable
+      // player.mod aus Callbacks heraus.
       let lastPos = 0;
       player.watchRows((pos, row) => {
-        if (active) {
+        if (active && myGen === loadGenRef.current) {
           // Erkennen, wenn der Song zum Anfang zurückspringt (Loop-Ende erreicht)
-          const totalPatterns = player.mod?.length || 1;
+          const totalPatterns = myMod.length || 1;
           if (pos < lastPos || (totalPatterns === 1 && row === 0 && currentRowRef.current === 63)) {
             player.stop();
             setPlaying(false);
@@ -354,7 +379,7 @@ function AmiModPanel() {
       // — *2 mappt grob nach 0..1. Wert landet in vuTargetsRef; die
       // eigentliche zeitliche Glaettung macht der rAF-Loop (EMA).
       player.watchLevels((peaks: number[]) => {
-        if (!active) return;
+        if (!active || myGen !== loadGenRef.current) return;
         const targets = vuTargetsRef.current;
         targets[0] = Math.min(1, peaks[0] * 2);
         targets[1] = Math.min(1, peaks[1] * 2);
@@ -363,12 +388,16 @@ function AmiModPanel() {
       });
 
       player.watchStop(() => {
-        if (active) {
+        if (active && myGen === loadGenRef.current) {
           setPlaying(false);
           (window as any).fraktallab_mod_playing = false;
         }
       });
     }).catch((err) => {
+      // Promise-rejected. Wir geben den Fehler nur dann ans UI, wenn dieser
+      // Effect noch aktuell ist — sonst ueberschreibt ein stale Fehler den
+      // Status des laufenden Loads.
+      if (!active || myGen !== loadGenRef.current) return;
       console.error("Error loading mod file:", err);
       if (active) {
         setLoading(false);
