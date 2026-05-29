@@ -170,6 +170,12 @@ function FractalJulia() {
       driftAngle: Math.random() * Math.PI * 2,
       lastFrame:  performance.now(),
       directionTime: 0,
+      // Frame-Zaehler fuer Throttling von findBoundaryNonBlack() und
+      // isLowDetail(). Siehe AUDIT_FINDINGS.md H-01/H-02.
+      frameCount: 0,
+      // Cache fuer den letzten Low-Detail-Wert (wird nur alle paar Frames
+      // neu berechnet, aber in der Zoom-Logik bei jedem Frame gelesen).
+      cachedLowDetail: false,
     }
 
     getWasmModule()
@@ -190,6 +196,7 @@ function FractalJulia() {
           const dt = Math.max(1, Math.min(100, now - s.lastFrame))
           s.lastFrame = now
           s.directionTime += dt
+          s.frameCount++
 
           // ── Normal Render ──
           // Exponential zoom
@@ -233,8 +240,11 @@ function FractalJulia() {
               s.angle
             )
 
-            // Apply feedback correction (only when zooming in to steer toward colored details)
-            if (s.zoomDirection === 1 && s.zoom > 300) {
+            // Apply feedback correction (only when zooming in to steer toward colored details).
+            // Drosselung auf jeden 4. Frame: findBoundaryNonBlack ist O(maxRadius)
+            // pro Suche und wird bei tiefem Zoom teuer. Steuerung braucht das
+            // nicht jeden Frame. Vgl. AUDIT_FINDINGS.md H-01.
+            if (s.zoomDirection === 1 && s.zoom > 300 && (s.frameCount & 3) === 0) {
               const boundary = findBoundaryNonBlack(pixels, RENDER_W, RENDER_H)
               if (boundary) {
                 // Convert boundary pixel to complex coordinate
@@ -264,8 +274,14 @@ function FractalJulia() {
             console.error('[FractalJulia] WASM error:', err)
           }
 
-          // Bidirectional Zoom Transition Logic
-          const lowDetail = isLowDetail(pixels)
+          // Bidirectional Zoom Transition Logic.
+          // isLowDetail() samplet ~30 000 Pixel + Map-Hash-Ops. Direction-Switch
+          // wird erst nach directionTime > 12 000 ms ausgewertet, daher reicht
+          // ein Update alle 8 Frames. Vgl. AUDIT_FINDINGS.md H-02.
+          if ((s.frameCount & 7) === 0) {
+            s.cachedLowDetail = isLowDetail(pixels)
+          }
+          const lowDetail = s.cachedLowDetail
           const maxZoomLimit = 1.5e10
 
           if (s.zoomDirection === 1) {

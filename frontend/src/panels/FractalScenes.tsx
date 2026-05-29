@@ -147,6 +147,12 @@ function makeFractalScene(
       driftAngle: initialAngle + 1.0,
       lastFrame:  0,
       directionTime: 0,
+      // Frame-Zaehler fuer Throttling teurer Operationen (Boundary-Suche,
+      // Low-Detail-Erkennung). Siehe AUDIT_FINDINGS.md H-01/H-02.
+      frameCount: 0,
+      // Cache des zuletzt berechneten Low-Detail-Werts. Wird nur alle paar
+      // Frames neu ermittelt, in der Zoom-Logik aber bei jedem Frame gelesen.
+      cachedLowDetail: false,
     })
 
     useEffect(() => {
@@ -233,6 +239,7 @@ function makeFractalScene(
         const dt = t - s.lastFrame
         s.lastFrame = t
         s.directionTime += dt
+        s.frameCount++
 
         if (!isVisible) return
         if (!wasmMod) return
@@ -281,9 +288,13 @@ function makeFractalScene(
             )
           }
 
-          // Boundary feedback: steer toward the NON-BLACK side of boundaries
-          // This prevents zooming into the solid interior of the set
-          if (s.zoomDirection === 1 && s.zoom > 8) {
+          // Boundary feedback: steer toward the NON-BLACK side of boundaries.
+          // This prevents zooming into the solid interior of the set.
+          // Drosselung auf jeden 4. Frame: findBoundaryNonBlack ist O(maxRadius)
+          // pro Suche und wird bei tiefem Zoom sichtbar teuer. Bidirektionales
+          // Steuern braucht die Korrektur nicht jeden Frame. Vgl. FractalCanvas
+          // (gleicher Throttle) und AUDIT_FINDINGS.md H-01.
+          if (s.zoomDirection === 1 && s.zoom > 8 && (s.frameCount & 3) === 0) {
             const boundary = findBoundaryNonBlack(pixels, w, h)
             if (boundary) {
               const target = pixelToComplex(boundary.px, boundary.py, w, h, s.centerX, s.centerY, s.zoom, type, s.angle)
@@ -302,8 +313,15 @@ function makeFractalScene(
           return
         }
 
-        // Bidirectional zoom logic
-        const lowDetail = isLowDetail(pixels)
+        // Bidirectional zoom logic.
+        // isLowDetail() samplet ~30 000 Pixel + Map-Hash-Ops. Direction-Switch
+        // wird erst nach directionTime > 12 000 ms ausgewertet, daher reicht
+        // ein Update alle 8 Frames (bei 30 FPS = ~3-4x pro Sekunde). Vgl.
+        // AUDIT_FINDINGS.md H-02.
+        if ((s.frameCount & 7) === 0) {
+          s.cachedLowDetail = isLowDetail(pixels)
+        }
+        const lowDetail = s.cachedLowDetail
         const minZoom = type === 'mandelbrot' ? 1.5 : 180
         const maxZoomLimit = type === 'mandelbrot' ? 2e12 : 2e9
 
