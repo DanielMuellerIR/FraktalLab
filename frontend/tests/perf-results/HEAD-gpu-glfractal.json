@@ -1,0 +1,19 @@
+{
+  "tag": "HEAD-gpu-glfractal",
+  "baseURL": "http://localhost:4173",
+  "sampleMs": 10000,
+  "scenarios": [
+    {
+      "scenario": "M-07 review 4-panel fractal @1920",
+      "frames": 1200,
+      "median": 8.33,
+      "p95": 9.25,
+      "p99": 9.33,
+      "max": 9.33,
+      "over16": 0,
+      "fps": 120,
+      "longTasks": 0,
+      "longTaskMax": 0
+    }
+  ]
+}

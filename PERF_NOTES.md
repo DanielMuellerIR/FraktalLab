@@ -224,10 +224,28 @@ Main-Thread-Zeit (WASM-Render + `putImageData` + Boundary-Scan bei Review-Auflö
 Die 66.7 ms ≈ ~60 ms reale Arbeit, quantisiert aufs 60-Hz-rAF-Raster — **kein**
 FPS-Cap im Code (geprüft). Daten: `HEAD-gpu-fix.json`.
 
-**Restengpass = Single-Panel-Kosten, auflösungsgebunden.** Nächste Hebel für echte
-60 FPS im Fraktal-Hero: interne Render-Auflösung im Review deckeln (kleiner rendern,
-hochskalieren) oder den Fraktal-Renderer auf GPU/WebGL migrieren. Beide mit sichtbarem
-Qualitäts-/Aufwand-Tradeoff → Abstimmung mit Auftraggeber.
+**Restengpass = Single-Panel-Kosten, auflösungsgebunden.** → adressiert durch M-2.
+
+### M-2 — Fraktal-Hero auf GPU/WebGL (Stufe 1 der Migration)
+
+`FractalView` rendert jetzt über `FractalGL` (Fragment-Shader) statt WASM/Canvas-2D.
+Double-single-Präzision (`utils/fractal-gl-shader.ts`) hält den Tief-Zoom bis ~1e13;
+bei Zoom 1.2e6 visuell verifiziert (scharfe Details, keine Pixelung). Animation
+zeitbasiert → fps-unabhängig.
+
+| Metrik (M-07, M5-Max-GPU) | WASM (vor M-1) | + M-1 Freeze | **+ M-2 GPU** |
+|---|---|---|---|
+| Median | 108.3 ms | 66.7 ms | **8.33 ms** |
+| FPS | 9.1 | 17.8 | **120** (vsync-Limit) |
+| Long-Tasks (10 s) | 92 | 134 | **0** |
+
+→ **Akzeptanzfall erfüllt und übertroffen** (Ziel 60 → 120 FPS). Der Fraktal-Renderer
+ist auf der GPU praktisch gratis. Daten: `HEAD-gpu-glfractal.json`.
+
+**Offen:** die übrigen 10 Fraktal-Panels (FractalScenes-Familie, FractalJulia) laufen
+noch über WASM — Migration in den Stufen 2/3, WASM-Render-Pfad-Entfernung in Stufe 4.
+Zu beachten: WebGL-Context-Budget (`webgl-pool`, MAX_GL_CONTEXTS=8) bei vielen
+gleichzeitigen Fraktal-Panels.
 
 ---
 
