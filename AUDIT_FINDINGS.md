@@ -243,16 +243,23 @@ Alle in Phase 1 + Phase 2 identifizierten Befunde wurden in derselben Session um
 | Review-Marker | `ddd2327`, `240db85`, `8ffe494` | Panel-Marker in Title-Bar, größer, CamelCase, inactive-dim weg |
 | Doku | `07f6e0b`, `9e95e38`, `0a7013d`, `40d7d77` | AUDIT_FINDINGS + AGENTS.md-Sync |
 
-### Offen für die nächste Session
+### Status der früheren „offenen" Punkte (Stand 2026-05-30)
 
-1. ~~**Phase 3 — Mess-Baseline** (H-07)~~ ✅ erledigt 2026-05-30. Harness `frontend/tests/perf-measure.spec.ts`, Ergebnisse + Verdikt in `PERF_NOTES.md`. **H-07 nicht bestätigt.** B-3-Heap per M-06b (Forced GC) entwarnt — kein Leak. Verbleibende Follow-ups: (a) Headed-GPU-Messung auf Apple-Silicon-Hardware für valide 60-FPS-Aussage; (b) Panel-Pool für saubere Frame-Time-Vergleiche fixieren.
-2. **Phase 5 — Demoscene-Tiefenaudit**: Treffsicherheit, Tiefe, Variation der DEMO-01..04-Panels und der neuen demoscene-inspirierten Panels prüfen. Wegfall-Kandidaten markieren.
-3. **AGENTS.md-Auslagerungs-Vorschlag** (siehe Sektion Q-A oben): mechanische Umsetzung erst nach Freigabe.
-4. **Optional H-09** (DPI/`devicePixelRatio`-Handling): kontextabhängig, nur falls Schärfe-Feedback kommt.
+1. ~~Phase 3 — Mess-Baseline (H-07)~~ ✅ erledigt. H-07 nicht bestätigt, B-3 kein Leak.
+2. ~~Phase 5 — Demoscene-Tiefenaudit~~ ✅ erledigt (Sektion „Demoscene-Audit").
+3. ~~AGENTS.md-Auslagerung (Q-A)~~ ✅ erledigt — erledigte Action-Plans nach `ARCHIVE.md` ausgelagert, AGENTS verschlankt (941 → ~550 Zeilen).
+4. **Optional H-09** (DPI/`devicePixelRatio`): weiterhin offen, nur bei Schärfe-Feedback.
+
+**Durch die GPU-Fraktal-Migration gegenstandslos (moot):**
+- **F-007 / QW-02** (FractalCanvas-Crossfade-Buffer) — `FractalCanvas.tsx` gelöscht, durch `FractalGL` ersetzt.
+- **H-04** (ThreeBodyScene „CPU ohne FPS-Cap") — hat `fpsCap=30` (Phase-5-Audit bestätigt); CPU-Pfad bewusst, da Vektor/Text-Overlay.
+- Diverse `FractalCanvas`/WASM-Referenzen in den historischen Tabellen oben — als historisch zu lesen (WASM-Pfad entfernt, siehe Tech-Stack in AGENTS.md).
+
+**Neu offen (aus Phase 5 / Tests, nach Freigabe):** Wegfall-Kandidaten (OscilloscopePanel, ShaderHackingCore, Voxel-Aliase), Code-Labels an Realität angleichen, Demoscene-Zusatz-Vorschläge. Tief-Zoom auf Apple/Metal bei 5e5 gedeckelt (tiefer bräuchte Perturbations-Rendering).
 
 ### Test-Status
 
-User hat zwischen Iter.-1- und Iter.-2-Fixes manuell getestet und Verbesserungen bestätigt (Fraktal-Cluster, ProTracker, GlitchOverlay, Aspect-Fix). Ein erneuter Komplett-Test der gesamten App nach H-05 (rAF-Migration aller verbliebenen 20 Panels) steht für die nächste Session aus.
+User-Test im Review-Modus (2026-05-30): **kein Panel komplett defekt, alle grafischen Panels flüssig.** Bestätigter Bug (behoben): Tief-Zoom-Pixelung der Fraktale auf Metal-GPU → `SAFE_ZOOM_CEIL`. Einige Panels gefallen ästhetisch nicht (Phase-5-Wegfall-Kandidaten).
 
 
 
