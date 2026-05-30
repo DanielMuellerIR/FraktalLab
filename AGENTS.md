@@ -9,7 +9,7 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 >
 > ### Tier 1 — Kritische Ausfälle
 > - [x] **RW-01 `NuclearExplosionPanel`** — Shader noch matschig: fBm auf 6 Oktaven, schärfere Turbulenz, Curl-Noise für rollende Kanten, Toroid-Billows, Self-Shadowing
-> - [ ] **RW-02 `MoonPanel`** — Krater sind flache schwarze Ellipsen statt 3D. Center-Hole-Artefakt fixen. Bump-Normal-Stärke hochdrehen. Farbvariation (warme Highlands vs dunkle Maria). Limb-Darkening + Earthshine
+> - [x] **RW-02 `MoonPanel`** — Krater sind flache schwarze Ellipsen statt 3D. Center-Hole-Artefakt fixen. Bump-Normal-Stärke hochdrehen. Farbvariation (warme Highlands vs dunkle Maria). Limb-Darkening + Earthshine
 > - [ ] **RW-03 `ShaderRetroWave`** — floor()-Quantisierung raus → smooth Noise-Terrain. fwidth() für Grid-AA. Sun-Cuts glätten
 >
 > ### Tier 2 — Strukturelle Neuentwürfe

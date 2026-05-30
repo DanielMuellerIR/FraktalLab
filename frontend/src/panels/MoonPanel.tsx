@@ -6,7 +6,6 @@ const MOON_SHADER = `
   precision highp float;
   uniform sampler2D uHeightmap;
 
-  // 3D Value Noise for surface details
   float hash(vec3 p) {
     p = fract(p * 0.3183099 + .1);
     p *= 17.0;
@@ -23,160 +22,138 @@ const MOON_SHADER = `
                    mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)),f.x),f.y),f.z);
   }
 
-  // Simplified Oren-Nayar diffuse lighting (retroreflective surface roughness)
-  float orenNayarSimple(vec3 N, vec3 L, vec3 V, float roughness) {
-    float ndotl = dot(N, L);
-    float ndotv = dot(N, V);
-    
-    float cl = max(ndotl, 0.0);
-    float cv = max(ndotv, 0.0);
-    
-    float sigma2 = roughness * roughness;
-    float A = 1.0 - 0.5 * (sigma2 / (sigma2 + 0.33));
-    float B = 0.45 * (sigma2 / (sigma2 + 0.09));
-    
-    // Project L and V onto the tangent plane and get cosine of difference
-    float s = dot(L, V) - ndotl * ndotv;
-    float t = mix(1.0, max(ndotl, ndotv), step(0.0, s));
-    
-    return cl * (A + B * (s / (t + 0.0001)));
-  }
-
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;
-    
-    // Background space color (pitch black with subtle grey-blue vignette)
+
     vec3 spaceBg = vec3(0.001, 0.001, 0.003) * (1.0 - length(uv) * 0.5);
     vec3 col = spaceBg;
-    
-    float r = 0.42; // Sphere radius in UV space
+
+    float r = 0.42;
     float d = length(uv);
-    
+
     if (d < r) {
-      // 3D normal vector on the sphere surface
       float z = sqrt(r * r - uv.x * uv.x - uv.y * uv.y);
       vec3 normal = normalize(vec3(uv.x, uv.y, z));
-      
-      // Time-based rotation and tilt axis (slow spin)
+
+      // Slow rotation
       float time = iTime * 0.04;
-      float angleX = 0.12; // Moon orbital tilt (~6.68 degrees)
+      float angleX = 0.12;
       float cx = cos(angleX), sx = sin(angleX);
       float cy = cos(time), sy = sin(time);
-      
-      // Rotate coordinates: tilt X, spin Y
+
       vec3 p = normal;
       vec3 p1 = vec3(p.x, p.y * cx - p.z * sx, p.y * sx + p.z * cx);
       vec3 rotatedP = vec3(p1.x * cy - p1.z * sy, p1.y, p1.x * sy + p1.z * cy);
-      
-      // Spherical projection to equirectangular map UV coords
+
+      // Equirectangular map UV
       float lon = atan(rotatedP.x, rotatedP.z);
-      float lat = asin(rotatedP.y);
+      float lat = asin(clamp(rotatedP.y, -1.0, 1.0));
       vec2 texUV = vec2((lon / 3.14159265 + 1.0) * 0.5, (lat / 1.57079632 + 1.0) * 0.5);
-      
-      // Central difference bump mapping: sample texture at small offsets
-      vec2 eps = vec2(0.0015, 0.0);
+
+      // === Bump mapping with larger epsilon and much stronger perturbation ===
+      vec2 eps = vec2(0.004, 0.0);
+      float h_c = texture2D(uHeightmap, texUV).r;
       float h_l = texture2D(uHeightmap, texUV - eps.xy).r;
       float h_r = texture2D(uHeightmap, texUV + eps.xy).r;
       float h_d = texture2D(uHeightmap, texUV - eps.yx).r;
       float h_u = texture2D(uHeightmap, texUV + eps.yx).r;
-      float baseHeight = texture2D(uHeightmap, texUV).r;
-      
-      // Calculate local gradients
-      float bumpStrength = 0.65;
+
+      float bumpStrength = 2.5;
       float du = (h_r - h_l) * bumpStrength;
       float dv = (h_u - h_d) * bumpStrength;
-      
-      // Perturb normal in rotated frame using tangents relative to longitude/latitude
-      vec3 rTangent = normalize(vec3(-rotatedP.z, 0.0, rotatedP.x));
+
+      // Build tangent frame on the sphere — avoid pole singularity
+      // Use rotatedP as the surface normal direction
+      vec3 up = abs(rotatedP.y) < 0.98 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+      vec3 rTangent = normalize(cross(up, rotatedP));
       vec3 rBitangent = cross(rotatedP, rTangent);
       vec3 rNormal = normalize(rotatedP - rTangent * du - rBitangent * dv);
-      
-      // Rotate the perturbed normal back to world frame
+
+      // Rotate perturbed normal back to camera frame
       vec3 p1_back = vec3(rNormal.x * cy + rNormal.z * sy, rNormal.y, -rNormal.x * sy + rNormal.z * cy);
       vec3 perturbedNormal = normalize(vec3(p1_back.x, p1_back.y * cx + p1_back.z * sx, -p1_back.y * sx + p1_back.z * cx));
-      
-      // Sun position rotates slowly, generating moon phases (synodic month simulation)
+
+      // Sun position generates moon phases
       vec3 sunDir = normalize(vec3(sin(iTime * 0.05 - 0.5), 0.05, cos(iTime * 0.05 - 0.5)));
       vec3 viewDir = vec3(0.0, 0.0, 1.0);
-      
-      // Lommel-Seeliger light reflection law for planetary dust/regolith
+
+      // Lommel-Seeliger + Oren-Nayar blend
       float mu0 = clamp(dot(perturbedNormal, sunDir), 0.0, 1.0);
-      float mu = clamp(normal.z, 0.0, 1.0);
+      float mu = clamp(perturbedNormal.z, 0.0, 1.0);
       float ls = mu0 / (mu0 + mu + 0.08);
-      
-      // Oren-Nayar diffuse lighting (roughness = 0.45)
-      float on = orenNayarSimple(perturbedNormal, sunDir, viewDir, 0.45);
-      
-      // Blend diffuse terms for authentic lunar regolith scattering
-      float diffuse = mix(on, ls * 1.6, 0.65);
-      
-      // Lunar surface coloring (basaltic Maria vs anorthositic Highlands)
-      vec3 highlands = vec3(0.78, 0.76, 0.72);
-      vec3 maria = vec3(0.24, 0.23, 0.24);
-      
-      // Detailed 3D noise for mineralogical and local albedo variations
+
+      // Simplified Oren-Nayar
+      float ndotl = dot(perturbedNormal, sunDir);
+      float ndotv = perturbedNormal.z;
+      float cl = max(ndotl, 0.0);
+      float sigma2 = 0.45 * 0.45;
+      float A = 1.0 - 0.5 * (sigma2 / (sigma2 + 0.33));
+      float B = 0.45 * (sigma2 / (sigma2 + 0.09));
+      float s = dot(sunDir, viewDir) - ndotl * ndotv;
+      float t2 = mix(1.0, max(ndotl, ndotv), step(0.0, s));
+      float on = cl * (A + B * (s / (t2 + 0.001)));
+
+      float diffuse = mix(on, ls * 1.6, 0.60);
+
+      // Surface color: warm highlands vs cool dark maria
+      vec3 highlands = vec3(0.80, 0.77, 0.72);
+      vec3 maria = vec3(0.22, 0.21, 0.22);
+
       float n1 = noise(rotatedP * 12.0) * 0.3 + 0.5;
       float n2 = noise(rotatedP * 45.0) * 0.1 + 0.5;
       float localMineral = n1 * 0.85 + n2 * 0.15;
-      
-      highlands = mix(highlands, vec3(0.85, 0.83, 0.78), localMineral * 0.4);
-      maria = mix(maria, vec3(0.18, 0.18, 0.20), localMineral * 0.3);
-      
-      // Blend highlands and maria based on heightmap baseHeight
-      float microNoiseVal = noise(rotatedP * 90.0) * 0.10 - 0.05;
-      float albedoBlend = smoothstep(0.25, 0.65, baseHeight + microNoiseVal);
+
+      highlands = mix(highlands, vec3(0.86, 0.82, 0.76), localMineral * 0.4);
+      maria = mix(maria, vec3(0.16, 0.16, 0.19), localMineral * 0.3);
+
+      float microNoise = noise(rotatedP * 90.0) * 0.10 - 0.05;
+      float albedoBlend = smoothstep(0.25, 0.65, h_c + microNoise);
       vec3 moonAlbedo = mix(maria, highlands, albedoBlend);
-      
-      // Brighten crater rims and ejecta blanket slightly using heightmap elevation
-      float elevationBoost = smoothstep(0.68, 0.95, baseHeight) * 0.12;
-      moonAlbedo += vec3(elevationBoost);
-      
-      // Faint high-albedo rays from prominent craters (using high-frequency procedural overlays)
+
+      // Crater rim brightening
+      float rimBright = smoothstep(0.68, 0.95, h_c) * 0.14;
+      moonAlbedo += vec3(rimBright);
+
+      // Ejecta rays
       float rayNoise = smoothstep(0.48, 0.58, noise(rotatedP * 24.0 + vec3(12.0)));
-      moonAlbedo += vec3(0.06) * rayNoise * smoothstep(0.3, 1.0, albedoBlend);
-      
-      // Golden Earthshine in the shadow region
-      float shadowMask = smoothstep(0.1, -0.4, dot(perturbedNormal, sunDir));
+      moonAlbedo += vec3(0.07) * rayNoise * smoothstep(0.3, 1.0, albedoBlend);
+
+      // Earthshine in the shadow
+      float shadowMask = smoothstep(0.08, -0.35, dot(perturbedNormal, sunDir));
       float earthshineIntensity = clamp(perturbedNormal.z, 0.0, 1.0);
-      vec3 earthshineColor = vec3(0.20, 0.15, 0.08); // rich subtle gold
-      vec3 earthshine = earthshineColor * earthshineIntensity * shadowMask * 0.35;
-      
-      // Day lighting color
-      vec3 dayCol = moonAlbedo * (diffuse * 1.9) + earthshine;
-      
-      // Specular highlight on glassy minerals
+      vec3 earthshine = vec3(0.22, 0.17, 0.10) * earthshineIntensity * shadowMask * 0.45;
+
+      col = moonAlbedo * (diffuse * 2.0) + earthshine;
+
+      // Specular
       if (mu0 > 0.0) {
         vec3 R = reflect(-sunDir, perturbedNormal);
-        float spec = pow(clamp(dot(R, viewDir), 0.0, 1.0), 16.0) * 0.04 * (1.0 - albedoBlend);
-        dayCol += vec3(spec);
+        float spec = pow(clamp(dot(R, viewDir), 0.0, 1.0), 20.0) * 0.05 * (1.0 - albedoBlend);
+        col += vec3(spec);
       }
-      
-      col = dayCol;
-      
-      // Edge glow and limb-darkening
-      float edgeGlow = pow(1.0 - normal.z, 4.0) * 0.18;
+
+      // Limb darkening — stronger
+      float limbFactor = 1.0 - normal.z;
+      col *= 1.0 - pow(limbFactor, 2.0) * 0.35;
+
+      // Edge glow
+      float edgeGlow = pow(limbFactor, 5.0) * 0.15;
       col += vec3(0.85, 0.65, 0.35) * edgeGlow;
-      
-      float edgeFade = pow(1.0 - normal.z, 2.5);
-      col *= (1.0 - edgeFade * 0.28);
-      
-      // Edge Anti-Aliasing
+
+      // Anti-aliasing
       float aa = smoothstep(r, r - 0.003, d);
       float glowDist = r - d;
       float outerGlow = exp(glowDist * 90.0) * 0.22;
       vec3 spaceCol = spaceBg + vec3(0.85, 0.65, 0.35) * outerGlow;
-      
       col = mix(spaceCol, col, aa);
     } else {
-      // Atmospheric outer rim glow
       float glowDist = d - r;
       if (glowDist < 0.04) {
         float glow = exp(-glowDist * 90.0) * 0.22;
         col += vec3(0.85, 0.65, 0.35) * glow;
       }
     }
-    
-    // Telemetry scanline styling
+
     col *= 0.97 + 0.03 * sin(fragCoord.y * 2.0);
     fragColor = vec4(col, 1.0);
   }
