@@ -248,10 +248,17 @@ function drawTrackingBarGlitch(
     const normalizedDist = distToCenter / (barH * 0.5)
     const isCore = normalizedDist < 0.25
 
-    // Kern ist heller/deckender, äußere Bereiche sind schwächer/durchscheinender
-    const baseAlpha = isCore 
-      ? (0.65 + Math.random() * 0.35) 
-      : (0.12 + Math.random() * 0.25)
+    // Kern ist deutlich heller, äußere Bereiche sind sehr schwach/durchscheinend
+    let baseAlpha = 0
+    if (variant === 3) {
+      baseAlpha = isCore 
+        ? (0.90 + Math.random() * 0.10) 
+        : (0.04 + Math.random() * 0.06)
+    } else {
+      baseAlpha = isCore 
+        ? (0.75 + Math.random() * 0.25) 
+        : (0.10 + Math.random() * 0.20)
+    }
 
     let color = 'rgba(252,252,252,'
     const r = Math.random()
@@ -409,13 +416,18 @@ export default function GlitchOverlay() {
         return
       }
 
-      const u = elapsed / episodeDuration
       let intensity = 0
-      for (const p of episodePeaks) {
-        const d = Math.abs(u - p)
-        intensity += Math.max(0, 1 - d * 3.5)
+      if (glitchType === 'tracking_bar') {
+        // Kein langsames An- und Abschwellen im Verlauf des Glitches, sondern permanentes Flimmern
+        intensity = 0.65 + Math.random() * 0.35
+      } else {
+        const u = elapsed / episodeDuration
+        for (const p of episodePeaks) {
+          const d = Math.abs(u - p)
+          intensity += Math.max(0, 1 - d * 3.5)
+        }
+        if (intensity > 1) intensity = 1
       }
-      if (intensity > 1) intensity = 1
 
       if (intensity > 0.05) {
         if (glitchType === 'tracking_bar') {
