@@ -470,6 +470,7 @@ function makeVoxelScene(
         float hitZ = -1.0;
         float hitHeight = 0.0;
         float z = 1.0;
+        float prevZ = 1.0;
         for (int i = 0; i < 300; i++) {
             if (z >= 600.0) break;
             vec2 wpos = uCamPos + vec2(rdx * z, rdy * z);
@@ -480,9 +481,8 @@ function makeVoxelScene(
             
             if (wz < th) {
                 // Refine intersection point via binary search
-                float prevZ = z - (1.0 + (z - 1.0) * 0.015);
                 float t_refine = 0.5;
-                for (int j = 0; j < 3; j++) {
+                for (int j = 0; j < 4; j++) {
                     float currZ = mix(prevZ, z, t_refine);
                     vec2 wpos_c = uCamPos + vec2(rdx * currZ, rdy * currZ);
                     float wz_c = uCamH + slope * currZ;
@@ -500,10 +500,14 @@ function makeVoxelScene(
                 hitHeight = th;
                 break;
             }
-            z += 1.0 + z * 0.015;
+            prevZ = z;
+            z += 1.0 + z * 0.012;
         }
 
         vec3 skyCol = mix(spaceCol, horizonSkyCol, exp(-max(0.0, skyY) * 0.025));
+
+        // Soft vertical fade near the horizon/sky to prevent hard clipping border
+        float verticalFade = smoothstep(-35.0, -2.0, skyY);
 
         if (hitZ < 0.0) {
             fragColor = vec4(skyCol, 1.0);
@@ -511,8 +515,9 @@ function makeVoxelScene(
         }
 
         float fog = clamp(hitZ / far, 0.0, 1.0);
-        vec3 col = getTerrainColor(hitHeight, fog);
-        col = mix(col, skyCol, fog);
+        float totalFog = max(fog, verticalFade);
+        vec3 col = getTerrainColor(hitHeight, totalFog);
+        col = mix(col, skyCol, totalFog);
 
         ${brightBoost ? `
         float lum = max(col.r, max(col.g, col.b));
@@ -523,7 +528,7 @@ function makeVoxelScene(
 
         float wz_above = uCamH + (skyY + 1.0) * hitZ / scale;
         bool isTop = (wz_above >= hitHeight);
-        float fade = 1.0 - fog;
+        float fade = 1.0 - totalFog;
         if (isTop) {
             col = mix(col, vec3(200.0/255.0 * fade + 55.0/255.0, fade, fade), 0.7);
         }
