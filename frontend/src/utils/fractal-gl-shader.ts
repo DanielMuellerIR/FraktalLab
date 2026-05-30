@@ -74,25 +74,28 @@ export const FRACTAL_FRAGMENT_SHADER = `
 
   vec2 ds_sub(vec2 a, vec2 b) { return ds_add(a, vec2(-b.x, -b.y)); }
 
-  // Fehlerkompensierte Multiplikation (Dekker). Split-Konstante 4097 = 2^12+1
-  // halbiert die 24-Bit-float-Mantisse für die exakte Teilprodukt-Berechnung.
-  vec2 ds_mul(vec2 a, vec2 b) {
+  // Fehlerkompensierte Multiplikation — kanonische DSFUN90-Form (wie sie in
+  // funktionierenden WebGL-Deep-Zoom-Shadern verwendet wird). Split 4097 = 2^12+1
+  // halbiert die 24-Bit-float-Mantisse. Die Akkumulations-Reihenfolge (Kreuzterm
+  // c2 ZUERST in t1, c21 erst in t2) ist bewusst so — sie übersteht die
+  // Compiler-Kontraktion auf ANGLE/Metal besser als die naive Variante.
+  vec2 ds_mul(vec2 dsa, vec2 dsb) {
     float split = 4097.0;
-    float c11 = a.x * b.x;
+    float cona = dsa.x * split;
+    float conb = dsb.x * split;
+    float a1 = cona - (cona - dsa.x);
+    float a2 = dsa.x - a1;
+    float b1 = conb - (conb - dsb.x);
+    float b2 = dsb.x - b1;
 
-    float a1 = a.x * split;
-    float ah = a1 - (a1 - a.x);
-    float al = a.x - ah;
-    float b1 = b.x * split;
-    float bh = b1 - (b1 - b.x);
-    float bl = b.x - bh;
+    float c11 = dsa.x * dsb.x;
+    float c21 = a2 * b2 + (a2 * b1 + (a1 * b2 + (a1 * b1 - c11)));
+    float c2  = dsa.x * dsb.y + dsa.y * dsb.x;
 
-    float c21 = ((ah * bh - c11) + ah * bl + al * bh) + al * bl;
-    float c2  = a.x * b.y + a.y * b.x;
-
-    float t1 = c11 + c21;
+    float t1 = c11 + c2;
     float e  = t1 - c11;
-    float t2 = ((c21 - e) + (c11 - (t1 - e))) + c2 + a.y * b.y;
+    float t2 = dsa.y * dsb.y + ((c2 - e) + (c11 - t1 + e)) + c21;
+
     float hi = t1 + t2;
     float lo = t2 - (hi - t1);
     return vec2(hi, lo);

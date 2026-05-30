@@ -46,6 +46,15 @@ function splitDouble(x: number): [number, number] {
 const NAV_W = 128
 const NAV_H = 96
 
+// Maximaler Zoom, bei dem die double-single-Präzision auf ALLEN GPUs noch scharf
+// bleibt. Hintergrund: Der ANGLE/Metal-Shader-Compiler (Apple-GPUs in Chrome)
+// kontrahiert den Dekker-Split der ds-Multiplikation weg → effektiv nur float32-
+// Präzision: ab ~5e5 feines Banding, ab ~5e6 grobe Blöcke (empirisch Apple Apple-Silicon-Hardware,
+// Chrome/Metal). Auf Software-Rasterizer/anderen GPUs hält ds bis ~1e9, aber wir
+// deckeln einheitlich auf den GPU-sicheren Wert. Darüber wird zur nächsten Location
+// gecrossfadet (kein sichtbarer Präzisionsbruch mehr).
+const SAFE_ZOOM_CEIL = 5e5
+
 function FractalGL({ mode, locations, juliaC, juliaSet, colorMode = 0, maxIter = 128, zoomMax = 1.5e6, hud = false }: FractalGLConfig) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -322,7 +331,8 @@ function FractalGL({ mode, locations, juliaC, juliaSet, colorMode = 0, maxIter =
 
         // Fade auslösen, bevor die Präzision ausgeht
         const elapsed = performance.now() - s.locTime
-        if (s.zoom > zoomMax && elapsed > 6000) s.fading = true
+        // zoomMax auf die GPU-sichere Präzisionsgrenze deckeln (siehe SAFE_ZOOM_CEIL)
+        if (s.zoom > Math.min(zoomMax, SAFE_ZOOM_CEIL) && elapsed > 6000) s.fading = true
 
         // Beim Fade-Start die Ziel-Location festlegen
         if (s.fading) {

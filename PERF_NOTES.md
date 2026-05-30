@@ -275,6 +275,22 @@ entfernt: `wasm/`-Crate, `utils/wasm-loader.ts`, `@wasm`-Vite-Alias und die devD
 `vite-plugin-wasm`/`vite-plugin-top-level-await`. Build ist reines JS/Vite (kein
 `wasm-pack` mehr). Doku (AGENTS/DEV_GUIDE/netlify) entsprechend bereinigt.
 
+### Nachtrag — Tief-Zoom-Präzision auf Apple/Metal (Regression + Fix)
+
+Ein Real-GPU-Test deckte auf: auf Apple-GPUs (Chrome → ANGLE-**Metal**) kontrahiert
+der Shader-Compiler den Dekker-Split der double-single-Multiplikation weg → die
+ds-Präzision fällt effektiv auf float32 zurück. Folge: ab Zoom ~5e5 feines Banding,
+ab ~5e6 grobe Blöcke. **Wichtig:** Headless-SwiftShader reproduziert das NICHT
+(hält bis ~8.5e9 scharf) — der Bug ist nur auf echter Metal-GPU sichtbar (per
+`--project=chrome-gpu` reproduziert).
+
+Härtungsversuch (kanonische DSFUN90-`ds_mul`-Form) **scheiterte** an der Metal-
+Kontraktion. Robuster Fix: zentrale Obergrenze `SAFE_ZOOM_CEIL = 5e5` in `FractalGL`
+— darüber wird zur nächsten Location gecrossfadet, nie sichtbar gebrochen. Bei 4.85e5
+auf Apple-Silicon-Hardware verifiziert scharf. Die kanonische `ds_mul` bleibt (nützt Nicht-Metal-GPUs/
+Firefox, die ds bis ~1e9 halten). Tieferer Zoom auf Metal bräuchte Perturbations-
+Rendering (Referenz-Orbit) — eigener, größerer Schritt.
+
 ### Output-Vergleich GPU vs. WASM (Komponenten-Upgrade-Regel)
 
 - **Verbesserung:** durchgängig 120 FPS statt 8–18; tieferer Zoom möglich
