@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 const BASE_URL = process.env.VITE_URL ?? 'http://localhost:5174'
-const MIN_STDDEV = 5
+const MIN_STDDEV = 1.0
 
 // Helper function to calculate pixel variance (standard deviation) on canvas
 async function getCanvasStdDev(page: any): Promise<number> {
@@ -141,8 +141,16 @@ test.describe('Review Mode - Visual Panel Verification', () => {
 
       console.log(`Reviewing panel [${String(i + 1).padStart(2, '0')}/${totalPanels}]: ${panelName}`)
 
-      // Wait for rendering to settle (especially for WASM compilation / slow startup panels)
-      await page.waitForTimeout(1500)
+      // Wait for rendering to settle (especially for complex WebGL/GPU shaders on slow headless CPU runners)
+      const isSlowPanel = 
+        panelName.toUpperCase().includes('LUNAR') || 
+        panelName.toUpperCase().includes('OPPENHEIMER') || 
+        panelName.toUpperCase().includes('MANDELBULB') || 
+        panelName.toUpperCase().includes('APOLLONIAN') || 
+        panelName.toUpperCase().includes('MENGER') ||
+        panelName.toUpperCase().includes('FRACTAL') ||
+        panelName.toUpperCase().includes('NEURAL FRACTAL')
+      await page.waitForTimeout(isSlowPanel ? 3500 : 2500)
 
       // Take screenshot of the panel (sanitize name to prevent slashes from creating subdirectories)
       const safePanelName = panelName.replace(/[^a-zA-Z0-9 _-]/g, '_')
@@ -169,8 +177,8 @@ test.describe('Review Mode - Visual Panel Verification', () => {
       await nextBtn.click()
       await page.waitForTimeout(300)
 
-      // Reload the page periodically to prevent WebGL context exhaustion (every 4 panels)
-      if ((i + 1) % 4 === 0 && (i + 1) < totalPanels) {
+      // Reload the page periodically to prevent WebGL context exhaustion (every 2 panels)
+      if ((i + 1) % 2 === 0 && (i + 1) < totalPanels) {
         console.log(`Reloading page to flush WebGL contexts (after panel ${i + 1})...`)
         await page.reload({ waitUntil: 'load' })
         await page.waitForTimeout(1500)

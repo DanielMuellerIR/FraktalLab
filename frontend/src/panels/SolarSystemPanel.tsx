@@ -18,10 +18,12 @@ const PLANET_DATA: PlanetData[] = [
   { name: 'Venus', au: 0.723, period: 224.70, mass: 0.815, moons: 0, type: 'Terrestrial Planet', color: '#e8cda0', radius: 5 },
   { name: 'Earth', au: 1.000, period: 365.25, mass: 1.000, moons: 1, type: 'Habitable Planet', color: '#4b9cd3', radius: 5 },
   { name: 'Mars', au: 1.524, period: 686.97, mass: 0.107, moons: 2, type: 'Rocky Planet', color: '#c1440e', radius: 4 },
+  { name: 'Ceres', au: 2.767, period: 1681.63, mass: 0.00015, moons: 0, type: 'Dwarf Planet', color: '#8d99ae', radius: 1.8 },
   { name: 'Jupiter', au: 5.203, period: 4332.59, mass: 317.8, moons: 95, type: 'Gas Giant', color: '#c88b3a', radius: 11 },
   { name: 'Saturn', au: 9.537, period: 10759.22, mass: 95.2, moons: 146, type: 'Gas Giant', color: '#e4d191', radius: 9 },
   { name: 'Uranus', au: 19.190, period: 30688.50, mass: 14.5, moons: 28, type: 'Ice Giant', color: '#7de8e8', radius: 7 },
-  { name: 'Neptune', au: 30.070, period: 60195.00, mass: 17.1, moons: 16, type: 'Ice Giant', color: '#3f54ba', radius: 7 }
+  { name: 'Neptune', au: 30.070, period: 60195.00, mass: 17.1, moons: 16, type: 'Ice Giant', color: '#3f54ba', radius: 7 },
+  { name: 'Pluto', au: 39.482, period: 90560.00, mass: 0.0022, moons: 5, type: 'Dwarf Planet', color: '#cfa68b', radius: 1.5 }
 ]
 
 interface ZoomTarget {
@@ -35,14 +37,18 @@ interface ZoomTarget {
   moonOrbitRadius?: number
   moonOrbitSpeed?: number
   moonOffsetAngle?: number
+  isSpecial?: boolean // For Halley and Voyager
   stats: {
     diameter: string
     distanceOrOrbit: string
     mass: string
     atmosphere: string
     temp: string
+    tempRange: [number, number] // For rendering the temperature bar [min, max] in Celsius
+    sizeScale: number // Size relative to Earth for the size comparison bubble
     moonsCount?: string
     features: string
+    composition: { label: string; pct: number }[]
   }
 }
 
@@ -58,10 +64,13 @@ const ZOOM_TARGETS: ZoomTarget[] = [
       diameter: '4,879 km',
       distanceOrOrbit: '0.387 AU from Sun',
       mass: '0.055 Earths',
-      atmosphere: 'None (Exosphere)',
+      atmosphere: 'Exosphere (He/Na)',
       temp: '-173°C to 427°C',
+      tempRange: [-173, 427],
+      sizeScale: 0.38,
       moonsCount: '0',
-      features: 'Extreme temperature swings, heavily cratered surface.'
+      features: 'Extreme solar heating, zero planetary shielding, heavily cratered metal-rich crust.',
+      composition: [{ label: 'Iron (Core)', pct: 70 }, { label: 'Silicates', pct: 30 }]
     }
   },
   {
@@ -75,10 +84,13 @@ const ZOOM_TARGETS: ZoomTarget[] = [
       diameter: '12,104 km',
       distanceOrOrbit: '0.723 AU from Sun',
       mass: '0.815 Earths',
-      atmosphere: 'Dense CO2 (96 bar)',
+      atmosphere: 'Dense CO2 (92 bar)',
       temp: '464°C',
+      tempRange: [450, 480],
+      sizeScale: 0.95,
       moonsCount: '0',
-      features: 'Runaway greenhouse effect, thick sulfuric acid clouds.'
+      features: 'Runaway greenhouse effect, crushing atmospheric pressure, sulfuric acid rain.',
+      composition: [{ label: 'CO2', pct: 96 }, { label: 'Nitrogen', pct: 3.5 }]
     }
   },
   {
@@ -93,16 +105,19 @@ const ZOOM_TARGETS: ZoomTarget[] = [
       distanceOrOrbit: '1.000 AU from Sun',
       mass: '1.000 Earths',
       atmosphere: 'Nitrogen/Oxygen (1 bar)',
-      temp: '15°C',
+      temp: '15°C (Average)',
+      tempRange: [-89, 58],
+      sizeScale: 1.0,
       moonsCount: '1',
-      features: 'Liquid water oceans, active tectonic plates, diverse biosphere.'
+      features: 'Liquid water oceans, active plate tectonics, strong magnetosphere, diverse biosphere.',
+      composition: [{ label: 'Nitrogen', pct: 78 }, { label: 'Oxygen', pct: 21 }, { label: 'Argon', pct: 1 }]
     }
   },
   {
     name: 'Moon',
     type: 'Rocky Moon',
     parentName: 'Earth',
-    color: '#888888',
+    color: '#9ca3af',
     radius: 1.5,
     isMoon: true,
     parentIdx: 2,
@@ -114,8 +129,11 @@ const ZOOM_TARGETS: ZoomTarget[] = [
       distanceOrOrbit: '27.3 Days around Earth',
       mass: '0.012 Earths',
       atmosphere: 'None (Exosphere)',
-      temp: '-20°C (Average)',
-      features: 'Tidally locked, basaltic maria plains, ancient cratered highlands.'
+      temp: '-130°C to 120°C',
+      tempRange: [-130, 120],
+      sizeScale: 0.27,
+      features: 'Tidally locked, ancient basaltic maria plains, highly cratered highlands.',
+      composition: [{ label: 'Oxygen', pct: 43 }, { label: 'Silicon', pct: 21 }, { label: 'Iron', pct: 10 }]
     }
   },
   {
@@ -129,10 +147,13 @@ const ZOOM_TARGETS: ZoomTarget[] = [
       diameter: '6,779 km',
       distanceOrOrbit: '1.524 AU from Sun',
       mass: '0.107 Earths',
-      atmosphere: 'Thin CO2 (0.01 bar)',
-      temp: '-65°C',
+      atmosphere: 'Thin CO2 (0.006 bar)',
+      temp: '-63°C',
+      tempRange: [-143, 35],
+      sizeScale: 0.53,
       moonsCount: '2',
-      features: 'Iron oxide surface dust, Olympus Mons volcano, polar ice caps.'
+      features: 'Iron oxide surface, Olympus Mons volcano, massive Valles Marineris canyon.',
+      composition: [{ label: 'CO2', pct: 95 }, { label: 'Nitrogen', pct: 2.8 }, { label: 'Argon', pct: 2 }]
     }
   },
   {
@@ -140,7 +161,7 @@ const ZOOM_TARGETS: ZoomTarget[] = [
     type: 'Rocky Moon',
     parentName: 'Mars',
     color: '#8b7e74',
-    radius: 1.0,
+    radius: 0.9,
     isMoon: true,
     parentIdx: 3,
     moonOrbitRadius: 9,
@@ -148,11 +169,14 @@ const ZOOM_TARGETS: ZoomTarget[] = [
     moonOffsetAngle: 1.0,
     stats: {
       diameter: '22.2 km (Irregular)',
-      distanceOrOrbit: '7.7 Hours around Mars',
+      distanceOrOrbit: '7.6 Hours around Mars',
       mass: '1.8e-8 Earths',
       atmosphere: 'None',
       temp: '-40°C',
-      features: 'Captured asteroid origin, orbits extremely close to Mars.'
+      tempRange: [-110, 0],
+      sizeScale: 0.05,
+      features: 'Captured asteroid origin, orbital decay: will collide with Mars in 50M years.',
+      composition: [{ label: 'Carbonaceous Chondrite', pct: 100 }]
     }
   },
   {
@@ -160,7 +184,7 @@ const ZOOM_TARGETS: ZoomTarget[] = [
     type: 'Rocky Moon',
     parentName: 'Mars',
     color: '#bda89b',
-    radius: 0.8,
+    radius: 0.7,
     isMoon: true,
     parentIdx: 3,
     moonOrbitRadius: 13,
@@ -172,7 +196,30 @@ const ZOOM_TARGETS: ZoomTarget[] = [
       mass: '2.4e-9 Earths',
       atmosphere: 'None',
       temp: '-40°C',
-      features: 'Smallest and outermost moon of Mars, highly cratered.'
+      tempRange: [-110, 0],
+      sizeScale: 0.04,
+      features: 'Outermost Martian satellite, escape velocity is only 5.6 m/s.',
+      composition: [{ label: 'Carbonaceous Material', pct: 100 }]
+    }
+  },
+  {
+    name: 'Ceres',
+    type: 'Dwarf Planet',
+    parentName: null,
+    color: '#8d99ae',
+    radius: 1.8,
+    isMoon: false,
+    stats: {
+      diameter: '940 km',
+      distanceOrOrbit: '2.767 AU from Sun',
+      mass: '0.00015 Earths',
+      atmosphere: 'Subtle water vapor',
+      temp: '-105°C',
+      tempRange: [-140, -38],
+      sizeScale: 0.07,
+      moonsCount: '0',
+      features: 'Largest body in Asteroid Belt, water-ice mantle, active cryovolcanic brines.',
+      composition: [{ label: 'Water Ice', pct: 40 }, { label: 'Rocky Core', pct: 60 }]
     }
   },
   {
@@ -188,8 +235,11 @@ const ZOOM_TARGETS: ZoomTarget[] = [
       mass: '317.8 Earths',
       atmosphere: 'Hydrogen/Helium',
       temp: '-110°C',
+      tempRange: [-150, -100],
+      sizeScale: 11.2,
       moonsCount: '95',
-      features: 'Great Red Spot storm, massive magnetic field, largest planet.'
+      features: 'Great Red Spot storm, massive magnetic field, metallic hydrogen ocean core.',
+      composition: [{ label: 'Hydrogen', pct: 89.8 }, { label: 'Helium', pct: 10.2 }]
     }
   },
   {
@@ -199,8 +249,8 @@ const ZOOM_TARGETS: ZoomTarget[] = [
     color: '#e3e33b',
     radius: 1.6,
     isMoon: true,
-    parentIdx: 4,
-    moonOrbitRadius: 21,
+    parentIdx: 5,
+    moonOrbitRadius: 18,
     moonOrbitSpeed: 4.8,
     moonOffsetAngle: 0.5,
     stats: {
@@ -209,7 +259,10 @@ const ZOOM_TARGETS: ZoomTarget[] = [
       mass: '0.015 Earths',
       atmosphere: 'Thin SO2 (Sulfur)',
       temp: '-130°C',
-      features: 'Most geologically active body, over 400 active volcanoes.'
+      tempRange: [-160, -110],
+      sizeScale: 0.29,
+      features: 'Extreme tidal flexing by Jupiter and Europa, hosting over 400 active volcanoes.',
+      composition: [{ label: 'Silicates (Crust)', pct: 80 }, { label: 'Iron (Core)', pct: 20 }]
     }
   },
   {
@@ -219,17 +272,20 @@ const ZOOM_TARGETS: ZoomTarget[] = [
     color: '#a6d6f5',
     radius: 1.5,
     isMoon: true,
-    parentIdx: 4,
-    moonOrbitRadius: 26,
+    parentIdx: 5,
+    moonOrbitRadius: 22,
     moonOrbitSpeed: 3.2,
     moonOffsetAngle: 2.1,
     stats: {
       diameter: '3,121 km',
       distanceOrOrbit: '3.55 Days around Jupiter',
       mass: '0.008 Earths',
-      atmosphere: 'Oxygen trace',
+      atmosphere: 'Extremely thin O2',
       temp: '-160°C',
-      features: 'Subsurface liquid water ocean under a thick water-ice shell.'
+      tempRange: [-220, -140],
+      sizeScale: 0.24,
+      features: 'Subsurface liquid water ocean under a 15-25 km thick water-ice shell.',
+      composition: [{ label: 'Water Ice', pct: 15 }, { label: 'Silicate Rock', pct: 85 }]
     }
   },
   {
@@ -239,8 +295,8 @@ const ZOOM_TARGETS: ZoomTarget[] = [
     color: '#b09f8a',
     radius: 2.0,
     isMoon: true,
-    parentIdx: 4,
-    moonOrbitRadius: 31,
+    parentIdx: 5,
+    moonOrbitRadius: 26,
     moonOrbitSpeed: 2.2,
     moonOffsetAngle: 3.8,
     stats: {
@@ -248,8 +304,11 @@ const ZOOM_TARGETS: ZoomTarget[] = [
       distanceOrOrbit: '7.15 Days around Jupiter',
       mass: '0.025 Earths',
       atmosphere: 'Oxygen trace',
-      temp: '-160°C',
-      features: 'Largest moon in the Solar System, possesses an active magnetic field.'
+      temp: '-163°C',
+      tempRange: [-200, -120],
+      sizeScale: 0.41,
+      features: 'Largest satellite in the Solar System, possessing its own active magnetic field.',
+      composition: [{ label: 'Water Ice', pct: 50 }, { label: 'Silicate Rock', pct: 50 }]
     }
   },
   {
@@ -259,8 +318,8 @@ const ZOOM_TARGETS: ZoomTarget[] = [
     color: '#7a776c',
     radius: 1.8,
     isMoon: true,
-    parentIdx: 4,
-    moonOrbitRadius: 37,
+    parentIdx: 5,
+    moonOrbitRadius: 31,
     moonOrbitSpeed: 1.5,
     moonOffsetAngle: 5.2,
     stats: {
@@ -268,8 +327,11 @@ const ZOOM_TARGETS: ZoomTarget[] = [
       distanceOrOrbit: '16.7 Days around Jupiter',
       mass: '0.018 Earths',
       atmosphere: 'Carbon dioxide trace',
-      temp: '-140°C',
-      features: 'Extremely cratered ancient icy surface, potential subsurface ocean.'
+      temp: '-139°C',
+      tempRange: [-180, -100],
+      sizeScale: 0.38,
+      features: 'Most heavily cratered object, ancient geologically dead ice-rock surface.',
+      composition: [{ label: 'Water Ice', pct: 45 }, { label: 'Silicates', pct: 55 }]
     }
   },
   {
@@ -285,8 +347,11 @@ const ZOOM_TARGETS: ZoomTarget[] = [
       mass: '95.2 Earths',
       atmosphere: 'Hydrogen/Helium',
       temp: '-140°C',
+      tempRange: [-180, -130],
+      sizeScale: 9.1,
       moonsCount: '146',
-      features: 'Stunning rings made of ice & rock particles, lowest density.'
+      features: 'Stunning rings made of ice, water-ice crust, lowest density of all planets.',
+      composition: [{ label: 'Hydrogen', pct: 96.3 }, { label: 'Helium', pct: 3.2 }]
     }
   },
   {
@@ -296,8 +361,8 @@ const ZOOM_TARGETS: ZoomTarget[] = [
     color: '#9c9c9c',
     radius: 1.0,
     isMoon: true,
-    parentIdx: 5,
-    moonOrbitRadius: 18,
+    parentIdx: 6,
+    moonOrbitRadius: 16,
     moonOrbitSpeed: 5.0,
     moonOffsetAngle: 1.2,
     stats: {
@@ -306,7 +371,10 @@ const ZOOM_TARGETS: ZoomTarget[] = [
       mass: '6.3e-6 Earths',
       atmosphere: 'None',
       temp: '-180°C',
-      features: 'Dominated by the Herschel impact crater (Death Star likeness).'
+      tempRange: [-210, -150],
+      sizeScale: 0.03,
+      features: 'Dominated by the giant Herschel impact crater, giving a Death Star profile.',
+      composition: [{ label: 'Water Ice', pct: 98 }, { label: 'Rock', pct: 2 }]
     }
   },
   {
@@ -316,8 +384,8 @@ const ZOOM_TARGETS: ZoomTarget[] = [
     color: '#eef8ff',
     radius: 1.1,
     isMoon: true,
-    parentIdx: 5,
-    moonOrbitRadius: 22,
+    parentIdx: 6,
+    moonOrbitRadius: 19,
     moonOrbitSpeed: 3.8,
     moonOffsetAngle: 2.9,
     stats: {
@@ -325,8 +393,80 @@ const ZOOM_TARGETS: ZoomTarget[] = [
       distanceOrOrbit: '32.9 Hours around Saturn',
       mass: '1.8e-5 Earths',
       atmosphere: 'Water vapor trace',
-      temp: '-200°C',
-      features: 'Active ice geysers at south pole venting water into space.'
+      temp: '-201°C',
+      tempRange: [-220, -180],
+      sizeScale: 0.04,
+      features: 'Active hydro-thermal cryovolcanic geysers venting water vapor/salts into space.',
+      composition: [{ label: 'Water Ice', pct: 60 }, { label: 'Silicate Core', pct: 40 }]
+    }
+  },
+  {
+    name: 'Tethys',
+    type: 'Icy Moon',
+    parentName: 'Saturn',
+    color: '#c1c1c1',
+    radius: 1.2,
+    isMoon: true,
+    parentIdx: 6,
+    moonOrbitRadius: 22,
+    moonOrbitSpeed: 3.0,
+    moonOffsetAngle: 2.0,
+    stats: {
+      diameter: '1,062 km',
+      distanceOrOrbit: '1.89 Days around Saturn',
+      mass: '0.0001 Earths',
+      atmosphere: 'None',
+      temp: '-187°C',
+      tempRange: [-200, -180],
+      sizeScale: 0.08,
+      features: 'Features the massive Odysseus crater (400 km across) and the Ithaca Chasma canyon system.',
+      composition: [{ label: 'Water Ice', pct: 99 }, { label: 'Silicate Rock', pct: 1 }]
+    }
+  },
+  {
+    name: 'Dione',
+    type: 'Icy Moon',
+    parentName: 'Saturn',
+    color: '#d2d2d2',
+    radius: 1.3,
+    isMoon: true,
+    parentIdx: 6,
+    moonOrbitRadius: 25,
+    moonOrbitSpeed: 2.4,
+    moonOffsetAngle: 3.2,
+    stats: {
+      diameter: '1,122 km',
+      distanceOrOrbit: '2.73 Days around Saturn',
+      mass: '0.00018 Earths',
+      atmosphere: 'Trace Ozone/Oxygen',
+      temp: '-186°C',
+      tempRange: [-195, -180],
+      sizeScale: 0.09,
+      features: 'Has bright ice cliffs formed by tectonic fractures. Co-orbital with Helene and Polydeuces.',
+      composition: [{ label: 'Water Ice', pct: 54 }, { label: 'Silicate Core', pct: 46 }]
+    }
+  },
+  {
+    name: 'Rhea',
+    type: 'Icy Moon',
+    parentName: 'Saturn',
+    color: '#a0a0a0',
+    radius: 1.4,
+    isMoon: true,
+    parentIdx: 6,
+    moonOrbitRadius: 28,
+    moonOrbitSpeed: 1.9,
+    moonOffsetAngle: 0.8,
+    stats: {
+      diameter: '1,527 km',
+      distanceOrOrbit: '4.52 Days around Saturn',
+      mass: '0.00038 Earths',
+      atmosphere: 'Thin Oxygen/CO2',
+      temp: '-174°C',
+      tempRange: [-220, -170],
+      sizeScale: 0.12,
+      features: 'Saturn\'s second-largest moon. Possesses a highly cratered surface and a tenuous exosphere.',
+      composition: [{ label: 'Water Ice', pct: 75 }, { label: 'Rocky Core', pct: 25 }]
     }
   },
   {
@@ -336,17 +476,20 @@ const ZOOM_TARGETS: ZoomTarget[] = [
     color: '#e3a830',
     radius: 1.9,
     isMoon: true,
-    parentIdx: 5,
-    moonOrbitRadius: 28,
-    moonOrbitSpeed: 2.0,
+    parentIdx: 6,
+    moonOrbitRadius: 32,
+    moonOrbitSpeed: 1.4,
     moonOffsetAngle: 4.1,
     stats: {
       diameter: '5,149 km',
       distanceOrOrbit: '15.9 Days around Saturn',
       mass: '0.022 Earths',
-      atmosphere: 'Thick Nitrogen (1.5 bar)',
+      atmosphere: 'Dense Nitrogen (1.5 bar)',
       temp: '-179°C',
-      features: 'Dense atmosphere, liquid methane lakes, organic haze layers.'
+      tempRange: [-182, -176],
+      sizeScale: 0.40,
+      features: 'Dense haze atmosphere, hydrologic cycle of liquid methane/ethane lakes.',
+      composition: [{ label: 'Nitrogen', pct: 95 }, { label: 'Methane', pct: 4.9 }]
     }
   },
   {
@@ -356,17 +499,20 @@ const ZOOM_TARGETS: ZoomTarget[] = [
     color: '#54463d',
     radius: 1.3,
     isMoon: true,
-    parentIdx: 5,
-    moonOrbitRadius: 35,
+    parentIdx: 6,
+    moonOrbitRadius: 37,
     moonOrbitSpeed: 0.8,
     moonOffsetAngle: 5.6,
     stats: {
       diameter: '1,469 km',
       distanceOrOrbit: '79.3 Days around Saturn',
-      mass: '3.0e-4 Earths',
+      mass: '0.0003 Earths',
       atmosphere: 'None',
-      temp: '-150°C',
-      features: 'Stark two-toned dark/light color split, equatorial ridge.'
+      temp: '-143°C',
+      tempRange: [-180, -110],
+      sizeScale: 0.12,
+      features: 'Stark two-toned dark/light albedo split, massive equatorial ridge.',
+      composition: [{ label: 'Water Ice', pct: 80 }, { label: 'Rocky Silicates', pct: 20 }]
     }
   },
   {
@@ -378,12 +524,130 @@ const ZOOM_TARGETS: ZoomTarget[] = [
     isMoon: false,
     stats: {
       diameter: '50,724 km',
-      distanceOrOrbit: '19.19 AU from Sun',
+      distanceOrOrbit: '19.190 AU from Sun',
       mass: '14.5 Earths',
       atmosphere: 'H2/He/CH4',
       temp: '-195°C',
+      tempRange: [-224, -180],
+      sizeScale: 4.0,
       moonsCount: '28',
-      features: 'Tilted 98 degrees on its axis, vertical rings, coldest planet.'
+      features: 'Tilted 98 degrees on axis (eccentric rolling orbit), vertical rings.',
+      composition: [{ label: 'Hydrogen', pct: 82.5 }, { label: 'Helium', pct: 15.2 }, { label: 'Methane', pct: 2.3 }]
+    }
+  },
+  {
+    name: 'Miranda',
+    type: 'Fractured Moon',
+    parentName: 'Uranus',
+    color: '#8fa0a8',
+    radius: 0.9,
+    isMoon: true,
+    parentIdx: 7,
+    moonOrbitRadius: 13,
+    moonOrbitSpeed: 4.8,
+    moonOffsetAngle: 1.5,
+    stats: {
+      diameter: '472 km',
+      distanceOrOrbit: '1.41 Days around Uranus',
+      mass: '1.1e-5 Earths',
+      atmosphere: 'None',
+      temp: '-187°C',
+      tempRange: [-213, -180],
+      sizeScale: 0.04,
+      features: 'Hosts Verona Rupes, the tallest cliff in the solar system (20 km deep). Extreme fractured geological patchwork.',
+      composition: [{ label: 'Water Ice', pct: 60 }, { label: 'Silicates', pct: 40 }]
+    }
+  },
+  {
+    name: 'Ariel',
+    type: 'Icy Moon',
+    parentName: 'Uranus',
+    color: '#b8c9d0',
+    radius: 1.3,
+    isMoon: true,
+    parentIdx: 7,
+    moonOrbitRadius: 16,
+    moonOrbitSpeed: 3.6,
+    moonOffsetAngle: 2.7,
+    stats: {
+      diameter: '1,158 km',
+      distanceOrOrbit: '2.52 Days around Uranus',
+      mass: '0.0002 Earths',
+      atmosphere: 'None',
+      temp: '-190°C',
+      tempRange: [-210, -180],
+      sizeScale: 0.09,
+      features: 'Brightest moon of Uranus. Marked by deep grabens, extensive fault valleys, and cryovolcanic flows.',
+      composition: [{ label: 'Water Ice', pct: 50 }, { label: 'Rocky Material', pct: 50 }]
+    }
+  },
+  {
+    name: 'Umbriel',
+    type: 'Dark Moon',
+    parentName: 'Uranus',
+    color: '#4a5255',
+    radius: 1.3,
+    isMoon: true,
+    parentIdx: 7,
+    moonOrbitRadius: 19,
+    moonOrbitSpeed: 2.7,
+    moonOffsetAngle: 4.1,
+    stats: {
+      diameter: '1,169 km',
+      distanceOrOrbit: '4.14 Days around Uranus',
+      mass: '0.0002 Earths',
+      atmosphere: 'None',
+      temp: '-193°C',
+      tempRange: [-210, -180],
+      sizeScale: 0.09,
+      features: 'The darkest of Uranus\'s large moons. Heavily cratered with a prominent bright ring crater (Wunda).',
+      composition: [{ label: 'Water Ice', pct: 40 }, { label: 'Rocky Core', pct: 60 }]
+    }
+  },
+  {
+    name: 'Titania',
+    type: 'Icy Moon',
+    parentName: 'Uranus',
+    color: '#c0cbd0',
+    radius: 1.5,
+    isMoon: true,
+    parentIdx: 7,
+    moonOrbitRadius: 23,
+    moonOrbitSpeed: 1.9,
+    moonOffsetAngle: 0.5,
+    stats: {
+      diameter: '1,578 km',
+      distanceOrOrbit: '8.71 Days around Uranus',
+      mass: '0.00057 Earths',
+      atmosphere: 'None',
+      temp: '-189°C',
+      tempRange: [-213, -180],
+      sizeScale: 0.12,
+      features: 'Uranus\'s largest moon. Traversed by massive fault scarps, grabens, and the huge canyon Messina Chasma.',
+      composition: [{ label: 'Water Ice', pct: 46 }, { label: 'Rocky Core', pct: 54 }]
+    }
+  },
+  {
+    name: 'Oberon',
+    type: 'Cratered Moon',
+    parentName: 'Uranus',
+    color: '#90989c',
+    radius: 1.4,
+    isMoon: true,
+    parentIdx: 7,
+    moonOrbitRadius: 27,
+    moonOrbitSpeed: 1.3,
+    moonOffsetAngle: 3.5,
+    stats: {
+      diameter: '1,523 km',
+      distanceOrOrbit: '13.46 Days around Uranus',
+      mass: '0.0005 Earths',
+      atmosphere: 'None',
+      temp: '-191°C',
+      tempRange: [-213, -180],
+      sizeScale: 0.12,
+      features: 'The outermost of Uranus\'s major moons. Heavily cratered with dark material covering crater floors.',
+      composition: [{ label: 'Water Ice', pct: 46 }, { label: 'Rocky Core', pct: 54 }]
     }
   },
   {
@@ -395,12 +659,15 @@ const ZOOM_TARGETS: ZoomTarget[] = [
     isMoon: false,
     stats: {
       diameter: '49,244 km',
-      distanceOrOrbit: '30.07 AU from Sun',
+      distanceOrOrbit: '30.070 AU from Sun',
       mass: '17.1 Earths',
       atmosphere: 'H2/He/CH4',
       temp: '-200°C',
+      tempRange: [-218, -190],
+      sizeScale: 3.9,
       moonsCount: '16',
-      features: 'Deep blue color, supersonic winds up to 2,100 km/h.'
+      features: 'Extreme blue methane sky, home to supersonic winds up to 2,100 km/h.',
+      composition: [{ label: 'Hydrogen', pct: 80 }, { label: 'Helium', pct: 19 }, { label: 'Methane', pct: 1.5 }]
     }
   },
   {
@@ -410,23 +677,86 @@ const ZOOM_TARGETS: ZoomTarget[] = [
     color: '#9ec9cf',
     radius: 1.4,
     isMoon: true,
-    parentIdx: 7,
-    moonOrbitRadius: 24,
+    parentIdx: 8,
+    moonOrbitRadius: 20,
     moonOrbitSpeed: -2.5,
     moonOffsetAngle: 1.8,
     stats: {
       diameter: '2,706 km',
       distanceOrOrbit: '5.87 Days around Neptune',
       mass: '0.0037 Earths',
-      atmosphere: 'Nitrogen trace',
+      atmosphere: 'Thin Nitrogen',
       temp: '-235°C',
-      features: 'Only large moon with retrograde orbit, active nitrogen geysers.'
+      tempRange: [-240, -230],
+      sizeScale: 0.21,
+      features: 'Unique retrograde orbit, active liquid nitrogen cryovolcanic geysers.',
+      composition: [{ label: 'Nitrogen Ice', pct: 55 }, { label: 'Rock/Metal Core', pct: 45 }]
+    }
+  },
+  {
+    name: 'Pluto',
+    type: 'Dwarf Planet',
+    parentName: null,
+    color: '#cfa68b',
+    radius: 1.5,
+    isMoon: false,
+    stats: {
+      diameter: '2,376 km',
+      distanceOrOrbit: '39.482 AU from Sun',
+      mass: '0.0022 Earths',
+      atmosphere: 'Nitrogen/Methane',
+      temp: '-229°C',
+      tempRange: [-240, -218],
+      sizeScale: 0.19,
+      moonsCount: '5',
+      features: 'Glacial nitrogen ice plains (Sputnik Planitia), Charon binary barycenter.',
+      composition: [{ label: 'Nitrogen Ice', pct: 70 }, { label: 'Rocky Core', pct: 30 }]
+    }
+  },
+  {
+    name: "Halley's Comet",
+    type: 'Cometary Nucleus',
+    parentName: null,
+    color: '#a1a8b8',
+    radius: 1.2,
+    isMoon: false,
+    isSpecial: true,
+    stats: {
+      diameter: '11 km (Irregular)',
+      distanceOrOrbit: '0.586 to 35.1 AU (Elliptical)',
+      mass: '3.6e-11 Earths',
+      atmosphere: 'Transient Coma (H2O/CO)',
+      temp: '-180°C to 80°C',
+      tempRange: [-200, 100],
+      sizeScale: 0.02,
+      features: 'Famous periodic comet with highly eccentric retrograde orbit (75.3-year period). Outgasses dust and gas tails when close to perihelion.',
+      composition: [{ label: 'Water Ice', pct: 80 }, { label: 'Carbon Soot', pct: 20 }]
+    }
+  },
+  {
+    name: 'Voyager 1',
+    type: 'Interstellar Probe',
+    parentName: null,
+    color: '#f8fafc',
+    radius: 1.0,
+    isMoon: false,
+    isSpecial: true,
+    stats: {
+      diameter: '3.7 m (High-Gain Dish)',
+      distanceOrOrbit: 'Hyperbolic Trajectory (drifting)',
+      mass: '825 kg (Launch Weight)',
+      atmosphere: 'None',
+      temp: '-253°C',
+      tempRange: [-255, -245],
+      sizeScale: 0.001,
+      features: 'Humanity\'s furthest spacecraft, crossed Heliopause into interstellar space (Aug 2012). Transmits telemetry via 22W RTG.',
+      composition: [{ label: 'Instruments', pct: 50 }, { label: 'RTG Fuel (Pu-238)', pct: 50 }]
     }
   }
 ]
 
-const DAYS_PER_MS = 365.25 / (12 * 1000)
-const MAX_AU = 30.07
+const DAYS_PER_MS = 365.25 / (14 * 1000) // Slightly slower simulation
+const MAX_AU = 39.482
 
 function orbitRadius(au: number, minOrbit: number, maxOrbit: number): number {
   return minOrbit + (maxOrbit - minOrbit) * Math.sqrt(au / MAX_AU)
@@ -449,10 +779,10 @@ interface ZoomState {
 
 const ZOOM_IDLE_MS = 6000
 const ZOOM_IN_MS = 1500
-const ZOOM_WATCH_MS = 6000
+const ZOOM_WATCH_MS = 7500 // slightly longer watch time
 const ZOOM_OUT_MS = 1500
-const ZOOM_TARGET = 8
-const ZOOM_OVERVIEW = 1
+const ZOOM_TARGET = 8.5
+const ZOOM_OVERVIEW = 0.95
 
 function easeInOut(t: number): number {
   return 0.5 - 0.5 * Math.cos(t * Math.PI)
@@ -466,62 +796,60 @@ function drawInfoBox(
   alpha: number
 ) {
   const minDim = Math.min(W, H)
-  const fontSize = Math.max(10, Math.min(13, Math.round(minDim * 0.026)))
-  const titleSize = fontSize + 3
-  const lineH = fontSize + 6
+  const fontSize = Math.max(9.5, Math.min(12, Math.round(minDim * 0.024)))
+  const titleSize = fontSize + 4
+  const lineH = fontSize + 5
   const padX = 14
   const padY = 12
 
   const lines = [
     `Classification: ${target.type}`,
     `Dimension: ${target.stats.diameter}`,
-    `Orbital Info: ${target.stats.distanceOrOrbit}`,
-    `Mass Index: ${target.stats.mass}`,
-    `Atmosphere: ${target.stats.atmosphere}`,
-    `Surface Temp: ${target.stats.temp}`
+    `Orbital Range: ${target.stats.distanceOrOrbit}`,
+    `Mass Scale: ${target.stats.mass}`,
+    `Atmospheric Profile: ${target.stats.atmosphere}`
   ]
 
-  if (!target.isMoon && target.stats.moonsCount) {
-    lines.push(`Known Moons: ${target.stats.moonsCount}`)
+  if (!target.isMoon && target.stats.moonsCount && !target.isSpecial) {
+    lines.push(`Confirmed Satellites: ${target.stats.moonsCount}`)
   }
 
-  // Measure widths using modern proportional fonts (system sans-serif)
-  ctx.font = `bold ${titleSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`
-  let maxW = ctx.measureText(`${target.name} ${target.isMoon ? `(Moon of ${target.parentName})` : ''}`).width
+  // Width calculations (proportional clean typography)
+  ctx.font = `bold ${titleSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
+  let maxW = ctx.measureText(`${target.name} ${target.isMoon ? `(Satellite of ${target.parentName})` : ''}`).width
   
-  ctx.font = `${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`
+  ctx.font = `${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
   for (const line of lines) {
     maxW = Math.max(maxW, ctx.measureText(line).width)
   }
   
-  // Also measure features block
-  const featMaxW = Math.min(320, W * 0.4)
+  // Set tactical info box width & height
+  const featMaxW = Math.min(330, W * 0.42)
+  const boxW = Math.max(maxW, featMaxW) + padX * 2 + 10
   
-  const boxW = Math.max(maxW, featMaxW) + padX * 2
-  
-  // Calculate height including features text wrap
-  let boxH = 30 + lines.length * lineH + padY * 2 + 30
+  // Dynamic height including stats, visual comparisons, and wrapped features block
+  let boxH = 40 + lines.length * lineH + padY * 2 + 120
 
   // Placed centered horizontally on the right half
-  const bx = W * 0.72 - boxW / 2
+  const bx = W * 0.73 - boxW / 2
   const by = (H - boxH) / 2
 
-  // Background Glassmorphism layout
-  ctx.globalAlpha = alpha * 0.82
-  ctx.fillStyle = '#0a0d18'
+  // Background Glassmorphism layout (sleek slate/black)
+  ctx.globalAlpha = alpha * 0.84
+  ctx.fillStyle = '#060813'
   ctx.fillRect(bx, by, boxW, boxH)
 
-  // Glowing Steel Blue / Amber tactical border
+  // Glowing Deep Blue / Amber border
   ctx.globalAlpha = alpha * 0.95
-  ctx.strokeStyle = target.isMoon ? '#d97706' : '#2563eb' // Amber for moons, Blue for planets
-  ctx.lineWidth = 1.5
+  ctx.strokeStyle = target.isMoon ? 'rgba(217, 119, 6, 0.75)' : 'rgba(37, 99, 235, 0.75)'
+  ctx.lineWidth = 1.2
   ctx.strokeRect(bx, by, boxW, boxH)
 
   // Title
   ctx.textBaseline = 'top'
   ctx.textAlign = 'left'
   ctx.fillStyle = '#ffffff'
-  ctx.font = `bold ${titleSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`
+  ctx.font = `bold ${titleSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
   ctx.fillText(
     `${target.name}${target.isMoon ? ` (${target.parentName} Satellite)` : ''}`,
     bx + padX,
@@ -529,7 +857,7 @@ function drawInfoBox(
   )
 
   // Divider
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)'
   ctx.lineWidth = 0.8
   ctx.beginPath()
   ctx.moveTo(bx + padX, by + padY + titleSize + 5)
@@ -538,7 +866,7 @@ function drawInfoBox(
 
   // Stats Text
   let cy = by + padY + titleSize + 14
-  ctx.font = `${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`
+  ctx.font = `${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
   
   lines.forEach((line) => {
     const parts = line.split(':')
@@ -546,21 +874,152 @@ function drawInfoBox(
     const val = parts.slice(1).join(':')
     
     ctx.fillStyle = '#94a3b8' // Slate label
-    ctx.font = `bold ${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`
+    ctx.font = `bold ${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
     ctx.fillText(key, bx + padX, cy)
     
     const keyW = ctx.measureText(key).width
-    ctx.fillStyle = '#f8fafc' // Slate light value
-    ctx.font = `${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`
+    ctx.fillStyle = '#f8fafc' // light value
+    ctx.font = `${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
     ctx.fillText(val, bx + padX + keyW, cy)
     
     cy += lineH
   })
 
-  // Features description wrap
-  cy += 4
-  ctx.fillStyle = target.isMoon ? '#fde047' : '#93c5fd' // Golden text for moons, light blue for planets
-  ctx.font = `italic ${fontSize - 0.5}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`
+  // ── GRAPHIC 1: Chromatic Thermal Index Bar ───────────────────────────────
+  cy += 8
+  ctx.fillStyle = '#94a3b8'
+  ctx.font = `bold ${fontSize - 1}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
+  ctx.fillText('THERMAL PROFILE:', bx + padX, cy)
+  
+  cy += fontSize + 3
+  // Draw chromatic temperature gradient bar (-250C to 500C)
+  const barX = bx + padX
+  const barW = boxW - padX * 2
+  const barH = 5
+  
+  const tempGrad = ctx.createLinearGradient(barX, 0, barX + barW, 0)
+  tempGrad.addColorStop(0, '#38bdf8')   // Extreme Cold (-250C)
+  tempGrad.addColorStop(0.35, '#94a3b8') // Cool (0C)
+  tempGrad.addColorStop(0.65, '#f59e0b') // Warm (100C)
+  tempGrad.addColorStop(1, '#ef4444')    // Extreme Hot (500C)
+  
+  ctx.fillStyle = tempGrad
+  ctx.fillRect(barX, cy, barW, barH)
+  
+  // Calculate marker position based on temperature range
+  const minTemp = target.stats.tempRange[0]
+  const maxTemp = target.stats.tempRange[1]
+  const avgTemp = (minTemp + maxTemp) / 2
+  
+  // map avgTemp (-250C..500C) to 0..1 ratio
+  const tempRatio = Math.max(0.0, Math.min(1.0, (avgTemp + 250) / 750))
+  const markerX = barX + tempRatio * barW
+  
+  // Draw glowing tick
+  ctx.strokeStyle = '#ffffff'
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  ctx.moveTo(markerX, cy - 2)
+  ctx.lineTo(markerX, cy + barH + 2)
+  ctx.stroke()
+  
+  // Temp labels
+  ctx.fillStyle = '#64748b'
+  ctx.font = `${fontSize - 2}px system-ui, -apple-system, sans-serif`
+  ctx.textAlign = 'left'
+  ctx.fillText('-250°C', barX, cy + barH + 3)
+  ctx.textAlign = 'right'
+  ctx.fillText('500°C', barX + barW, cy + barH + 3)
+  ctx.textAlign = 'center'
+  ctx.fillStyle = '#ffffff'
+  ctx.fillText(target.stats.temp, markerX, cy - 8)
+
+  // ── GRAPHIC 2: Interactive Composition Chart ───────────────────────────
+  cy += 20
+  ctx.textAlign = 'left'
+  ctx.fillStyle = '#94a3b8'
+  ctx.font = `bold ${fontSize - 1}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
+  ctx.fillText('CORE COMPOSITION:', bx + padX, cy)
+  
+  cy += fontSize + 3
+  const comp = target.stats.composition
+  const colW = (boxW - padX * 2) / comp.length
+  
+  comp.forEach((item, idx) => {
+    const ix = bx + padX + idx * colW
+    const bW = colW - 8
+    const bH = 4
+    
+    // Draw empty track
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.05)'
+    ctx.fillRect(ix, cy, bW, bH)
+    
+    // Draw filled bar
+    ctx.fillStyle = target.isMoon ? '#f59e0b' : '#3b82f6'
+    ctx.fillRect(ix, cy, bW * (item.pct / 100), bH)
+    
+    // Draw label
+    ctx.fillStyle = '#e2e8f0'
+    ctx.font = `${fontSize - 2}px system-ui, sans-serif`
+    ctx.fillText(`${item.label} (${item.pct}%)`, ix, cy + bH + 4)
+  })
+
+  // ── GRAPHIC 3: Size comparison vs Earth ──────────────────────────────────
+  cy += 24
+  ctx.fillStyle = '#94a3b8'
+  ctx.font = `bold ${fontSize - 1}px system-ui, -apple-system, sans-serif`
+  ctx.fillText('DIMENSIONAL PROPORTIONS (VS EARTH):', bx + padX, cy)
+  
+  cy += 14
+  const compCenterY = cy + 12
+  
+  // Reference Earth (draw grey ghost bubble)
+  const earthRadius = 14
+  const earthX = bx + padX + 25
+  ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)'
+  ctx.lineWidth = 1.0
+  ctx.beginPath()
+  ctx.arc(earthX, compCenterY, earthRadius, 0, Math.PI * 2)
+  ctx.stroke()
+  
+  ctx.fillStyle = 'rgba(148, 163, 184, 0.15)'
+  ctx.beginPath()
+  ctx.arc(earthX, compCenterY, earthRadius, 0, Math.PI * 2)
+  ctx.fill()
+  
+  ctx.fillStyle = '#94a3b8'
+  ctx.font = '7px monospace'
+  ctx.textAlign = 'center'
+  ctx.fillText('EARTH', earthX, compCenterY + 22)
+  
+  // Focused body comparison
+  const targetR = Math.max(2.0, Math.min(22.0, earthRadius * target.stats.sizeScale))
+  const targetX = bx + padX + 110
+  
+  ctx.strokeStyle = target.color
+  ctx.lineWidth = 1.2
+  ctx.beginPath()
+  ctx.arc(targetX, compCenterY, targetR, 0, Math.PI * 2)
+  ctx.stroke()
+  
+  ctx.fillStyle = target.color + '22' // Subtle transparent body fill
+  ctx.beginPath()
+  ctx.arc(targetX, compCenterY, targetR, 0, Math.PI * 2)
+  ctx.fill()
+  
+  ctx.fillStyle = '#f8fafc'
+  ctx.fillText(target.name.toUpperCase(), targetX, compCenterY + 22)
+  
+  // scale multiplier label in between
+  ctx.fillStyle = '#64748b'
+  ctx.font = 'bold 8px monospace'
+  ctx.fillText(`[ ${target.stats.sizeScale.toFixed(2)}x ]`, (earthX + targetX) / 2, compCenterY)
+
+  // ── Features description text wrap ───────────────────────────────────────
+  cy += 35
+  ctx.textAlign = 'left'
+  ctx.fillStyle = target.isMoon ? '#fde047' : '#93c5fd' // Golden for moons, light blue for planets
+  ctx.font = `italic ${fontSize - 0.5}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
   
   const words = target.stats.features.split(' ')
   let currentLine = ''
@@ -637,7 +1096,7 @@ function SolarSystemPanel() {
       const maxOrbit = minDim * 0.44
 
       // ── Calculate Planets coordinates ──────────────────────────────────────
-      const START_ANGLES = [4.4, 2.1, 0.0, 5.5, 0.8, 2.3, 4.0, 5.0]
+      const START_ANGLES = [4.4, 2.1, 0.0, 5.5, 3.2, 0.8, 2.3, 4.0, 5.0, 1.2]
       const planetPositions = PLANET_DATA.map((p, i) => {
         const orbitR = orbitRadius(p.au, minOrbit, maxOrbit)
         const angle = START_ANGLES[i] + (simDays / p.period) * Math.PI * 2
@@ -653,7 +1112,23 @@ function SolarSystemPanel() {
       let targetWx = 0
       let targetWy = 0
 
-      if (activeTarget.isMoon && activeTarget.parentIdx !== undefined) {
+      if (activeTarget.name === "Halley's Comet") {
+        // Highly eccentric ellipse simulation for Halley
+        const angle = (simDays / 1200) * Math.PI * 2 // orbit speed
+        const a = maxOrbit * 0.88                  // semi-major axis
+        const b = minOrbit * 1.5                   // semi-minor axis (eccentric)
+        // Orbit center shifted to simulate Sun at one focus
+        const focusOffset = Math.sqrt(a * a - b * b) * 0.82
+        targetWx = Math.cos(angle) * a + focusOffset
+        targetWy = Math.sin(angle) * b
+      } else if (activeTarget.name === 'Voyager 1') {
+        // Hyperbolic escape trajectory simulation (drifts straight outward)
+        const travelRatio = Math.min(1.0, simDays / 120000)
+        const driftDist = minOrbit + (maxOrbit * 1.5 - minOrbit) * travelRatio
+        const angle = 2.85 // escape vector angle
+        targetWx = Math.cos(angle) * driftDist
+        targetWy = Math.sin(angle) * driftDist
+      } else if (activeTarget.isMoon && activeTarget.parentIdx !== undefined) {
         const parentPos = planetPositions[activeTarget.parentIdx]
         const moonAngle = (activeTarget.moonOffsetAngle || 0) + (simDays / (activeTarget.moonOrbitSpeed || 1)) * 0.08
         targetWx = parentPos.wx + Math.cos(moonAngle) * (activeTarget.moonOrbitRadius || 12)
@@ -685,14 +1160,14 @@ function SolarSystemPanel() {
           zoom.phase = 'watching'
         }
         // Offset camera slightly to place the zoomed body in the left half
-        const shiftX = (W * 0.20) / ZOOM_TARGET
+        const shiftX = (W * 0.18) / ZOOM_TARGET
         const t = easeInOut(zoom.progress)
         viewZoom = ZOOM_OVERVIEW + (ZOOM_TARGET - ZOOM_OVERVIEW) * t
         viewCenterX = overviewCenterX + (targetWx + shiftX - overviewCenterX) * t
         viewCenterY = overviewCenterY + (targetWy - overviewCenterY) * t
       } else if (zoom.phase === 'watching') {
         zoom.watchTimer += dt
-        const shiftX = (W * 0.20) / ZOOM_TARGET
+        const shiftX = (W * 0.18) / ZOOM_TARGET
         viewZoom = ZOOM_TARGET
         viewCenterX = targetWx + shiftX
         viewCenterY = targetWy
@@ -742,8 +1217,8 @@ function SolarSystemPanel() {
       const scaledSunR = sunR * viewZoom
       
       const glow = ctx.createRadialGradient(sunSx, sunSy, scaledSunR * 0.6, sunSx, sunSy, scaledSunR * 1.5)
-      glow.addColorStop(0, 'rgba(255,180,60,0.3)')
-      glow.addColorStop(0.5, 'rgba(255,100,0,0.1)')
+      glow.addColorStop(0, 'rgba(255,180,60,0.35)')
+      glow.addColorStop(0.5, 'rgba(255,100,0,0.12)')
       glow.addColorStop(1, 'rgba(255,50,0,0)')
       ctx.fillStyle = glow
       ctx.beginPath()
@@ -765,6 +1240,30 @@ function SolarSystemPanel() {
         ctx.arc(sunSx, sunSy, scaledOrbitR, 0, Math.PI * 2)
         ctx.stroke()
       })
+
+      // ── Render Halley's Comet Orbit ────────────────────────────────────────
+      ctx.strokeStyle = 'rgba(99, 102, 241, 0.18)' // Subtle indigo ellipse
+      ctx.lineWidth = 0.8
+      ctx.save()
+      const ha = maxOrbit * 0.88
+      const hb = minOrbit * 1.5
+      const hFocus = Math.sqrt(ha * ha - hb * hb) * 0.82
+      const [hCenterX, hCenterY] = toScreen(hFocus, 0)
+      ctx.translate(hCenterX, hCenterY)
+      ctx.beginPath()
+      ctx.ellipse(0, 0, ha * viewZoom, hb * viewZoom, 0, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.restore()
+
+      // ── Render Voyager 1 Trajectory ────────────────────────────────────────
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.15)' // Subtle slate straight vector
+      ctx.lineWidth = 0.6
+      const [vStartX, vStartY] = toScreen(Math.cos(2.85) * minOrbit, Math.sin(2.85) * minOrbit)
+      const [vEndX, vEndY] = toScreen(Math.cos(2.85) * maxOrbit * 1.6, Math.sin(2.85) * maxOrbit * 1.6)
+      ctx.beginPath()
+      ctx.moveTo(vStartX, vStartY)
+      ctx.lineTo(vEndX, vEndY)
+      ctx.stroke()
 
       // ── Render Planets and Moons ──────────────────────────────────────────
       PLANET_DATA.forEach((planet, i) => {
@@ -790,10 +1289,10 @@ function SolarSystemPanel() {
         ctx.arc(px, py, scaledRadius, 0, Math.PI * 2)
         ctx.fill()
 
-        // Planet Label overlay (overview mode or focused)
+        // Planet Label overlay (focused or somewhat zoomed)
         const isFocused = zoom.phase === 'watching' && ZOOM_TARGETS[zoom.targetIdx].name === planet.name
-        if (viewZoom < 2 || isFocused) {
-          ctx.font = '10px monospace'
+        if (viewZoom > 1.2 || isFocused) {
+          ctx.font = '10px system-ui, sans-serif'
           ctx.fillStyle = '#94a3b8'
           ctx.textAlign = 'center'
           ctx.fillText(planet.name, px, py - scaledRadius - 5)
@@ -809,9 +1308,9 @@ function SolarSystemPanel() {
             
             const scaledMoonOrbitR = (target.moonOrbitRadius || 12) * viewZoom
 
-            // Draw moon orbit path (only when somewhat zoomed in on parent or moon)
-            if (viewZoom > 2) {
-              ctx.strokeStyle = 'rgba(74, 85, 104, 0.08)'
+            // Draw moon orbit path (when zoomed in on parent or moon)
+            if (viewZoom > 2.0) {
+              ctx.strokeStyle = 'rgba(74, 85, 104, 0.12)'
               ctx.lineWidth = 0.5
               ctx.beginPath()
               ctx.arc(px, py, scaledMoonOrbitR, 0, Math.PI * 2)
@@ -827,7 +1326,7 @@ function SolarSystemPanel() {
             // Moon Label when focused
             const isMoonFocused = zoom.phase === 'watching' && ZOOM_TARGETS[zoom.targetIdx].name === target.name
             if (isMoonFocused) {
-              ctx.font = '9px monospace'
+              ctx.font = 'bold 9px system-ui, sans-serif'
               ctx.fillStyle = '#f59e0b'
               ctx.textAlign = 'center'
               ctx.fillText(target.name, mx, my - 6)
@@ -836,12 +1335,115 @@ function SolarSystemPanel() {
         })
       })
 
+      // ── Render Halley's Comet Body & Dynamic Outgassing Tail ───────────────
+      const halleyAngle = (simDays / 1200) * Math.PI * 2
+      const hx = Math.cos(halleyAngle) * (maxOrbit * 0.88) + (Math.sqrt(ha * ha - hb * hb) * 0.82)
+      const hy = Math.sin(halleyAngle) * (minOrbit * 1.5)
+      const [cometSx, cometSy] = toScreen(hx, hy)
+      
+      // Calculate distance to Sun for tail outgassing strength
+      const distToSun = Math.hypot(hx, hy)
+      const maxOutgassingDist = maxOrbit * 0.6
+      
+      if (distToSun < maxOutgassingDist) {
+        // Outgassing active! Vector points directly away from the Sun (0, 0)
+        const toSunX = 0 - hx
+        const toSunY = 0 - hy
+        const lenSun = Math.hypot(toSunX, toSunY)
+        const tailDirX = -(toSunX / lenSun)
+        const tailDirY = -(toSunY / lenSun)
+        
+        // Tail size increases as it gets closer to the Sun
+        const proximity = 1.0 - distToSun / maxOutgassingDist
+        const tailLen = proximity * 48 * viewZoom
+        const tailWidth = proximity * 15 * viewZoom
+        
+        // Draw double tail (dust and gas)
+        ctx.save()
+        ctx.translate(cometSx, cometSy)
+        // Rotate to point away from Sun
+        const rotAngle = Math.atan2(tailDirY, tailDirX)
+        ctx.rotate(rotAngle)
+        
+        // Dust tail (spread out, slightly curved)
+        const dustGrad = ctx.createLinearGradient(0, 0, tailLen, tailWidth * 0.4)
+        dustGrad.addColorStop(0, 'rgba(226, 232, 240, 0.42)')
+        dustGrad.addColorStop(0.3, 'rgba(226, 232, 240, 0.20)')
+        dustGrad.addColorStop(1, 'rgba(226, 232, 240, 0)')
+        
+        ctx.fillStyle = dustGrad
+        ctx.beginPath()
+        ctx.moveTo(0, 0)
+        ctx.lineTo(tailLen, -tailWidth * 0.5)
+        ctx.lineTo(tailLen * 0.8, 0)
+        ctx.lineTo(tailLen, tailWidth * 0.5)
+        ctx.closePath()
+        ctx.fill()
+        
+        // Ion gas tail (thin, straight, glowing cyan)
+        const gasGrad = ctx.createLinearGradient(0, 0, tailLen * 1.25, 0)
+        gasGrad.addColorStop(0, 'rgba(56, 189, 248, 0.55)')
+        gasGrad.addColorStop(0.2, 'rgba(56, 189, 248, 0.25)')
+        gasGrad.addColorStop(1, 'rgba(56, 189, 248, 0)')
+        
+        ctx.strokeStyle = gasGrad
+        ctx.lineWidth = 2.0
+        ctx.beginPath()
+        ctx.moveTo(0, 0)
+        ctx.lineTo(tailLen * 1.25, 0)
+        ctx.stroke()
+        ctx.restore()
+      }
+      
+      // Draw Halley Nucleus
+      ctx.fillStyle = '#a1a8b8'
+      ctx.beginPath()
+      ctx.arc(cometSx, cometSy, Math.max(1.0, 1.2 * Math.sqrt(viewZoom) * 0.7), 0, Math.PI * 2)
+      ctx.fill()
+      
+      if (zoom.phase === 'watching' && activeTarget.name === "Halley's Comet") {
+        ctx.font = 'bold 9px system-ui, sans-serif'
+        ctx.fillStyle = '#f59e0b'
+        ctx.textAlign = 'center'
+        ctx.fillText("Halley's Comet", cometSx, cometSy - 8)
+      }
+
+      // ── Render Voyager 1 Satellite Probe ──────────────────────────────────
+      const voyagerRatio = Math.min(1.0, simDays / 120000)
+      const vDist = minOrbit + (maxOrbit * 1.5 - minOrbit) * voyagerRatio
+      const vx = Math.cos(2.85) * vDist
+      const vy = Math.sin(2.85) * vDist
+      const [voySx, voySy] = toScreen(vx, vy)
+      
+      // Draw voyager high-gain dish outline
+      ctx.fillStyle = '#f8fafc'
+      ctx.beginPath()
+      ctx.arc(voySx, voySy, Math.max(1.0, 0.8 * Math.sqrt(viewZoom)), 0, Math.PI * 2)
+      ctx.fill()
+      
+      // Blinking communications beacon (transmits telemetry)
+      const beaconBlink = Math.floor(now / 500) % 2 === 0
+      if (beaconBlink) {
+        ctx.strokeStyle = '#38bdf8'
+        ctx.lineWidth = 0.5
+        ctx.beginPath()
+        ctx.arc(voySx, voySy, Math.max(3.0, 5.0 * Math.sqrt(viewZoom)), 0, Math.PI * 2)
+        ctx.stroke()
+      }
+      
+      if (zoom.phase === 'watching' && activeTarget.name === 'Voyager 1') {
+        ctx.font = 'bold 9px system-ui, sans-serif'
+        ctx.fillStyle = '#f8fafc'
+        ctx.textAlign = 'center'
+        ctx.fillText('Voyager 1', voySx, voySy - 8)
+      }
+
       // ── Reticle Over Target ────────────────────────────────────────────────
       if (zoom.phase === 'watching' || zoom.phase === 'zooming_in' || zoom.phase === 'zooming_out') {
         const [tx, ty] = toScreen(targetWx, targetWy)
         const reticleR = Math.max(12, 14 * viewZoom)
         
-        ctx.strokeStyle = activeTarget.isMoon ? '#d97706' : '#2563eb'
+        ctx.strokeStyle = activeTarget.isMoon ? '#d97706' : (activeTarget.isSpecial ? '#f8fafc' : '#2563eb')
         ctx.lineWidth = 0.8
         
         // Target corner brackets
@@ -852,8 +1454,8 @@ function SolarSystemPanel() {
         ctx.moveTo(tx + reticleR, ty + reticleR - 4); ctx.lineTo(tx + reticleR, ty + reticleR); ctx.lineTo(tx + reticleR - 4, ty + reticleR)
         ctx.stroke()
 
-        // Core dot
-        ctx.fillStyle = activeTarget.isMoon ? '#d97706' : '#2563eb'
+        // Core tracking dot
+        ctx.fillStyle = activeTarget.isMoon ? '#d97706' : (activeTarget.isSpecial ? '#f8fafc' : '#2563eb')
         ctx.beginPath()
         ctx.arc(tx, ty, 1.5, 0, Math.PI * 2)
         ctx.fill()
@@ -872,15 +1474,15 @@ function SolarSystemPanel() {
       }
 
       // ── Solar System Telemetry HUD ─────────────────────────────────────────
-      ctx.fillStyle = 'rgba(74,222,128,0.5)'
+      ctx.fillStyle = 'rgba(74,222,128,0.55)'
       ctx.font = '10px monospace'
       ctx.textAlign = 'left'
       ctx.textBaseline = 'bottom'
-      ctx.fillText('SOLAR SYSTEM // ORBITAL SCANNER ACTIVE', 10, H - 10)
+      ctx.fillText('SOLAR SYSTEM // HELIOCENTRIC ORBITAL SURVEY', 10, H - 10)
 
       ctx.textAlign = 'right'
       ctx.fillText(
-        `TOTAL BODIES CLASSIFIED: 8 PLANETS // 435+ MOONS // FEATURED SATELLITES: 12`,
+        `TOTAL CLASSIFIED: 8 PLANETS // 2 DWARF PLANETS // 32 featured bodies`,
         W - 10,
         H - 10
       )

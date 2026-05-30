@@ -83,15 +83,14 @@ function SupervolcanoPanel() {
         oCtx.putImageData(imgData, 0, 0)
         processedMap = offscreen
       }
-
-      // Initial-Tick: lastT setzen, danach normale Loop ausführen.
-      // Beim zentralen rAF-Coordinator abonnieren — loop wird bei jedem Tick automatisch aufgerufen.
-      unsubscribe = subscribe((t) => {
-        if (firstTick) { lastT = t; firstTick = false }
-        loop(t)
-      })
     }
     mapImg.src = `data:image/webp;base64,${EARTH_BASE64}`
+
+    // Synchronously subscribe to the central rAF-coordinator immediately on mount so rendering starts on frame 1
+    unsubscribe = subscribe((t) => {
+      if (firstTick) { lastT = t; firstTick = false }
+      loop(t)
+    })
 
 
     const resize = () => {

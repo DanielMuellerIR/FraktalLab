@@ -48,6 +48,10 @@ function PhysicsSandboxPanel() {
   // Attraktor-Zustand (Mitte des Canvas als Standard)
   const [attractor, setAttractor] = useState({ x: 150, y: 150, active: true, mass: 6.0 })
   const isDraggingRef = useRef(false)
+  
+  // Use a ref to prevent useEffect from restarting the simulation when well settings change
+  const attractorRef = useRef(attractor)
+  attractorRef.current = attractor
 
   useEffect(() => {
     const _canvas = canvasRef.current
@@ -80,6 +84,12 @@ function PhysicsSandboxPanel() {
 
     const circles: Circle[] = []
     const particles: Particle[] = []
+    
+    // Core stability tracking
+    let overloadTime = 0.0
+    let showDischargePulse = false
+    let dischargeRingRadius = 0.0
+    let dischargeRingAlpha = 0.0
 
     // 12-16 leuchtende Kreise erzeugen
     const circleCount = 14
@@ -148,6 +158,7 @@ function PhysicsSandboxPanel() {
       const x = clientX - rect.left
       const y = clientY - rect.top
       setAttractor(prev => ({ ...prev, x, y }))
+      attrPosRef.current = { ...attrPosRef.current, x, y }
     }
 
     const onMouseDown = (e: MouseEvent) => {
@@ -183,7 +194,7 @@ function PhysicsSandboxPanel() {
     window.addEventListener('touchend', onMouseUp)
 
     // Attraktor-Position als Ref halten, um Rerender-Verzögerung im Loop zu umgehen
-    const attrPosRef = { current: { x: canvas.width / 2, y: canvas.height / 2, active: true, mass: 6.0 } }
+    const attrPosRef = { current: { x: canvas.width / 2, y: canvas.height / 2 } }
 
     // ── Haupt-Simulations- und Renderloop ────────────────────────────────────
     let lastT = 0
@@ -200,13 +211,68 @@ function PhysicsSandboxPanel() {
       const W = canvas.width
       const H = canvas.height
 
-      // Synchronisiere Attraktor-Ref mit React-State
-      // (State wird durch User-Klicks aktualisiert)
-      // Falls noch nicht initialisiert, zentrieren
       const attrX = attrPosRef.current.x
       const attrY = attrPosRef.current.y
-      const attrActive = attrPosRef.current.active
-      const attrMass = attrPosRef.current.mass
+      
+      // Read dynamic values from sync ref instead of trigger useEffect rebuilds
+      const attrActive = attractorRef.current.active
+      const attrMass = attractorRef.current.mass
+
+      // Environment physical coefficients (No gravity -> frictionless floating gas)
+      const friction = attrActive ? 0.994 : 1.0
+      const wallElasticity = attrActive ? 0.92 : 1.0
+      const ballRestitution = attrActive ? 0.98 : 1.0
+
+      // Overload check: count bodies close to attractor
+      if (attrActive) {
+        let closeCount = 0
+        circles.forEach(c => {
+          const dx = attrX - c.x
+          const dy = attrY - c.y
+          const dist = Math.sqrt(dx * dx + dy * dy)
+          if (dist < 60) {
+            closeCount++
+          }
+        })
+
+        if (closeCount >= Math.floor(circles.length * 0.72)) {
+          overloadTime += dt
+        } else {
+          overloadTime = Math.max(0.0, overloadTime - dt * 0.5) // Decay overload
+        }
+
+        if (overloadTime > 1.5) {
+          // Trigger core quantum discharge explosion!
+          overloadTime = 0.0
+          showDischargePulse = true
+          dischargeRingRadius = 0.0
+          dischargeRingAlpha = 1.0
+
+          // Fling bodies away from core
+          circles.forEach(c => {
+            const dx = c.x - attrX
+            const dy = c.y - attrY
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1.0
+            const force = rand(350, 520)
+            c.vx = (dx / dist) * force
+            c.vy = (dy / dist) * force
+          })
+
+          createExplosion(attrX, attrY, 45, '#ff9900')
+          createExplosion(attrX, attrY, 25, '#00f0ff')
+        }
+      } else {
+        overloadTime = 0.0
+      }
+
+      // Progress core discharge ring visual
+      if (showDischargePulse) {
+        dischargeRingRadius += 480 * dt
+        dischargeRingAlpha -= dt * 1.3
+        if (dischargeRingAlpha <= 0) {
+          showDischargePulse = false
+        }
+      }
 
       // 1. ANZAHL DER KREISE AKTUALISIEREN & BEWEGUNG SIMULIEREN
       circles.forEach(c => {
@@ -228,30 +294,29 @@ function PhysicsSandboxPanel() {
           }
         }
 
-        // Einfache Reibung (Dämpfung)
-        c.vx *= 0.994
-        c.vy *= 0.994
+        // Dämpfung (friction is 1.0 when active well is OFF)
+        c.vx *= friction
+        c.vy *= friction
 
         // Positionen aktualisieren
         c.x += c.vx * dt
         c.y += c.vy * dt
 
         // Kollisionen mit Wand auflösen
-        const elasticity = 0.92
         if (c.x - c.radius < 0) {
           c.x = c.radius
-          c.vx = -c.vx * elasticity
+          c.vx = -c.vx * wallElasticity
         } else if (c.x + c.radius > W) {
           c.x = W - c.radius
-          c.vx = -c.vx * elasticity
+          c.vx = -c.vx * wallElasticity
         }
 
         if (c.y - c.radius < 0) {
           c.y = c.radius
-          c.vy = -c.vy * elasticity
+          c.vy = -c.vy * wallElasticity
         } else if (c.y + c.radius > H) {
           c.y = H - c.radius
-          c.vy = -c.vy * elasticity
+          c.vy = -c.vy * wallElasticity
         }
       })
 
@@ -282,17 +347,14 @@ function PhysicsSandboxPanel() {
             c2.y += ny * overlap * (c1.mass / totalMass)
 
             // B. Elastischer Stoß (Impulserhaltung)
-            // Relative Geschwindigkeit
             const kx = c1.vx - c2.vx
             const ky = c1.vy - c2.vy
             
-            // Relativgeschwindigkeit projiziert auf Kollisionsnormale
             const velAlongNormal = kx * nx + ky * ny
 
             // Nur aufeinander zubewegen
             if (velAlongNormal > 0) {
-              const restitution = 0.98
-              const impulseScalar = (1 + restitution) * velAlongNormal / (1 / c1.mass + 1 / c2.mass)
+              const impulseScalar = (1 + ballRestitution) * velAlongNormal / (1 / c1.mass + 1 / c2.mass)
 
               c1.vx -= nx * impulseScalar / c1.mass
               c1.vy -= ny * impulseScalar / c1.mass
@@ -303,7 +365,6 @@ function PhysicsSandboxPanel() {
               const collisionX = c1.x + nx * c1.radius
               const collisionY = c1.y + ny * c1.radius
               
-              // Anzahl Funken proportional zur Aufprallenergie
               const impactEnergy = Math.abs(velAlongNormal)
               const particleCount = Math.min(10, Math.max(3, Math.round(impactEnergy * 0.05)))
               const baseColor = Math.random() < 0.5 ? c1.color : c2.color
@@ -323,8 +384,8 @@ function PhysicsSandboxPanel() {
           continue
         }
 
-        // Partikel fallen unter leichter Schwerkraft nach unten
-        p.vy += 65.0 * dt
+        // Partikel fallen unter Schwerkraft wenn well active ist
+        p.vy += (attrActive ? 65.0 : 5.0) * dt
         p.x += p.vx * dt
         p.y += p.vy * dt
         p.alpha = p.life / p.maxLife
@@ -418,6 +479,19 @@ function PhysicsSandboxPanel() {
         ctx.restore()
       }
 
+      // Quantum discharge blast wave ring
+      if (showDischargePulse && dischargeRingAlpha > 0) {
+        ctx.save()
+        ctx.strokeStyle = `rgba(0, 240, 255, ${dischargeRingAlpha})`
+        ctx.lineWidth = 3
+        ctx.shadowColor = '#00f0ff'
+        ctx.shadowBlur = 15
+        ctx.beginPath()
+        ctx.arc(attrX, attrY, dischargeRingRadius, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.restore()
+      }
+
       // C. Kreise zeichnen (mit leichtem Glow)
       circles.forEach(c => {
         ctx.save()
@@ -461,9 +535,16 @@ function PhysicsSandboxPanel() {
       ctx.font = '9px monospace'
       ctx.textAlign = 'left'
       ctx.fillText(`ACTIVE BODIES : ${circles.length}`, 10, 20)
-      ctx.fillText(`COLLISION RES : ELASTIC (100%)`, 10, 32)
+      ctx.fillText(`COLLISION RES : ELASTIC (${Math.round(ballRestitution * 100)}%)`, 10, 32)
       ctx.fillText(`PARTICLES    : ${particles.length}`, 10, 44)
       ctx.fillText(`GRAVITY WELL : ${attrActive ? 'ACTIVE (DRAGGABLE)' : 'OFF'}`, 10, 56)
+      if (attrActive) {
+        const pct = Math.min(100, Math.round((overloadTime / 1.5) * 100))
+        ctx.fillStyle = pct > 75 ? 'rgba(255, 50, 80, 0.95)' : 'rgba(0, 190, 255, 0.75)'
+        ctx.fillText(`CORE STABILITY: ${100 - pct}% ${pct > 75 ? '// WARNING OVERLOAD' : ''}`, 10, 68)
+      } else {
+        ctx.fillText(`ENVIRONMENT  : ZERO-G FLOAT`, 10, 68)
+      }
 
       ctx.textAlign = 'right'
       ctx.fillText('SYS: PHYSICS SANDBOX 2D', W - 10, 20)
@@ -527,8 +608,12 @@ function PhysicsSandboxPanel() {
       canvas.removeEventListener('touchstart', handleTouchStart)
       window.removeEventListener('touchmove', handleTouchMove)
       window.removeEventListener('touchend', onMouseUp)
+      canvas.removeEventListener('mousedown', onMouseDown)
+      window.removeEventListener('mousemove', onMouseMove)
+      canvas.removeEventListener('touchstart', onTouchStart)
+      canvas.removeEventListener('touchmove', onTouchMove)
     }
-  }, [attractor.active, attractor.mass])
+  }, []) // Empty dependency array -> effect runs exactly once on mount, no resets!
 
   return (
     <Panel title="QUANTUM GRAVITY // PHYSICS SANDBOX">
@@ -557,5 +642,6 @@ function PhysicsSandboxPanel() {
     </Panel>
   )
 }
+
 
 export default memo(PhysicsSandboxPanel)

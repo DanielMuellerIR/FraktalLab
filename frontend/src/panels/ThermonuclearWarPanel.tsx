@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import Panel from '../ui/Panel'
 import { subscribe } from '../utils/raf-coordinator'
-import { EARTH_BASE64 } from '../utils/earth-map-base64'
+import { VECTOR_EARTH } from '../utils/vector-earth'
 
 // Frame-Loop laeuft ueber den zentralen raf-coordinator (siehe AUDIT_FINDINGS.md H-05).
 
@@ -36,6 +36,7 @@ interface ImpactRipple {
   maxR: number
   alpha: number
   color: string
+  yieldText?: string
 }
 
 interface Particle {
@@ -49,18 +50,18 @@ interface Particle {
 }
 
 const CITIES: City[] = [
-  { name: 'WASHINGTON D.C.', x: 0.28, y: 0.44, side: 'west', isDestroyed: false, destroyedTime: 0 },
-  { name: 'NEW YORK', x: 0.29, y: 0.42, side: 'west', isDestroyed: false, destroyedTime: 0 },
-  { name: 'CHICAGO', x: 0.26, y: 0.42, side: 'west', isDestroyed: false, destroyedTime: 0 },
-  { name: 'SAN FRANCISCO', x: 0.16, y: 0.46, side: 'west', isDestroyed: false, destroyedTime: 0 },
-  { name: 'LONDON', x: 0.48, y: 0.36, side: 'west', isDestroyed: false, destroyedTime: 0 },
-  { name: 'PARIS', x: 0.50, y: 0.38, side: 'west', isDestroyed: false, destroyedTime: 0 },
-  { name: 'MOSCOW', x: 0.60, y: 0.35, side: 'east', isDestroyed: false, destroyedTime: 0 },
-  { name: 'BEIJING', x: 0.78, y: 0.42, side: 'east', isDestroyed: false, destroyedTime: 0 },
-  { name: 'TOKYO', x: 0.84, y: 0.44, side: 'east', isDestroyed: false, destroyedTime: 0 },
-  { name: 'SIBERIA MILITARY BASE', x: 0.68, y: 0.32, side: 'east', isDestroyed: false, destroyedTime: 0 },
-  { name: 'MONTANA SILO COMPLEX', x: 0.22, y: 0.39, side: 'west', isDestroyed: false, destroyedTime: 0 },
-  { name: 'URAL LAUNCH COMPLEX', x: 0.64, y: 0.34, side: 'east', isDestroyed: false, destroyedTime: 0 },
+  { name: 'WASHINGTON D.C.', x: 0.286, y: 0.284, side: 'west', isDestroyed: false, destroyedTime: 0 },
+  { name: 'NEW YORK', x: 0.294, y: 0.274, side: 'west', isDestroyed: false, destroyedTime: 0 },
+  { name: 'CHICAGO', x: 0.257, y: 0.267, side: 'west', isDestroyed: false, destroyedTime: 0 },
+  { name: 'SAN FRANCISCO', x: 0.160, y: 0.290, side: 'west', isDestroyed: false, destroyedTime: 0 },
+  { name: 'LONDON', x: 0.499, y: 0.214, side: 'west', isDestroyed: false, destroyedTime: 0 },
+  { name: 'PARIS', x: 0.506, y: 0.229, side: 'west', isDestroyed: false, destroyedTime: 0 },
+  { name: 'MOSCOW', x: 0.604, y: 0.190, side: 'east', isDestroyed: false, destroyedTime: 0 },
+  { name: 'BEIJING', x: 0.823, y: 0.278, side: 'east', isDestroyed: false, destroyedTime: 0 },
+  { name: 'TOKYO', x: 0.888, y: 0.302, side: 'east', isDestroyed: false, destroyedTime: 0 },
+  { name: 'SIBERIA MILITARY BASE', x: 0.790, y: 0.209, side: 'east', isDestroyed: false, destroyedTime: 0 },
+  { name: 'MONTANA SILO COMPLEX', x: 0.193, y: 0.240, side: 'west', isDestroyed: false, destroyedTime: 0 },
+  { name: 'URAL LAUNCH COMPLEX', x: 0.668, y: 0.184, side: 'east', isDestroyed: false, destroyedTime: 0 },
 ]
 
 function ThermonuclearWarPanel() {
@@ -89,46 +90,7 @@ function ThermonuclearWarPanel() {
     // Erster Frame nach Subscribe initialisiert lastT, damit dt nicht riesig wird
     let firstFrame = true
 
-    // Load and process Earth map
-    const mapImg = new Image()
-    let processedMap: HTMLCanvasElement | null = null
-    
-    mapImg.onload = () => {
-      const offscreen = document.createElement('canvas')
-      offscreen.width = mapImg.width
-      offscreen.height = mapImg.height
-      const oCtx = offscreen.getContext('2d')
-      if (oCtx) {
-        oCtx.drawImage(mapImg, 0, 0)
-        const imgData = oCtx.getImageData(0, 0, offscreen.width, offscreen.height)
-        const data = imgData.data
-
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i]
-          const g = data[i+1]
-          
-          if (r > 100) {
-            // Blueprint landmasses in semi-transparent cyan-blue
-            data[i]   = 0   // R
-            data[i+1] = 95  // G
-            data[i+2] = 200 // B
-            data[i+3] = 95  // A
-          } else if (g > 100) {
-            // Tactical city nodes in glowing cyan-green
-            data[i]   = 0   // R
-            data[i+1] = 255 // G
-            data[i+2] = 200 // B
-            data[i+3] = 255 // A
-          } else {
-            // Oceans are fully transparent
-            data[i+3] = 0
-          }
-        }
-        oCtx.putImageData(imgData, 0, 0)
-        processedMap = offscreen
-      }
-    }
-    mapImg.src = `data:image/webp;base64,${EARTH_BASE64}`
+    // Using vector-earth coordinates directly in the rendering loop
 
     const resize = () => {
       canvas.width = container.clientWidth
@@ -196,7 +158,7 @@ function ThermonuclearWarPanel() {
         active: true,
         trail: [],
         type: 'icbm',
-        color: 'rgba(255, 30, 80, 0.95)' // Red arc
+        color: 'rgba(244, 63, 94, 0.7)' // Desaturated rose/red arc
       })
     }
 
@@ -217,7 +179,7 @@ function ThermonuclearWarPanel() {
         trail: [],
         type: 'abm',
         targetMissile: targetMissile,
-        color: 'rgba(0, 240, 255, 0.95)' // Cyan arc
+        color: 'rgba(148, 163, 184, 0.75)' // Desaturated slate arc
       })
     }
 
@@ -442,14 +404,15 @@ function ThermonuclearWarPanel() {
               m.active = false
               target.active = false
               
-              spawnExplosion(headICBM.x, headICBM.y, 22, '#00ffff')
+              spawnExplosion(headICBM.x, headICBM.y, 22, '#94a3b8')
               ripples.push({
                 x: headICBM.x,
                 y: headICBM.y,
                 r: 0,
                 maxR: 35,
                 alpha: 1.0,
-                color: 'rgba(0, 240, 255, 0.9)'
+                color: 'rgba(148, 163, 184, 0.8)',
+                yieldText: 'INTERCEPT'
               })
               addLog(`INTERCEPT: ICBM THREAT NEUTRALIZED BY SHIELD OVER SECTOR.`)
               
@@ -476,14 +439,16 @@ function ThermonuclearWarPanel() {
             }
 
             // Spawn destructive explosion
-            spawnExplosion(m.to.x, m.to.y, 45, '#ff4400')
+            spawnExplosion(m.to.x, m.to.y, 45, '#e11d48')
+            const yieldVal = 10 + Math.floor(Math.random() * 16)
             ripples.push({
               x: m.to.x,
               y: m.to.y,
               r: 0,
               maxR: 65,
               alpha: 1.0,
-              color: 'rgba(255, 30, 80, 0.95)'
+              color: 'rgba(244, 63, 94, 0.85)',
+              yieldText: `${yieldVal} MT`
             })
             currentCasualties += Math.floor(15 + Math.random() * 45) // Millions
           }
@@ -520,11 +485,11 @@ function ThermonuclearWarPanel() {
       }
 
       // ── Drawing ────────────────────────────────────────────────────────────
-      ctx.fillStyle = '#010408' // Dark blue void
+      ctx.fillStyle = '#080c10' // Dark steel void
       ctx.fillRect(0, 0, W, H)
 
       // 1. Grid
-      ctx.strokeStyle = 'rgba(0, 110, 220, 0.04)'
+      ctx.strokeStyle = 'rgba(71, 85, 105, 0.05)'
       ctx.lineWidth = 0.5
       const gSize = 35
       ctx.beginPath()
@@ -536,26 +501,61 @@ function ThermonuclearWarPanel() {
       }
       ctx.stroke()
 
-      // 2. Blueprint Tactical processed map
-      if (processedMap) {
-        ctx.save()
-        ctx.drawImage(processedMap, 0, 0, W, H)
-        ctx.restore()
-      }
+      // 2. Blueprint Tactical vector map (infinitely sharp continent outlines)
+      ctx.save()
+      ctx.strokeStyle = 'rgba(71, 85, 105, 0.45)' // Sleek slate-600 line
+      ctx.lineWidth = 1.0
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.35)' // Subtle dark slate filled land
+      
+      VECTOR_EARTH.forEach(poly => {
+        if (poly.length < 2) return
+        ctx.beginPath()
+        poly.forEach((pt, idx) => {
+          const px = (pt.lon + 180) * (W / 360)
+          const py = (90 - pt.lat) * (H / 180)
+          if (idx === 0) {
+            ctx.moveTo(px, py)
+          } else {
+            ctx.lineTo(px, py)
+          }
+        })
+        ctx.closePath()
+        ctx.fill()
+        ctx.stroke()
+      })
+      ctx.restore()
 
       // 3. Expanding Detonation Ripples
       ripples.forEach(r => {
         ctx.save()
         ctx.strokeStyle = r.color
-        ctx.lineWidth = 1.6
+        ctx.lineWidth = 1.2
         ctx.beginPath()
         ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2)
         ctx.stroke()
         
-        ctx.fillStyle = r.color.replace('0.95', '0.1').replace('0.9', '0.1')
+        ctx.fillStyle = r.color.replace('0.95', '0.07').replace('0.9', '0.07').replace('0.85', '0.07').replace('0.8', '0.07')
         ctx.beginPath()
         ctx.arc(r.x, r.y, r.r * 0.7, 0, Math.PI * 2)
         ctx.fill()
+
+        // Vector Crosshair at center
+        ctx.strokeStyle = r.color
+        ctx.lineWidth = 0.8
+        ctx.beginPath()
+        ctx.moveTo(r.x - 4, r.y)
+        ctx.lineTo(r.x + 4, r.y)
+        ctx.moveTo(r.x, r.y - 4)
+        ctx.lineTo(r.x, r.y + 4)
+        ctx.stroke()
+
+        // Yield/Intercept Labels
+        if (r.yieldText) {
+          ctx.fillStyle = r.color
+          ctx.font = '7px monospace'
+          ctx.textAlign = 'center'
+          ctx.fillText(r.yieldText, r.x, r.y - r.r - 4)
+        }
         ctx.restore()
       })
 
@@ -606,32 +606,32 @@ function ThermonuclearWarPanel() {
           // Blinking nuclear target bracket for destroyed cities
           const blk = Math.floor(t / 250) % 2 === 0
           if (blk) {
-            ctx.strokeStyle = 'rgba(255, 30, 80, 0.85)'
+            ctx.strokeStyle = 'rgba(244, 63, 94, 0.75)'
             ctx.lineWidth = 1.0
-            ctx.strokeRect(cx - 6, cy - 6, 12, 12)
+            ctx.strokeRect(cx - 5, cy - 5, 10, 10)
             
-            ctx.fillStyle = '#ff1e3c'
+            ctx.fillStyle = '#f43f5e'
             ctx.font = 'bold 8px monospace'
             ctx.textAlign = cx > W / 2 ? 'right' : 'left'
             ctx.fillText('TERMINATED', cx > W / 2 ? cx - 8 : cx + 8, cy - 3)
           }
         } else {
           // Normal active city dot
-          const pulse = 1.0 + Math.sin(t * 0.007 + cx) * 0.25
-          ctx.strokeStyle = c.side === 'west' ? 'rgba(0, 180, 255, 0.45)' : 'rgba(0, 255, 140, 0.45)'
+          const pulse = 1.0 + Math.sin(t * 0.007 + cx) * 0.2
+          ctx.strokeStyle = c.side === 'west' ? 'rgba(148, 163, 184, 0.5)' : 'rgba(110, 231, 183, 0.4)'
           ctx.lineWidth = 0.8
           ctx.beginPath()
-          ctx.arc(cx, cy, 5.0 * pulse, 0, Math.PI * 2)
+          ctx.arc(cx, cy, 4.5 * pulse, 0, Math.PI * 2)
           ctx.stroke()
 
-          ctx.fillStyle = c.side === 'west' ? '#00c3ff' : '#00ff8c'
+          ctx.fillStyle = c.side === 'west' ? '#94a3b8' : '#6ee7b7'
           ctx.beginPath()
-          ctx.arc(cx, cy, 2.2, 0, Math.PI * 2)
+          ctx.arc(cx, cy, 2.0, 0, Math.PI * 2)
           ctx.fill()
         }
 
         // Draw names
-        ctx.fillStyle = c.isDestroyed ? 'rgba(255, 30, 80, 0.4)' : 'rgba(255, 255, 255, 0.55)'
+        ctx.fillStyle = c.isDestroyed ? 'rgba(244, 63, 94, 0.45)' : 'rgba(203, 213, 225, 0.65)'
         ctx.font = '8px monospace'
         ctx.textAlign = cx > W / 2 ? 'right' : 'left'
         ctx.fillText(c.name, cx > W / 2 ? cx - 8 : cx + 8, cy + 8)
@@ -660,24 +660,24 @@ function ThermonuclearWarPanel() {
         const blink = Math.floor(t / 400) % 2 === 0
         if (blink) {
           ctx.save()
-          ctx.fillStyle = 'rgba(255, 30, 80, 0.95)'
-          ctx.font = 'bold 16px monospace'
+          ctx.fillStyle = 'rgba(244, 63, 94, 0.9)'
+          ctx.font = 'bold 14px monospace'
           ctx.textAlign = 'center'
           ctx.fillText('NO WINNERS // EXTINCTION THRESHOLD REACHED', W / 2, H * 0.48)
-          ctx.font = 'bold 10px monospace'
-          ctx.fillStyle = '#00ffff'
+          ctx.font = 'bold 9px monospace'
+          ctx.fillStyle = '#6ee7b7'
           ctx.fillText('A STRANGE GAME. THE ONLY WINNING MOVE IS NOT TO PLAY.', W / 2, H * 0.53)
           ctx.restore()
         }
       }
 
       // 8. Draw Title HUD
-      ctx.fillStyle = 'rgba(255, 30, 80, 0.85)'
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.85)'
       ctx.font = 'bold 10px monospace'
       ctx.textAlign = 'left'
       ctx.fillText(`TACTICAL ALERT: DEFCON ${defcon}`, 12, 22)
 
-      ctx.fillStyle = 'rgba(200, 220, 255, 0.6)'
+      ctx.fillStyle = 'rgba(203, 213, 225, 0.65)'
       ctx.font = '9px monospace'
       ctx.fillText(`STATUS LEVEL   : ${stageName}`, 12, 36)
       ctx.fillText(`AIRBORNE ICBMS : ${activeMissilesCount}`, 12, 48)
@@ -685,7 +685,7 @@ function ThermonuclearWarPanel() {
 
       ctx.textAlign = 'right'
       ctx.fillText('GLOBAL DEFENSE MAINBOARD // WOPR', W - 12, 22)
-      ctx.fillText('MAP SECTOR: PLANAR CYLINDRICAL (REAL)', W - 12, 36)
+      ctx.fillText('MAP SECTOR: PLANAR CYLINDRICAL (BOUNDARY)', W - 12, 36)
       ctx.fillText(`SIMULATOR TIME: ${simTime.toFixed(1)}S`, W - 12, 48)
     }
 
@@ -711,9 +711,9 @@ function ThermonuclearWarPanel() {
         </div>
         
         {/* Unterer fiktiver Ticker (DEFCON / Kriegsverlauf) */}
-        <div className="h-24 bg-red-950/20 border-t border-red-900/60 p-2 font-mono text-[8px] text-red-500 overflow-y-auto leading-relaxed flex flex-col-reverse select-none">
+        <div className="h-24 bg-slate-950/20 border-t border-slate-900/60 p-2 font-mono text-[8px] text-slate-400 overflow-y-auto leading-relaxed flex flex-col-reverse select-none">
           {logs.map((log, idx) => (
-            <div key={idx} className={idx === 0 ? 'text-red-400 font-bold animate-pulse' : 'text-red-700/80'}>
+            <div key={idx} className={idx === 0 ? 'text-rose-400 font-bold animate-pulse' : 'text-slate-600'}>
               {log}
             </div>
           ))}

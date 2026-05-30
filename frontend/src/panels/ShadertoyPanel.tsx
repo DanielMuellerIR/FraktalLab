@@ -196,171 +196,151 @@ const RETRO_WAVE_SHADER = `
                mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), f.x), f.y);
   }
 
-  float getTerrainHeight(vec2 p) {
-    float valley = smoothstep(0.08, 0.85, abs(p.x));
+  // Complex Voxel Terrain Height function
+  float getVoxelHeight(vec2 p) {
+    // Voxelized coordinate resolution: 10.0 cells per unit
+    vec2 cell = floor(p * 10.0) / 10.0;
     
-    float hills1 = sin(p.x * 2.2) * cos(p.y * 1.1) * 0.2;
-    float hills2 = noise(p * 4.5) * 0.08;
-    float waves = sin(p.y * 3.5) * 0.045;
-    float hills = hills1 + hills2 + waves;
+    // Flat central valley for the synthwave grid highway
+    float valley = smoothstep(0.15, 0.75, abs(cell.x));
     
-    return valley * 0.42 + hills * valley;
-  }
-
-  float drawPalm2D(vec2 p, float time) {
-    float trunk = 0.0;
-    float trunkCurve = 0.15 * sin(p.y * 1.8 + 1.2);
-    float dx = p.x - trunkCurve;
-    if (p.y > -2.2 && p.y < 0.0) {
-        float width = 0.045 * (1.0 - 0.55 * (p.y + 2.2) / 2.2);
-        width += 0.005 * sin(p.y * 25.0);
-        trunk = smoothstep(width, width - 0.015, abs(dx));
-    }
-
-    float leaves = 0.0;
-    vec2 crown = vec2(0.15 * sin(1.2), 0.0);
-    vec2 lp = p - crown;
-    float r = length(lp);
-    float a = atan(lp.y, lp.x);
-
-    for (int i = 0; i < 6; i++) {
-        float angle = float(i) * 3.14159 / 3.0 + 0.15 * sin(time + float(i)*1.5);
-        float fa = a - angle;
-        fa = atan(sin(fa), cos(fa));
-        
-        float bend = 0.45 * r * r;
-        float maxR = 0.65 + 0.15 * cos(float(i) * 3.7);
-        if (r < maxR && r > 0.04) {
-            float stemVal = abs(fa);
-            float blade = abs(sin(r * 45.0 + float(i)*2.0));
-            float bladeLimit = 0.18 * blade * (1.0 - r/maxR);
-            if (stemVal < bladeLimit) {
-                leaves = max(leaves, 1.0 - r/maxR);
-            }
-        }
-    }
-    return max(trunk, leaves);
+    // Complex mountain ridges on both sides
+    float h1 = sin(cell.x * 1.8) * cos(cell.y * 0.9) * 0.38;
+    float h2 = noise(cell * 3.8) * 0.15;
+    float h3 = noise(cell * 8.0) * 0.06; // high-frequency peaks
+    
+    return valley * (0.52 + h1 + h2 + h3);
   }
 
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;
-    float time = iTime * 0.8;
-    float horizon = -0.06;
+    float time = iTime * 0.85;
+    float horizon = -0.05;
     
-    vec3 skyCol = mix(vec3(0.04, 0.01, 0.10), vec3(0.85, 0.04, 0.42), uv.y + 0.5);
+    // 1. Premium Retro Sky: Dark purple space to glowing pink horizon
+    vec3 skyCol = mix(vec3(0.02, 0.005, 0.08), vec3(0.82, 0.02, 0.45), uv.y + 0.42);
     vec3 col = skyCol;
     
-    if (uv.y > horizon) {
-      vec2 starUV = uv * 32.0;
-      float sHash = hash(floor(starUV));
-      if (sHash > 0.988) {
-        float twinkle = sin(time * 3.5 + sHash * 6.28) * 0.5 + 0.5;
-        col += vec3(twinkle * 0.85);
+    // 2. High-Fidelity Sub-Pixel Twinkling Stars (No Chunky Blobs)
+    if (uv.y > horizon + 0.015) {
+      vec2 starGrid = fract(uv * 28.0) - 0.5;
+      vec2 cellId = floor(uv * 28.0);
+      float sHash = hash(cellId);
+      if (sHash > 0.986) {
+        float twinkle = sin(time * 2.8 + sHash * 6.28) * 0.45 + 0.55;
+        float starSize = 0.02 * sHash;
+        float starVal = smoothstep(starSize, 0.0, length(starGrid));
+        col += vec3(0.96, 0.92, 1.0) * starVal * twinkle * 0.95;
       }
     }
     
-    vec2 sunPos = vec2(0.0, 0.14);
+    // 3. Iconic Retro Synthwave Sun with Smooth Anti-Aliased Cuts
+    vec2 sunPos = vec2(0.0, 0.16);
     float r = 0.28;
     float dist = length(uv - sunPos);
-    if (dist < r && uv.y > horizon) {
+    if (dist < r && uv.y > horizon + 0.002) {
       float grad = (uv.y - sunPos.y + r) / (2.0 * r);
-      vec3 sunCol = mix(vec3(0.98, 0.18, 0.52), vec3(0.98, 0.92, 0.12), grad);
+      vec3 sunCol = mix(vec3(0.96, 0.02, 0.52), vec3(0.96, 0.88, 0.08), grad);
       
-      float bar = fract(uv.y * 14.0 - time * 0.35);
-      float threshold = 0.05 + 0.65 * (1.0 - (uv.y - horizon) / (2.0 * r));
-      if (bar > threshold) {
-        col = sunCol;
-      }
+      // Horizontal slices moving downward
+      float barWidth = 15.0;
+      float barPhase = uv.y * barWidth - time * 0.38;
+      float barFract = fract(barPhase);
+      
+      // Width of horizontal cuts thickens towards bottom
+      float cutoff = 0.06 + 0.65 * (1.0 - (uv.y - horizon) / (2.0 * r));
+      float sunLine = smoothstep(cutoff - 0.015, cutoff + 0.015, barFract);
+      
+      // Anti-aliased boundary cut
+      float sunMask = 1.0 - smoothstep(r - 0.008, r, dist);
+      col = mix(col, sunCol, sunLine * sunMask);
     }
     
-    float sunGlow = exp(-dist * 4.5) * 0.35;
-    col += vec3(0.98, 0.18, 0.52) * sunGlow;
+    // Sun outer glow
+    float sunGlow = exp(-dist * 5.5) * 0.38;
+    col += vec3(0.96, 0.02, 0.52) * sunGlow;
     
+    // 4. Raymarching Voxel Terrain Ground
     float t_dist = -1.0;
     vec3 hitPos = vec3(0.0);
     bool hit = false;
-    vec3 ro = vec3(0.0, 0.38, time * 0.72);
-    vec3 rd = normalize(vec3(uv.x, uv.y - 0.04, 0.65));
+    
+    // Camera moves forward at constant speed
+    float speed = 1.6;
+    vec3 ro = vec3(0.0, 0.48, time * speed);
+    
+    // Ray direction (perserving aspect ratio)
+    vec3 rd = normalize(vec3(uv.x, uv.y - horizon, 0.72));
 
     if (uv.y <= horizon) {
       t_dist = 0.0;
-      for (int i = 0; i < 75; i++) {
+      float t_prev = 0.0;
+      
+      for (int i = 0; i < 90; i++) {
         vec3 p = ro + rd * t_dist;
-        float h = getTerrainHeight(p.xz);
+        float h = getVoxelHeight(p.xz);
+        
         if (p.y < h) {
-          hitPos = p;
+          // Precise step refinement via binary search
+          float t_min = t_prev;
+          float t_max = t_dist;
+          for (int j = 0; j < 5; j++) {
+            float t_mid = (t_min + t_max) * 0.5;
+            vec3 midPos = ro + rd * t_mid;
+            if (midPos.y < getVoxelHeight(midPos.xz)) {
+              t_max = t_mid;
+            } else {
+              t_min = t_mid;
+            }
+          }
+          hitPos = ro + rd * t_max;
           hit = true;
           break;
         }
-        t_dist += 0.038 + t_dist * 0.016;
+        t_prev = t_dist;
+        // Step size accelerates to cover deep distance to the horizon
+        t_dist += 0.038 + t_dist * 0.012;
       }
       
       if (hit) {
-        float thick = 0.016;
-        float blur = 0.008;
-        float gx = 1.0 - smoothstep(thick - blur, thick + blur, min(fract(hitPos.x * 5.0), 1.0 - fract(hitPos.x * 5.0)));
-        float gz = 1.0 - smoothstep(thick - blur, thick + blur, min(fract(hitPos.z * 5.0), 1.0 - fract(hitPos.z * 5.0)));
-        float grid = max(gx, gz);
+        // 5. Infinite Thin Sharp Grid Lines tapering into horizon
+        // Draw grid lines on voxel cell boundaries (spaced 0.1 units apart)
+        vec2 gridPos = hitPos.xz * 10.0;
+        vec2 distToEdge = abs(fract(gridPos - 0.5) - 0.5);
         
-        vec3 baseCol = vec3(0.02, 0.0, 0.05);
-        vec3 gridCol = vec3(0.0, 0.68, 0.98);
+        // Dynamic screen-space line thickness based on distance to prevent aliasing
+        float thickness = 0.018 + t_dist * 0.0028;
+        float lineX = smoothstep(thickness, thickness - 0.002, distToEdge.x);
+        float lineZ = smoothstep(thickness, thickness - 0.002, distToEdge.y);
+        float grid = max(lineX, lineZ);
         
-        float peakGlow = smoothstep(0.05, 0.38, hitPos.y);
-        baseCol += vec3(0.92, 0.1, 0.58) * peakGlow * 0.42;
+        // Premium desaturated/neon color shading
+        float heightVal = smoothstep(0.05, 0.48, hitPos.y);
         
-        vec3 terrainCol = mix(baseCol, gridCol, grid);
-        float fog = clamp(t_dist / 6.2, 0.0, 1.0);
-        col = mix(terrainCol, vec3(0.18, 0.02, 0.22), fog);
+        // Deep indigo/magenta ground base
+        vec3 baseCol = mix(vec3(0.02, 0.005, 0.06), vec3(0.85, 0.02, 0.48), heightVal * 0.45);
+        
+        // Bright neon cyan wireframe grid
+        vec3 gridCol = vec3(0.0, 0.88, 1.0);
+        
+        // Merge grid and base
+        vec3 terrainCol = mix(baseCol, gridCol, grid * 0.9);
+        
+        // Horizon Fog: Fades ground completely into glowing purple at horizon
+        float fog = clamp(t_dist / 6.5, 0.0, 1.0);
+        col = mix(terrainCol, vec3(0.18, 0.01, 0.22), fog);
       } else {
-        col = vec3(0.18, 0.02, 0.22);
+        col = vec3(0.18, 0.01, 0.22);
       }
     }
     
-    float palmCoverage = 0.0;
-    float palmAberration = 0.0;
+    // 6. Horizon Neon Glow
+    float horizGlow = exp(-abs(uv.y - horizon) * 18.0);
+    col += vec3(0.92, 0.02, 0.52) * horizGlow * 0.52;
     
-    float spacing = 2.4;
-    float startZ = floor(ro.z / spacing) * spacing;
-    
-    for (int k = 0; k < 6; k++) {
-        float z_pos = startZ + float(k) * spacing;
-        for (float side = -1.0; side <= 1.0; side += 2.0) {
-            float x_pos = side * 1.35;
-            float y_pos = -0.05;
-            
-            vec3 p_crown = vec3(x_pos, y_pos + 1.25, z_pos);
-            vec3 camCrown = p_crown - ro;
-            
-            if (camCrown.z > 0.1) {
-                if (hit && camCrown.z > (hitPos.z - ro.z)) {
-                    continue;
-                }
-                
-                float sz = 1.0 / camCrown.z;
-                vec2 projCrown = vec2(camCrown.x / camCrown.z * 0.65, (camCrown.y / camCrown.z * 0.65) + 0.04);
-                
-                vec2 localUV = (uv - projCrown) / sz;
-                float palmShape = drawPalm2D(localUV, time * 1.5 + z_pos);
-                palmCoverage = max(palmCoverage, palmShape);
-                
-                vec2 abUV = (uv + vec2(0.006 * sz * side, 0.0) - projCrown) / sz;
-                float abShape = drawPalm2D(abUV, time * 1.5 + z_pos);
-                palmAberration = max(palmAberration, abShape);
-            }
-        }
-    }
-    
-    vec3 palmCol = vec3(0.01, 0.005, 0.02);
-    col = mix(col, palmCol, palmCoverage);
-    if (palmAberration > 0.0 && palmCoverage < 0.95) {
-        col = mix(col, vec3(0.98, 0.18, 0.42), 0.35 * palmAberration);
-    }
-    
-    float horizGlow = exp(-abs(uv.y - horizon) * 16.0);
-    col += vec3(0.95, 0.18, 0.55) * horizGlow * 0.45;
-    
-    col *= 0.93 + 0.07 * sin(fragCoord.y * 1.8);
-    col *= 1.0 - length(uv) * 0.45;
+    // Scanlines & Vignette overlay for retro CRT/VHS feel
+    col *= 0.94 + 0.06 * sin(fragCoord.y * 1.8);
+    col *= 1.0 - length(uv) * 0.42;
     
     fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
   }

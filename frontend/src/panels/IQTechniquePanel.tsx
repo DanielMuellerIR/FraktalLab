@@ -1,8 +1,18 @@
-import React from 'react'
+import React, { useState } from 'react'
 import ShaderPanel from '../ui/ShaderPanel'
+import { getRandomPaletteName, getPaletteUniforms, PALETTES } from '../utils/palettes'
 
 // ── Shader 1: Polynomial Smooth Minimum SDF Metaballs ───────────────────────
 const SMOOTH_MIN_SHADER = `
+  uniform vec3 uPalA;
+  uniform vec3 uPalB;
+  uniform vec3 uPalC;
+  uniform vec3 uPalD;
+
+  vec3 palette(float t, vec3 a, vec3 b, vec3 c, vec3 d) {
+    return a + b * cos(6.283185 * (c * t + d));
+  }
+
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;
     float time = iTime * 1.4;
@@ -25,12 +35,15 @@ const SMOOTH_MIN_SHADER = `
     
     // Draw neon outline glow
     float glow = 0.016 / (abs(d) + 0.004);
-    vec3 col = vec3(0.0, glow * 0.95, glow * 0.45);
+    
+    // Palette colored glow shifting slowly over time
+    vec3 col = palette(glow * 0.15 + iTime * 0.18, uPalA, uPalB, uPalC, uPalD) * glow * 1.4;
     
     // Draw matrix dots inside the blobs
     if (d < 0.0) {
         float dots = sin(uv.x * 65.0) * sin(uv.y * 65.0);
-        col += vec3(0.0, smoothstep(0.72, 1.0, dots) * 0.38, 0.0);
+        float dotIntensity = smoothstep(0.72, 1.0, dots) * 0.38;
+        col += palette(dots * 0.2 - iTime * 0.1, uPalA, uPalB, uPalC, uPalD) * dotIntensity;
     }
     
     fragColor = vec4(col, 1.0);
@@ -38,17 +51,31 @@ const SMOOTH_MIN_SHADER = `
 `
 
 export const IQSmoothMin = React.memo(function IQSmoothMin() {
+  const [paletteName] = useState(() => getRandomPaletteName())
+  const uniforms = getPaletteUniforms(paletteName)
+  const currentPalette = PALETTES[paletteName] || PALETTES.vapor
+
   return (
     <ShaderPanel
       fragmentShader={SMOOTH_MIN_SHADER}
-      title="SDF METABALLS // POLY-SMOOTHMIN"
-      attribution="Smooth Minimum SDF by Inigo Quilez (eigene Umsetzung)"
+      uniforms={uniforms}
+      title={`SDF METABALLS // POLY-SMOOTHMIN [PAL: ${currentPalette.name.toUpperCase()}]`}
+      attribution="Smooth Minimum SDF by Inigo Quilez (Palette-Rework)"
     />
   )
 })
 
 // ── Shader 2: Fractional Brownian Motion Digital Storm ──────────────────────
 const DIGITAL_STORM_SHADER = `
+  uniform vec3 uPalA;
+  uniform vec3 uPalB;
+  uniform vec3 uPalC;
+  uniform vec3 uPalD;
+
+  vec3 palette(float t, vec3 a, vec3 b, vec3 c, vec3 d) {
+    return a + b * cos(6.283185 * (c * t + d));
+  }
+
   float hash(vec2 p) {
     return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
   }
@@ -88,34 +115,29 @@ const DIGITAL_STORM_SHADER = `
     
     float f = fbm(uv * 5.5 + r * 2.8);
     
-    vec3 col = mix(
-        vec3(0.0, 0.08, 0.04),
-        vec3(0.0, 0.75, 0.32),
-        clamp(f * f * 4.0, 0.0, 1.0)
-    );
-    col = mix(
-        col,
-        vec3(0.0, 0.28, 0.85),
-        clamp(length(q), 0.0, 1.0) * 0.28
-    );
-    col = mix(
-        col,
-        vec3(0.75, 0.95, 0.55),
-        clamp(r.x, 0.0, 1.0) * 0.38
-    );
+    // Map fractal storm values to selected dynamic palette
+    vec3 col = palette(f * 0.45 + length(q) * 0.22 + time * 0.06, uPalA, uPalB, uPalC, uPalD);
     
-    col *= 0.94 + 0.06 * sin(fragCoord.y * 1.4);
+    // Boost contrast & apply shading
+    col *= (f * 1.45);
+    col *= 0.93 + 0.07 * sin(fragCoord.y * 1.4);
     
-    fragColor = vec4(col * (f * 1.35), 1.0);
+    fragColor = vec4(col, 1.0);
   }
 `
 
 export const IQDigitalStorm = React.memo(function IQDigitalStorm() {
+  const [paletteName] = useState(() => getRandomPaletteName())
+  const uniforms = getPaletteUniforms(paletteName)
+  const currentPalette = PALETTES[paletteName] || PALETTES.vapor
+
   return (
     <ShaderPanel
       fragmentShader={DIGITAL_STORM_SHADER}
-      title="NEURAL FBM DIGITAL STORM // CALIBRATING"
-      attribution="FBM Digital Storm by Inigo Quilez (eigene Umsetzung)"
+      uniforms={uniforms}
+      title={`NEURAL FBM DIGITAL STORM [PAL: ${currentPalette.name.toUpperCase()}]`}
+      attribution="FBM Digital Storm by Inigo Quilez (Palette-Rework)"
     />
   )
 })
+

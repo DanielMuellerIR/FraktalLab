@@ -193,40 +193,48 @@ function DaggerfallPanel() {
         texCanvas.height = texSize
         const tCtx = texCanvas.getContext('2d')!
 
-        tCtx.fillStyle = '#010502'
-        tCtx.fillRect(0, 0, texSize, texSize)
-
         if (t === 0) {
-          // Texture 0: Neon circuit wall (high res details)
-          tCtx.strokeStyle = '#041c09'
+          // Texture 0: Neon circuit wall (high res details) - cyan/pink
+          tCtx.fillStyle = '#020617' // slate-950
+          tCtx.fillRect(0, 0, texSize, texSize)
+
+          tCtx.strokeStyle = '#082f49' // dark cyan
           tCtx.lineWidth = 2
           for (let i = 0; i < texSize; i += 32) {
             tCtx.strokeRect(i, 0, 32, texSize)
             tCtx.strokeRect(0, i, texSize, 32)
           }
-          // Draw high-res glowing green trace lines
-          tCtx.strokeStyle = '#22c55e'
+          // Draw high-res glowing cyan & pink trace lines
+          tCtx.strokeStyle = '#06b6d4' // neon cyan
           tCtx.lineWidth = 1.5
           tCtx.beginPath()
           tCtx.moveTo(16, 0); tCtx.lineTo(16, 48); tCtx.lineTo(48, 80); tCtx.lineTo(48, 128)
-          tCtx.moveTo(96, 128); tCtx.lineTo(96, 80); tCtx.lineTo(64, 48); tCtx.lineTo(64, 0)
           tCtx.moveTo(0, 32); tCtx.lineTo(32, 32); tCtx.lineTo(48, 48); tCtx.lineTo(48, 80); tCtx.lineTo(32, 96); tCtx.lineTo(0, 96)
           tCtx.stroke()
 
-          tCtx.fillStyle = '#a3e635'
+          tCtx.strokeStyle = '#ec4899' // neon pink
+          tCtx.beginPath()
+          tCtx.moveTo(96, 128); tCtx.lineTo(96, 80); tCtx.lineTo(64, 48); tCtx.lineTo(64, 0)
+          tCtx.stroke()
+
+          tCtx.fillStyle = '#f472b6' // pink dot
           tCtx.beginPath(); tCtx.arc(16, 48, 3, 0, Math.PI*2); tCtx.fill()
           tCtx.beginPath(); tCtx.arc(48, 80, 3, 0, Math.PI*2); tCtx.fill()
+          tCtx.fillStyle = '#22d3ee' // cyan dot
           tCtx.beginPath(); tCtx.arc(64, 48, 3, 0, Math.PI*2); tCtx.fill()
           tCtx.beginPath(); tCtx.arc(48, 48, 3, 0, Math.PI*2); tCtx.fill()
         } else if (t === 1) {
           // Texture 1: Firewall Red Grid
-          tCtx.strokeStyle = '#2e040a'
+          tCtx.fillStyle = '#0f0507' // dark reddish black
+          tCtx.fillRect(0, 0, texSize, texSize)
+
+          tCtx.strokeStyle = '#450a0a' // dark red grid
           tCtx.lineWidth = 2
           for (let i = 0; i < texSize; i += 16) {
             tCtx.strokeRect(i, 0, 16, texSize)
             tCtx.strokeRect(0, i, texSize, 16)
           }
-          tCtx.fillStyle = '#ef4444'
+          tCtx.fillStyle = '#ef4444' // bright red gate icon
           tCtx.fillRect(40, 48, 48, 44)
           tCtx.strokeStyle = '#ef4444'
           tCtx.lineWidth = 4
@@ -238,25 +246,41 @@ function DaggerfallPanel() {
           tCtx.lineWidth = 2
           tCtx.strokeRect(4, 4, texSize - 8, texSize - 8)
         } else if (t === 2) {
-          // Texture 2: Locked Gate Blue
-          tCtx.strokeStyle = '#021e3d'
+          // Texture 2: Locked Gate - Golden
+          tCtx.fillStyle = '#1c1917' // dark stone/gold background
+          tCtx.fillRect(0, 0, texSize, texSize)
+
+          tCtx.strokeStyle = '#44403c' // dark gold/stone grid
           tCtx.lineWidth = 2.5
           for (let i = 0; i < texSize; i += 32) {
             tCtx.strokeRect(0, i, texSize, 32)
           }
-          tCtx.fillStyle = '#3b82f6'
+          tCtx.fillStyle = '#eab308' // golden pad/gate
           tCtx.fillRect(20, 40, 88, 48)
-          tCtx.strokeStyle = '#60a5fa'
+          tCtx.strokeStyle = '#facc15' // bright gold outline
           tCtx.lineWidth = 2
           tCtx.strokeRect(20, 40, 88, 48)
+
+          // Draw a small keyhole detail on the golden gate
+          tCtx.fillStyle = '#1c1917'
+          tCtx.beginPath()
+          tCtx.arc(64, 58, 5, 0, Math.PI * 2)
+          tCtx.fill()
+          tCtx.beginPath()
+          tCtx.moveTo(62, 58)
+          tCtx.lineTo(66, 58)
+          tCtx.lineTo(68, 72)
+          tCtx.lineTo(60, 72)
+          tCtx.closePath()
+          tCtx.fill()
         } else {
-          // Texture 3: Decrypted Data (blank/noise fallback)
-          tCtx.fillStyle = '#020f04'
+          // Texture 3: Decrypted Data (blank/noise fallback) - cyan/pink digital rain
+          tCtx.fillStyle = '#090514' // dark purple/black
           tCtx.fillRect(0, 0, texSize, texSize)
-          tCtx.fillStyle = '#4ade80'
           for (let i = 0; i < 40; i++) {
             const rx = Math.floor(Math.random() * texSize)
             const ry = Math.floor(Math.random() * texSize)
+            tCtx.fillStyle = Math.random() > 0.5 ? '#22d3ee' : '#ec4899'
             tCtx.fillRect(rx, ry, 2, 2)
           }
         }
@@ -359,11 +383,50 @@ function DaggerfallPanel() {
 
     startNewMaze()
 
-    function isWalkable(x: number, y: number): boolean {
-      const tx = Math.floor(x)
-      const ty = Math.floor(y)
-      if (tx < 0 || ty < 0 || tx >= TILE_W || ty >= TILE_H) return false
-      return walls[ty][tx] === 0
+
+
+    function resolveCollisions(px: number, py: number, radius: number): [number, number] {
+      let outX = px
+      let outY = py
+      const minX = Math.floor(outX - 1)
+      const maxX = Math.floor(outX + 1)
+      const minY = Math.floor(outY - 1)
+      const maxY = Math.floor(outY + 1)
+
+      for (let iter = 0; iter < 2; iter++) {
+        for (let ty = minY; ty <= maxY; ty++) {
+          for (let tx = minX; tx <= maxX; tx++) {
+            if (tx < 0 || ty < 0 || tx >= TILE_W || ty >= TILE_H) continue
+            if (walls[ty][tx] !== 0) {
+              const cx = Math.max(tx, Math.min(outX, tx + 1))
+              const cy = Math.max(ty, Math.min(outY, ty + 1))
+              const dx = outX - cx
+              const dy = outY - cy
+              const dist = Math.sqrt(dx * dx + dy * dy)
+              if (dist < radius) {
+                if (dist > 0.0001) {
+                  const overlap = radius - dist
+                  outX += (dx / dist) * overlap
+                  outY += (dy / dist) * overlap
+                } else {
+                  const cellCenterX = tx + 0.5
+                  const cellCenterY = ty + 0.5
+                  const pdx = outX - cellCenterX
+                  const pdy = outY - cellCenterY
+                  const pdist = Math.sqrt(pdx * pdx + pdy * pdy)
+                  if (pdist > 0.0001) {
+                    outX += (pdx / pdist) * radius
+                    outY += (pdy / pdist) * radius
+                  } else {
+                    outY -= radius
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      return [outX, outY]
     }
 
     function angleDiff(target: number, current: number): number {
@@ -466,8 +529,9 @@ function DaggerfallPanel() {
               const speed  = MOVE_SPEED * Math.max(0.3, alignment) * dt
               const nx     = posX + Math.cos(angle) * speed
               const ny     = posY + Math.sin(angle) * speed
-              if (isWalkable(nx, posY)) posX = nx
-              if (isWalkable(posX, ny)) posY = ny
+              const [rx, ry] = resolveCollisions(nx, ny, 0.42)
+              posX = rx
+              posY = ry
             }
           }
         }
@@ -818,9 +882,9 @@ function DaggerfallPanel() {
       const hudY = viewH
       const hudH = H - viewH
 
-      ctx.fillStyle = '#010903'
+      ctx.fillStyle = '#020617'
       ctx.fillRect(0, hudY, W, hudH)
-      ctx.strokeStyle = '#05310b'
+      ctx.strokeStyle = '#083344'
       ctx.lineWidth = 1.2
       ctx.beginPath()
       ctx.moveTo(0, hudY)
@@ -840,21 +904,21 @@ function DaggerfallPanel() {
       // Hacking packet buffers
       ctx.fillStyle = '#1e293b'
       ctx.fillRect(c1, ty1, W * 0.3, fSize * 0.8)
-      ctx.fillStyle = '#22c55e'
+      ctx.fillStyle = '#ec4899'
       ctx.fillRect(c1, ty1, W * 0.3 * (integrity / 100), fSize * 0.8)
-      ctx.fillStyle = '#4ade80'
+      ctx.fillStyle = '#f472b6'
       ctx.fillText(`INTEGRITY: ${integrity}%`, c1, ty2)
 
       // Ports and speed stats
-      ctx.fillStyle = '#a3e635'
+      ctx.fillStyle = '#22d3ee'
       ctx.fillText(`DECRYPT: ${decryptRate} KB/s`, c2, ty1)
-      ctx.fillStyle = '#60a5fa'
+      ctx.fillStyle = '#eab308'
       ctx.fillText(`BYPASSED: ${portsCompromised}/2`, c2, ty2)
 
       // Hacking diagnostic numbers
-      ctx.fillStyle = '#16a34a'
+      ctx.fillStyle = '#ec4899'
       ctx.fillText(`PACKETS: ${Math.round(packetsSent)}`, c3, ty1)
-      ctx.fillStyle = '#22c55e'
+      ctx.fillStyle = '#06b6d4'
       ctx.fillText(`NODE: COMPILING`, c3, ty2)
 
       // ── Mini-Map (top right) ────────────────────────────────────────────────
@@ -864,11 +928,11 @@ function DaggerfallPanel() {
       const mmY    = 6
 
       // Radar style transparent background
-      ctx.fillStyle = 'rgba(1, 8, 3, 0.75)'
+      ctx.fillStyle = 'rgba(2, 6, 23, 0.75)'
       ctx.fillRect(mmX, mmY, mmSize, mmSize)
 
       // Draw subtle grid lines on the minimap
-      ctx.strokeStyle = 'rgba(34, 197, 94, 0.05)'
+      ctx.strokeStyle = 'rgba(6, 182, 212, 0.08)'
       ctx.lineWidth = 0.5
       for (let i = 0; i <= mmSize; i += mmSize / 5) {
         ctx.beginPath()
@@ -884,13 +948,13 @@ function DaggerfallPanel() {
         for (let tx = 0; tx < TILE_W; tx++) {
           const val = walls[ty][tx]
           if (val === 1) {
-            ctx.fillStyle = 'rgba(34, 197, 94, 0.15)'
+            ctx.fillStyle = 'rgba(6, 182, 212, 0.15)'
             ctx.fillRect(mmX + tx * mmTile + 0.5, mmY + ty * mmTile + 0.5, mmTile - 1, mmTile - 1)
           } else if (val === 2) {
             ctx.fillStyle = 'rgba(239, 68, 68, 0.4)' // red firewall
             ctx.fillRect(mmX + tx * mmTile, mmY + ty * mmTile, mmTile, mmTile)
           } else if (val === 3) {
-            ctx.fillStyle = 'rgba(59, 130, 246, 0.4)' // blue exit
+            ctx.fillStyle = 'rgba(234, 179, 8, 0.5)' // gold exit
             ctx.fillRect(mmX + tx * mmTile, mmY + ty * mmTile, mmTile, mmTile)
           }
         }
@@ -902,7 +966,7 @@ function DaggerfallPanel() {
       ctx.save()
       ctx.translate(ppx, ppy)
       ctx.rotate(angle)
-      ctx.fillStyle = '#4ade80'
+      ctx.fillStyle = '#ec4899'
       ctx.beginPath()
       ctx.moveTo(mmTile * 1.8, 0)
       ctx.lineTo(-mmTile * 1.2, -mmTile * 1.0)
@@ -913,7 +977,7 @@ function DaggerfallPanel() {
       ctx.restore()
 
       // Radar style circular target rings
-      ctx.strokeStyle = 'rgba(34, 197, 94, 0.3)'
+      ctx.strokeStyle = 'rgba(6, 182, 212, 0.3)'
       ctx.lineWidth = 0.8
       ctx.strokeRect(mmX, mmY, mmSize, mmSize)
 
@@ -926,12 +990,12 @@ function DaggerfallPanel() {
         const evX = (W - evW) / 2
         const evY = viewH * 0.06
 
-        ctx.fillStyle = `rgba(1,9,2,${eventAlpha * 0.9})`
+        ctx.fillStyle = `rgba(15,23,42,${eventAlpha * 0.9})`
         ctx.fillRect(evX - 4, evY - 2, evW + 4, evFSize + 6)
-        ctx.strokeStyle = `rgba(34,197,94,${eventAlpha * 0.65})`
+        ctx.strokeStyle = `rgba(6,182,212,${eventAlpha * 0.65})`
         ctx.lineWidth = 0.8
         ctx.strokeRect(evX - 4, evY - 2, evW + 4, evFSize + 6)
-        ctx.fillStyle = `rgba(34,197,94,${eventAlpha})`
+        ctx.fillStyle = `rgba(6,182,212,${eventAlpha})`
         ctx.fillText('► ' + eventText, evX, evY + 2)
       }
 
@@ -952,13 +1016,13 @@ function DaggerfallPanel() {
         const boxX   = (W - boxW) / 2
         const boxY   = viewH / 2 - boxH / 2
 
-        ctx.fillStyle = `rgba(1,8,2,${exitDialogAlpha * 0.95})`
+        ctx.fillStyle = `rgba(28,25,23,${exitDialogAlpha * 0.95})`
         ctx.fillRect(boxX, boxY, boxW, boxH)
-        ctx.strokeStyle = `rgba(239,68,68,${exitDialogAlpha * 0.9})`
+        ctx.strokeStyle = `rgba(234,179,8,${exitDialogAlpha * 0.9})`
         ctx.lineWidth = 1.5
         ctx.strokeRect(boxX, boxY, boxW, boxH)
 
-        ctx.fillStyle = `rgba(220,252,231,${exitDialogAlpha})`
+        ctx.fillStyle = `rgba(254,240,138,${exitDialogAlpha})`
         for (let i = 0; i < EXIT_LINES.length; i++) {
           ctx.fillText(EXIT_LINES[i], boxX + 12, boxY + 8 + i * lineH)
         }
