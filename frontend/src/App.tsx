@@ -84,7 +84,7 @@ const POOL_GFX: React.ComponentType[] = [
   VoxelDemoColor, VoxelDemoBW, GlobePanel, VoxelThermal, VoxelLava, VoxelNeon, VoxelMatrix,
 
   FireScene, StarfieldScene, ThreeBodyScene, /* LissajousScene, */
-  /* OscilloscopePanel, */ TunnelScene, MetaballsScene, RotozoomScene, DotCloudScene,
+  OscilloscopePanel, TunnelScene, MetaballsScene, RotozoomScene, DotCloudScene,
   PlasmaDemo, DNAHelix, EnhanceView, AllYourBase,
   ParallaxPanel, ElitePanel, AmiModPanel, CADRobotPanel, C64Panel, RetroErrorPanel, SolarSystemPanel,
   FractalSeahorse, FractalSpiral, FractalTendril, FractalLightning,
