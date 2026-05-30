@@ -108,7 +108,7 @@ class SidPlayerProcessor extends AudioWorkletProcessor {
     let cutoff_ratio_6581 = -2 * Math.PI * (20000 / 256) / samplerate;
     
     // Wave calculations variables
-    let prevgate, chnadd, ctrl, wf, test, period, step, SR, accuadd, MSB, tmp, pw, lim, wfout, cutoff, resonance, filtin;
+    let prevgate, chnadd, ctrl, wf, test, period, step, SR, accuadd, MSB, tmp, pw, lim, wfout, cutoff, resonance, filtin, output;
     
     // Precalculated tables
     let TriSaw_8580 = new Array(4096);
@@ -267,25 +267,30 @@ class SidPlayerProcessor extends AudioWorkletProcessor {
           case 0xE0: if (IR & 4) { memory[addr]++; memory[addr] &= 0xFF; ST &= 125; ST |= (!memory[addr]) << 1 | (memory[addr] & 128); cycles += 2; }
         }
       } else if ((IR & 0xC) == 8) {
-        switch (IR & 0xC0) {
-          case 0x40: // PHA / PHP / PLA / PLP / PLP
-            if (IR == 0x48) { memory[0x100 + SP] = A; SP--; SP &= 0xFF; cycles = 3; }
-            else if (IR == 0x08) { memory[0x100 + SP] = ST; SP--; SP &= 0xFF; cycles = 3; }
-            else if (IR == 0x68) { SP++; SP &= 0xFF; A = memory[0x100 + SP]; ST &= 125; ST |= (!A) << 1 | (A & 128); cycles = 4; }
-            else if (IR == 0x28) { SP++; SP &= 0xFF; ST = memory[0x100 + SP]; cycles = 4; }
-            break;
-          case 0x80: // DEY / TYA
-            if (IR == 0x88) { Y--; Y &= 0xFF; ST &= 125; ST |= (!Y) << 1 | (Y & 128); }
-            else if (IR == 0x98) { A = Y; ST &= 125; ST |= (!A) << 1 | (A & 128); }
-            break;
-          case 0xC0: // INY / TAY
-            if (IR == 0xC8) { Y++; Y &= 0xFF; ST &= 125; ST |= (!Y) << 1 | (Y & 128); }
-            else if (IR == 0xA8) { Y = A; ST &= 125; ST |= (!Y) << 1 | (Y & 128); }
-            break;
-          case 0xE0: // INX / NOP (implied)
-            if (IR == 0xE8) { X++; X &= 0xFF; ST &= 125; ST |= (!X) << 1 | (X & 128); }
-            break;
-          default:
+        // Single-byte "implied" instructions (column 8 of the opcode table):
+        // stack ops, register transfers, register inc/dec and the flag ops.
+        //
+        // IMPORTANT: we MUST switch on the WHOLE high nibble (IR & 0xF0), not on
+        // (IR & 0xC0). Every opcode here is uniquely identified by its high nibble
+        // (e.g. INX=0xE8 -> 0xE0, TAY=0xA8 -> 0xA0). Masking with 0xC0 collapses
+        // distinct opcodes onto the same case: INX (0xE8 & 0xC0 = 0xC0) lands in
+        // the same bucket as INY/TAY and silently does nothing, TAY (0xA8 & 0xC0 =
+        // 0x80) collides with DEY/TYA, and PHP/PLP (& 0xC0 = 0x00) fall through to
+        // the flag-op default and corrupt the status register + stack. Player
+        // routines lean on INX/TAY/PHP/PLP for indexed sequence reads and loop
+        // counters, so getting these wrong freezes the song (constant drone or
+        // silence). Switching on 0xF0 — exactly like the reference jsSID — fixes it.
+        switch (IR & 0xF0) {
+          case 0x60: SP++; SP &= 0xFF; A = memory[0x100 + SP]; ST &= 125; ST |= (!A) << 1 | (A & 128); cycles = 4; break; // PLA (0x68)
+          case 0xC0: Y++; Y &= 0xFF; ST &= 125; ST |= (!Y) << 1 | (Y & 128); break; // INY (0xC8)
+          case 0xE0: X++; X &= 0xFF; ST &= 125; ST |= (!X) << 1 | (X & 128); break; // INX (0xE8)
+          case 0x80: Y--; Y &= 0xFF; ST &= 125; ST |= (!Y) << 1 | (Y & 128); break; // DEY (0x88)
+          case 0x00: memory[0x100 + SP] = ST; SP--; SP &= 0xFF; cycles = 3; break; // PHP (0x08)
+          case 0x20: SP++; SP &= 0xFF; ST = memory[0x100 + SP]; cycles = 4; break; // PLP (0x28)
+          case 0x40: memory[0x100 + SP] = A; SP--; SP &= 0xFF; cycles = 3; break; // PHA (0x48)
+          case 0x90: A = Y; ST &= 125; ST |= (!A) << 1 | (A & 128); break; // TYA (0x98)
+          case 0xA0: Y = A; ST &= 125; ST |= (!Y) << 1 | (Y & 128); break; // TAY (0xA8)
+          default: // flag ops: CLC/SEC/CLI/SEI/CLV/CLD/SED (0x18/0x38/0x58/0x78/0xB8/0xD8/0xF8)
             if (flagsw[IR >> 5] & 0x20) ST |= (flagsw[IR >> 5] & 0xDF);
             else ST &= 255 - (flagsw[IR >> 5] & 0xDF);
         }
@@ -410,7 +415,10 @@ class SidPlayerProcessor extends AudioWorkletProcessor {
             tmp = ((tmp << 1) + (step > 0 || test)) & 0x7FFFFF;
             noise_LFSR[channel] = tmp;
           }
-          wfout = (wf & 0x70) ? 0 : ((tmp & 0x100000) >> 5) + ((tmp & 0x4000) >> 1) + ((tmp & 0x4000) >> 1) + ((tmp & 0x800) << 1) + ((tmp & 0x200) << 2) + ((tmp & 0x20) << 5) + ((tmp & 0x04) << 7) + ((tmp & 0x01) << 8);
+          // Map the LFSR bits to the 12-bit noise output. The 2nd term must be
+          // ((tmp & 0x40000) >> 4): a copy-paste slip had duplicated the 0x4000
+          // term and dropped the 0x40000 bit, distorting the noise timbre (drums).
+          wfout = (wf & 0x70) ? 0 : ((tmp & 0x100000) >> 5) + ((tmp & 0x40000) >> 4) + ((tmp & 0x4000) >> 1) + ((tmp & 0x800) << 1) + ((tmp & 0x200) << 2) + ((tmp & 0x20) << 5) + ((tmp & 0x04) << 7) + ((tmp & 0x01) << 8);
         } else if (wf & PULSE_BITMASK) {
           pw = (memory[chnadd + 2] + (memory[chnadd + 3] & 0xF) * 256) * 16;
           tmp = accuadd >> 9;
@@ -466,10 +474,12 @@ class SidPlayerProcessor extends AudioWorkletProcessor {
         }
       }
 
-      if (memory[1] & 3) {
-        memory[SIDaddr + 0x1B] = wfout >> 8;
-        memory[SIDaddr + 0x1C] = envcnt[3];
-      }
+      // Update the two read-only SID registers some players poll.
+      // OSC3 ($D41B) only mirrors the RAM-mapped SID while it is banked in
+      // (memory[1] & 3), but ENV3 ($D41C) is updated unconditionally — this
+      // matches the reference jsSID, where only the OSC3 line was guarded.
+      if (memory[1] & 3) memory[SIDaddr + 0x1B] = wfout >> 8;
+      memory[SIDaddr + 0x1C] = envcnt[3];
 
       // Filter processing
       cutoff = (memory[SIDaddr + 0x15] & 7) / 8 + memory[SIDaddr + 0x16] + 0.2;
