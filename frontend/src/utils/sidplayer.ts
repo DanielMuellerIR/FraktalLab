@@ -12,6 +12,11 @@ export interface SidVisuals {
   envelopes: [number, number, number];
   frequencies: [number, number, number];
   gates: [number, number, number];
+  // Selected waveform per voice (upper nibble of the control register:
+  // 0x10 TRI, 0x20 SAW, 0x40 PULSE, 0x80 NOISE).
+  waveforms: [number, number, number];
+  // Pulse-width duty cycle per voice, 0..1.
+  pulsewidths: [number, number, number];
   // Elapsed playback time in seconds (drives the scrubber / time display).
   playtime: number;
 }

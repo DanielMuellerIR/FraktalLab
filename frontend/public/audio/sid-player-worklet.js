@@ -696,8 +696,11 @@ class SidPlayerProcessor {
     };
 
     this.getChannelsData = function() {
-      // Returns current envelope levels, frequencies, gate signals and elapsed
-      // playtime (seconds) so the UI can drive the oscilloscope and the scrubber.
+      // Returns current envelope levels, frequencies, gate signals, the selected
+      // waveform + pulse-width per voice, and elapsed playtime (seconds) so the
+      // UI can draw the real waveform shapes on the scope and drive the scrubber.
+      // waveform = the upper nibble of each voice's control register (bit 4 TRI,
+      // 5 SAW, 6 PULSE, 7 NOISE). pulsewidth is the 12-bit duty cycle as 0..1.
       return {
         envelopes: [envcnt[0] / 255.0, envcnt[1] / 255.0, envcnt[2] / 255.0],
         frequencies: [
@@ -709,6 +712,16 @@ class SidPlayerProcessor {
           memory[0xD404] & 1,
           memory[0xD40B] & 1,
           memory[0xD412] & 1
+        ],
+        waveforms: [
+          memory[0xD404] & 0xF0,
+          memory[0xD40B] & 0xF0,
+          memory[0xD412] & 0xF0
+        ],
+        pulsewidths: [
+          (memory[0xD402] + (memory[0xD403] & 0x0F) * 256) / 4096,
+          (memory[0xD409] + (memory[0xD40A] & 0x0F) * 256) / 4096,
+          (memory[0xD410] + (memory[0xD411] & 0x0F) * 256) / 4096
         ],
         playtime: playtime
       };

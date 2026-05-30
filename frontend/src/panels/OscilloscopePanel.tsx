@@ -17,6 +17,33 @@ function fmtTime(sec: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
+// SID waveform-select bitmasks (upper nibble of the control register).
+const WF_TRI = 0x10
+const WF_SAW = 0x20
+const WF_PULSE = 0x40
+const WF_NOISE = 0x80
+
+// One sample (-1..1) of the SID waveform `wf` at phase `frac` (0..1). Renders the
+// real shape on the scope instead of a generic sine: triangle, sawtooth, pulse
+// (with its duty cycle) and noise. Combined waveforms fall back to the strongest
+// bit (noise > pulse > saw > tri); a voice with no waveform draws a flat line.
+function sidWaveSample(frac: number, wf: number, duty: number): number {
+  if (wf & WF_NOISE) return Math.random() * 2 - 1                 // noise: random
+  if (wf & WF_PULSE) return frac < duty ? 1 : -1                  // pulse / square
+  if (wf & WF_SAW) return 2 * frac - 1                            // rising sawtooth
+  if (wf & WF_TRI) return frac < 0.5 ? 4 * frac - 1 : 3 - 4 * frac // triangle
+  return 0                                                        // no waveform → flat
+}
+
+// Short label for the active waveform of a voice.
+function wfName(wf: number): string {
+  if (wf & WF_NOISE) return 'NOI'
+  if (wf & WF_PULSE) return 'PUL'
+  if (wf & WF_SAW) return 'SAW'
+  if (wf & WF_TRI) return 'TRI'
+  return '---'
+}
+
 interface Track {
   id: string
   name: string
@@ -118,6 +145,8 @@ function OscilloscopePanel() {
     envelopes: [0, 0, 0],
     frequencies: [0, 0, 0],
     gates: [0, 0, 0],
+    waveforms: [0, 0, 0],
+    pulsewidths: [0.5, 0.5, 0.5],
     playtime: 0
   })
   
@@ -443,6 +472,8 @@ function OscilloscopePanel() {
       const envelopes = visuals.envelopes
       const frequencies = visuals.frequencies
       const gates = visuals.gates
+      const waveforms = visuals.waveforms
+      const pulsewidths = visuals.pulsewidths
 
       // Drive the scrubber + time display from live playtime (unless dragging).
       if (!seekingRef.current && scrubberRef.current) {
@@ -463,6 +494,8 @@ function OscilloscopePanel() {
         const rawFreq = live ? frequencies[c] : 0
         const env = live ? envelopes[c] : 0
         const gate = live ? gates[c] : 0
+        const wf = live ? waveforms[c] : 0      // active waveform (0 = flat/paused)
+        const duty = pulsewidths[c] || 0.5      // pulse duty cycle 0..1
 
         // Map SID pitch register value to approximate Hz (PAL frequency formula)
         const freqHz = rawFreq * 0.0587
@@ -504,9 +537,14 @@ function OscilloscopePanel() {
           ? Math.max(10, Math.min(300, 3000 / freqHz))
           : 150
 
+        // Phase offset (scrolling) expressed in wavelengths.
+        const phaseShift = phases.current[c] / (Math.PI * 2)
         for (let x = 0; x < W; x += 2) {
-          // Trace shape: sine wave modulated by pitch and phase
-          const waveVal = Math.sin((x / wavelength) * Math.PI * 2 - phases.current[c])
+          // Trace shape: the REAL SID waveform of this voice (tri/saw/pulse/noise),
+          // scrolled by phase and scaled by the envelope amplitude.
+          const ph = x / wavelength - phaseShift
+          const frac = ph - Math.floor(ph) // wrap into [0,1)
+          const waveVal = sidWaveSample(frac, wf, duty)
           const y = baselineY + waveVal * amplitude
           if (x === 0) {
             ctx.moveTo(x, y)
@@ -526,9 +564,10 @@ function OscilloscopePanel() {
         const gateStr = gate ? 'GATE:ON ' : 'GATE:OFF'
         const freqStr = freqHz > 20 ? `${Math.round(freqHz).toString().padStart(4, ' ')} Hz` : '0 Hz'
         const envStr = `${Math.round(env * 100).toString().padStart(3, ' ')}%`
-        
+        const wfStr = wfName(wf)
+
         ctx.fillText(
-          `V${c + 1} | [${gateStr}] | Freq:${freqStr} | Env:${envStr}`,
+          `V${c + 1} | ${wfStr} | [${gateStr}] | Freq:${freqStr} | Env:${envStr}`,
           10,
           channelH * c + 10
         )
