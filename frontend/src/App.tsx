@@ -197,6 +197,37 @@ function randomPartition(n: number): number[] {
   return result
 }
 
+const LARGE_PANELS = new Set([
+  'AmiModPanel',
+  'C64Panel',
+  'ElitePanel',
+  'ThermonuclearWarPanel',
+  'SupervolcanoPanel',
+  'SolarSystemPanel',
+  'DNAHelix',
+  'CADRobotPanel',
+  'NeuralLinkDecoderPanel',
+  'ShaderRetroWave',
+  'NuclearExplosionPanel',
+  'MoonPanel'
+]);
+
+function getCompName(Comp: any): string {
+  if (!Comp) return '';
+  if (Comp.type && typeof Comp.type === 'function') return Comp.type.name || '';
+  if (typeof Comp === 'function') return Comp.name || '';
+  return '';
+}
+
+function isCellLarge(cell: GridCell): boolean {
+  if (cell.type !== 'gfx') return false;
+  const colParts = cell.gridColumn.split('/').map(s => parseInt(s.trim(), 10));
+  const rowParts = cell.gridRow.split('/').map(s => parseInt(s.trim(), 10));
+  const colSpan = colParts[1] - colParts[0];
+  const rowSpan = rowParts[1] - rowParts[0];
+  return colSpan > 1 || rowSpan > 1;
+}
+
 /**
  * Erzeugt ein vollständig zufälliges CSS-Grid-Layout.
  * @param id Eindeutiger Zähler — wird als React-Key verwendet
@@ -292,6 +323,54 @@ function generateLayout(id: number): GeneratedLayout {
     gridRow:    `${startRow} / ${startRow + actualRowSpan}`,
   })
 
+  // Optional: Eine große GFX-Zelle mit Span platzieren, falls das Grid groß genug ist (z.B. >= 6 Zellen)
+  // Dies stellt sicher, dass wir auf größeren Bildschirmen eine größere Kachel haben, die für Tracker/C64/Dogfight geeignet ist.
+  let largeGfxCell: GridCell | null = null;
+  if (cols * rows >= 6 && Math.random() < 0.8) {
+    const freeSlots: [number, number][] = [];
+    for (let r = 1; r <= rows; r++) {
+      for (let c = 1; c <= cols; c++) {
+        if (!occupied.has(`${c},${r}`)) {
+          freeSlots.push([c, r]);
+        }
+      }
+    }
+    // Shuffle freeSlots
+    for (let i = freeSlots.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [freeSlots[i], freeSlots[j]] = [freeSlots[j], freeSlots[i]];
+    }
+    // Nach einem Slot suchen, an dem wir 2x1 oder 1x2 anlegen können
+    for (const [c, r] of freeSlots) {
+      const canSpanCol = c + 1 <= cols && !occupied.has(`${c + 1},${r}`);
+      const canSpanRow = r + 1 <= rows && !occupied.has(`${c},${r + 1}`);
+      if (canSpanCol || canSpanRow) {
+        let sc = 1;
+        let sr = 1;
+        if (canSpanCol && canSpanRow) {
+          if (Math.random() < 0.5) sc = 2; else sr = 2;
+        } else if (canSpanCol) {
+          sc = 2;
+        } else {
+          sr = 2;
+        }
+        // Belegen markieren
+        for (let tc = c; tc < c + sc; tc++) {
+          for (let tr = r; tr < r + sr; tr++) {
+            occupied.add(`${tc},${tr}`);
+          }
+        }
+        largeGfxCell = {
+          type:       'gfx',
+          gridColumn: `${c} / ${c + sc}`,
+          gridRow:    `${r} / ${r + sr}`,
+        };
+        cells.push(largeGfxCell);
+        break;
+      }
+    }
+  }
+
   // Verbleibende Zellen: abwechselnd 'text' und 'gfx'
   let altIdx = 0
   let hasText = false
@@ -300,7 +379,7 @@ function generateLayout(id: number): GeneratedLayout {
   // Alle Positionen im Grid durchgehen
   for (let r = 1; r <= rows; r++) {
     for (let c = 1; c <= cols; c++) {
-      if (occupied.has(`${c},${r}`)) continue  // bereits durch Fraktal belegt
+      if (occupied.has(`${c},${r}`)) continue  // bereits durch Fraktal oder große GFX belegt
 
       // Typen abwechseln
       const type: CellType = altIdx % 3 === 0 ? 'text' : 'gfx'
@@ -321,7 +400,7 @@ function generateLayout(id: number): GeneratedLayout {
   // (kann bei kleinen Grids mit großem Span fehlen)
   if (!hasText) {
     // Erste 'gfx'-Zelle zu 'text' machen
-    const gfxCell = cells.find(cell => cell.type === 'gfx')
+    const gfxCell = cells.find(cell => cell.type === 'gfx' && !isCellLarge(cell)) || cells.find(cell => cell.type === 'gfx')
     if (gfxCell) gfxCell.type = 'text'
   }
   if (!hasGfx) {
@@ -346,14 +425,41 @@ function generateLayout(id: number): GeneratedLayout {
     [gfxIndices[i], gfxIndices[j]] = [gfxIndices[j], gfxIndices[i]]
   }
 
+  // Partition pools
+  const largeGfxIndices: number[] = [];
+  const smallGfxIndices: number[] = [];
+
+  gfxIndices.forEach(idx => {
+    const comp = POOL_GFX[idx];
+    const name = getCompName(comp);
+    if (LARGE_PANELS.has(name)) {
+      largeGfxIndices.push(idx);
+    } else {
+      smallGfxIndices.push(idx);
+    }
+  });
+
   let textIdxPtr = 0
-  let gfxIdxPtr = 0
+  let largeGfxPtr = 0
+  let smallGfxPtr = 0
 
   cells.forEach(cell => {
     if (cell.type === 'text') {
       cell.panelIdx = textIndices[textIdxPtr++ % textIndices.length]
     } else if (cell.type === 'gfx') {
-      cell.panelIdx = gfxIndices[gfxIdxPtr++ % gfxIndices.length]
+      if (isCellLarge(cell)) {
+        if (largeGfxPtr < largeGfxIndices.length) {
+          cell.panelIdx = largeGfxIndices[largeGfxPtr++];
+        } else {
+          cell.panelIdx = smallGfxIndices[smallGfxPtr++ % smallGfxIndices.length];
+        }
+      } else {
+        if (smallGfxPtr < smallGfxIndices.length) {
+          cell.panelIdx = smallGfxIndices[smallGfxPtr++];
+        } else {
+          cell.panelIdx = largeGfxIndices[largeGfxPtr++ % largeGfxIndices.length];
+        }
+      }
     }
   })
 
@@ -612,9 +718,27 @@ export default function App() {
       const candidates: number[] = []
       pool.forEach((comp, i) => {
         if (comp !== currentComp && !otherActiveComps.has(comp)) {
-          candidates.push(i)
+          if (cell.type === 'gfx') {
+            const isLarge = isCellLarge(cell)
+            const compName = getCompName(comp)
+            const isCompLarge = LARGE_PANELS.has(compName)
+            if (isLarge === isCompLarge) {
+              candidates.push(i)
+            }
+          } else {
+            candidates.push(i)
+          }
         }
       })
+
+      // Fallback if no matching size candidate was found
+      if (candidates.length === 0) {
+        pool.forEach((comp, i) => {
+          if (comp !== currentComp && !otherActiveComps.has(comp)) {
+            candidates.push(i)
+          }
+        })
+      }
 
       const chosenIdx = candidates.length > 0
         ? candidates[Math.floor(Math.random() * candidates.length)]
