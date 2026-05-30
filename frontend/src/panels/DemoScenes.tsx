@@ -267,18 +267,10 @@ export const FireScene = React.memo(function FireScene() {
   )
 })
 
-// ── Effekt 2: Starfield — 3D-Sterne fliegen auf die Kamera zu ────────────────
-// Volle Auflösung OK (nur Punkte, kein Pixel-Buffer-Overhead).
-// Alle 20–30 s: 1,5s Hyperraum-Effekt — Sterne strecken sich zu Linien.
-type Star = { x: number; y: number; z: number }
-// Gemeinsamer Hyperraum-Zustand — alle Felder: Startzeitpunkt und Dauer des Effekts.
+type Star = { x: number; y: number; z: number; color: string }
 type StarfieldState = {
   stars: Star[]
-  nextHyperAt: number
-  hyperEndAt: number
-  phase: 'normal' | 'warpin' | 'hyperspace' | 'warpout'
-  speedVal: number
-  warpFactor: number
+  phase: 'chase' | 'countdown' | 'jump' | 'hyperspace' | 'exit'
   xCoord: number
   yCoord: number
   zCoord: number
@@ -286,221 +278,374 @@ type StarfieldState = {
 export const StarfieldScene = makeScene(
   'DEEP SPACE // SCANNING SECTOR 9', 99999, 99999,
   (): StarfieldState => ({
-    stars: Array.from({length: 450}, () => ({
-      x: (Math.random()-0.5)*2, y: (Math.random()-0.5)*2, z: Math.random(),
+    stars: Array.from({length: 400}, () => ({
+      x: (Math.random()-0.5)*2,
+      y: (Math.random()-0.5)*2,
+      z: Math.random(),
+      color: ['#00ffff', '#ff00ff', '#ffffff', '#a855f7'][Math.floor(Math.random() * 4)],
     })),
-    nextHyperAt: 0,
-    hyperEndAt:  -1,
-    phase: 'normal',
-    speedVal: 0.006,
-    warpFactor: 0,
+    phase: 'chase',
     xCoord: 49.32,
     yCoord: -12.44,
     zCoord: 102.05,
   }),
-  (buf, W, H, t, state: StarfieldState) => {
-    const cycleTime = (t / 1000) % 22
-    let speed = 0.006
-    let phase: 'normal' | 'warpin' | 'hyperspace' | 'warpout' = 'normal'
-    let warpFactor = 0
+  (buf, _W, _H, t, state: StarfieldState) => {
+    const cycleTime = (t / 1000) % 26
+    let speed = 0.005
+    let phase: 'chase' | 'countdown' | 'jump' | 'hyperspace' | 'exit' = 'chase'
 
     if (cycleTime < 8) {
-      phase = 'normal'
-      speed = 0.006
-      warpFactor = 0
-    } else if (cycleTime < 10) {
-      phase = 'warpin'
-      const p = (cycleTime - 8) / 2
-      speed = 0.006 + 0.114 * p * p
-      warpFactor = p
-    } else if (cycleTime < 20) {
+      phase = 'chase'
+      speed = 0.005
+    } else if (cycleTime < 12) {
+      phase = 'countdown'
+      const p = (cycleTime - 8) / 4
+      speed = 0.005 + 0.015 * p * p
+    } else if (cycleTime < 14) {
+      phase = 'jump'
+      const p = (cycleTime - 12) / 2
+      speed = 0.02 + 0.12 * p * p
+    } else if (cycleTime < 22) {
       phase = 'hyperspace'
-      speed = 0.12
-      warpFactor = 1
+      speed = 0.14
     } else {
-      phase = 'warpout'
-      const p = (cycleTime - 20) / 2
-      speed = 0.12 - 0.114 * (1 - (1 - p) * (1 - p))
-      warpFactor = 1 - p
+      phase = 'exit'
+      const p = (cycleTime - 22) / 4
+      speed = 0.14 * (1 - p)
     }
 
     state.phase = phase
-    state.speedVal = speed
-    state.warpFactor = warpFactor
     state.xCoord += (phase === 'hyperspace' ? 0.35 : 0.01) * (Math.random() * 0.5 + 0.75)
     state.yCoord += (phase === 'hyperspace' ? -0.15 : -0.005) * (Math.random() * 0.5 + 0.75)
     state.zCoord += (phase === 'hyperspace' ? 0.95 : 0.02) * (Math.random() * 0.5 + 0.75)
 
+    // Clear buffer (make it black)
     buf.fill(0)
     for (let i = 3; i < buf.length; i+=4) buf[i] = 255
 
+    // Update stars
     for (let idx = 0; idx < state.stars.length; idx++) {
       const s = state.stars[idx]
-      const prevZ = s.z
       s.z -= speed
       if (s.z <= 0.01) {
         s.x = (Math.random()-0.5)*2
         s.y = (Math.random()-0.5)*2
         s.z = 1
-        continue
-      }
-
-      const sx = Math.round(s.x / s.z * W * 0.45 + W/2)
-      const sy = Math.round(s.y / s.z * H * 0.45 + H/2)
-      if (sx < 0 || sx >= W || sy < 0 || sy >= H) continue
-
-      if (phase === 'normal') {
-        const br  = Math.round(255 * (1 - s.z))
-        const ext = s.z < 0.15 ? 1 : 0
-        for (let dy = -ext; dy <= ext; dy++)
-          for (let dx = -ext; dx <= ext; dx++) {
-            const px = sx + dx, py = sy + dy
-            if (px < 0 || px >= W || py < 0 || py >= H) continue
-            const pi = (py * W + px) * 4
-            buf[pi] = br; buf[pi+1] = br; buf[pi+2] = br; buf[pi+3] = 255
-          }
-      } else {
-        const psx = Math.round(s.x / prevZ * W * 0.45 + W/2)
-        const psy = Math.round(s.y / prevZ * H * 0.45 + H/2)
-
-        let r = 255, g = 255, b = 255
-        if (phase === 'hyperspace') {
-          if (idx % 3 === 0) { r = 0; g = 255; b = 255 }
-          else if (idx % 3 === 1) { r = 255; g = 0; b = 255 }
-          else { r = 0; g = 255; b = 0 }
-        } else {
-          let nr = 255, ng = 255, nb = 255
-          if (idx % 3 === 0) { nr = 0; ng = 255; nb = 255 }
-          else if (idx % 3 === 1) { nr = 255; ng = 0; nb = 255 }
-          else { nr = 0; ng = 255; nb = 0 }
-          r = Math.round(255 + (nr - 255) * warpFactor)
-          g = Math.round(255 + (ng - 255) * warpFactor)
-          b = Math.round(255 + (nb - 255) * warpFactor)
-        }
-
-        let lx = psx, ly = psy
-        const dx = Math.abs(sx - psx), dy = Math.abs(sy - psy)
-        const stepX = psx < sx ? 1 : -1, stepY = psy < sy ? 1 : -1
-        let err = dx - dy
-        const maxSteps = 100
-        for (let step = 0; step < maxSteps; step++) {
-          if (lx >= 0 && lx < W && ly >= 0 && ly < H) {
-            const pi = (ly * W + lx) * 4
-            buf[pi] = r; buf[pi+1] = g; buf[pi+2] = b; buf[pi+3] = 255
-          }
-          if (lx === sx && ly === sy) break
-          const e2 = err * 2
-          if (e2 > -dy) { err -= dy; lx += stepX }
-          if (e2 <  dx) { err += dx; ly += stepY }
-        }
       }
     }
   },
   (offCtx, W, H, t, state: StarfieldState) => {
-    const cycleTime = (t / 1000) % 22
+    const cycleTime = (t / 1000) % 26
     const cx = W / 2
     const cy = H / 2
+    const phase = state.phase
 
-    // Target locked brackets
-    offCtx.strokeStyle = 'rgba(74, 222, 128, 0.8)'
-    offCtx.lineWidth = 1.5
-    
-    const targetX = cx + Math.sin(t * 0.001) * (W * 0.15)
-    const targetY = cy + Math.cos(t * 0.0012) * (H * 0.15)
-    const bracketSize = 25
-    
-    offCtx.beginPath()
-    offCtx.moveTo(targetX - bracketSize, targetY - bracketSize + 8)
-    offCtx.lineTo(targetX - bracketSize, targetY - bracketSize)
-    offCtx.lineTo(targetX - bracketSize + 8, targetY - bracketSize)
-    offCtx.moveTo(targetX + bracketSize, targetY - bracketSize + 8)
-    offCtx.lineTo(targetX + bracketSize, targetY - bracketSize)
-    offCtx.lineTo(targetX + bracketSize - 8, targetY - bracketSize)
-    offCtx.moveTo(targetX - bracketSize, targetY + bracketSize - 8)
-    offCtx.lineTo(targetX - bracketSize, targetY + bracketSize)
-    offCtx.lineTo(targetX - bracketSize + 8, targetY + bracketSize)
-    offCtx.moveTo(targetX + bracketSize, targetY + bracketSize - 8)
-    offCtx.lineTo(targetX + bracketSize, targetY + bracketSize)
-    offCtx.lineTo(targetX + bracketSize - 8, targetY + bracketSize)
-    offCtx.stroke()
-
-    offCtx.fillStyle = 'rgba(74, 222, 128, 0.9)'
-    offCtx.font = '9px monospace'
-    offCtx.fillText('LOCK // TRAP-1e', targetX - bracketSize, targetY - bracketSize - 4)
-
-    // Render Spacecraft
-    const isWarping = state.phase === 'hyperspace' || state.phase === 'warpin'
-    const shakeX = isWarping ? (Math.random() - 0.5) * 4 : 0
-    const shakeY = isWarping ? (Math.random() - 0.5) * 4 : 0
-    
-    const shipX = targetX + Math.sin(t * 0.0015) * 12 + shakeX
-    const shipY = targetY + 25 + Math.cos(t * 0.001) * 6 + shakeY
-
-    offCtx.strokeStyle = 'rgba(0, 255, 240, 0.85)'
-    offCtx.lineWidth = 1.8
-    offCtx.beginPath()
-    offCtx.moveTo(shipX - 25, shipY + 8)
-    offCtx.lineTo(shipX - 10, shipY + 3)
-    offCtx.lineTo(shipX - 5, shipY + 5)
-    offCtx.lineTo(shipX + 5, shipY + 5)
-    offCtx.lineTo(shipX + 10, shipY + 3)
-    offCtx.lineTo(shipX + 25, shipY + 8)
-    offCtx.lineTo(shipX + 12, shipY + 12)
-    offCtx.lineTo(shipX + 4, shipY + 8)
-    offCtx.lineTo(shipX - 4, shipY + 8)
-    offCtx.lineTo(shipX - 12, shipY + 12)
-    offCtx.closePath()
-    offCtx.stroke()
-
-    offCtx.strokeStyle = 'rgba(255, 255, 255, 0.9)'
-    offCtx.beginPath()
-    offCtx.moveTo(shipX - 4, shipY + 2)
-    offCtx.lineTo(shipX, shipY - 6)
-    offCtx.lineTo(shipX + 4, shipY + 2)
-    offCtx.closePath()
-    offCtx.stroke()
-
-    const engineSize = isWarping 
-      ? 12 + 6 * Math.sin(t * 0.08) 
-      : 4 + 1.5 * Math.sin(t * 0.02)
-    
-    const thrusterColor = isWarping
-      ? 'rgba(255, 100, 0, 0.95)'
-      : 'rgba(0, 240, 255, 0.85)'
-      
-    offCtx.fillStyle = thrusterColor
-    offCtx.beginPath()
-    offCtx.arc(shipX - 6, shipY + 8, engineSize * 0.6, 0, Math.PI * 2)
-    offCtx.arc(shipX + 6, shipY + 8, engineSize * 0.6, 0, Math.PI * 2)
-    offCtx.fill()
-    
-    offCtx.fillStyle = '#ffffff'
-    offCtx.beginPath()
-    offCtx.arc(shipX - 6, shipY + 8, engineSize * 0.25, 0, Math.PI * 2)
-    offCtx.arc(shipX + 6, shipY + 8, engineSize * 0.25, 0, Math.PI * 2)
-    offCtx.fill()
-
-    let statusText = 'STATUS: NOMINAL'
-    let speedText = '0.05c'
-    if (state.phase === 'normal') {
-      statusText = 'STATUS: NOMINAL'
-      speedText = `${(0.05 + state.speedVal * 2).toFixed(3)}c`
-      
-      const countdown = Math.max(0, 8 - cycleTime)
-      offCtx.fillStyle = '#facc15'
-      offCtx.font = 'bold 11px monospace'
-      offCtx.fillText(`HYPERJUMP COUNTDOWN: ${countdown.toFixed(2)}s`, cx - 90, cy + 50)
-    } else if (state.phase === 'warpin') {
-      statusText = 'STATUS: WARP ACTIVE'
-      speedText = `WARP ${(9.9 * state.warpFactor).toFixed(1)}`
-    } else if (state.phase === 'hyperspace') {
-      statusText = (t % 1000 < 500) ? 'STATUS: CRITICAL' : 'STATUS: WARP ACTIVE'
-      speedText = 'WARP 9.9'
-    } else if (state.phase === 'warpout') {
-      statusText = 'STATUS: DECELLERATING'
-      speedText = `WARP ${(9.9 * state.warpFactor).toFixed(1)}`
+    let speed = 0.005
+    let warpFactor = 0
+    if (cycleTime < 8) {
+      speed = 0.005
+      warpFactor = 0
+    } else if (cycleTime < 12) {
+      const p = (cycleTime - 8) / 4
+      speed = 0.005 + 0.015 * p * p
+      warpFactor = p
+    } else if (cycleTime < 14) {
+      const p = (cycleTime - 12) / 2
+      speed = 0.02 + 0.12 * p * p
+      warpFactor = p
+    } else if (cycleTime < 22) {
+      speed = 0.14
+      warpFactor = 1
+    } else {
+      const p = (cycleTime - 22) / 4
+      speed = 0.14 * (1 - p)
+      warpFactor = 1 - p
     }
 
+    // Set line cap for clean star trails
+    offCtx.lineCap = 'round'
+
+    // Draw stars
+    for (let idx = 0; idx < state.stars.length; idx++) {
+      const s = state.stars[idx]
+      const prevZ = s.z + speed
+      const sx = s.x / s.z * W * 0.45 + cx
+      const sy = s.y / s.z * H * 0.45 + cy
+      const psx = s.x / prevZ * W * 0.45 + cx
+      const psy = s.y / prevZ * H * 0.45 + cy
+
+      if (sx < 0 || sx >= W || sy < 0 || sy >= H) continue
+
+      const brightness = Math.min(1, 1 - s.z)
+
+      if (phase === 'chase' || phase === 'countdown') {
+        offCtx.fillStyle = `rgba(255, 255, 255, ${brightness})`
+        const size = s.z < 0.2 ? 2 : 1
+        offCtx.fillRect(sx - size/2, sy - size/2, size, size)
+      } else {
+        const alpha = brightness * (phase === 'jump' ? warpFactor : 1)
+        offCtx.strokeStyle = phase === 'hyperspace'
+          ? s.color + Math.round(alpha * 255).toString(16).padStart(2, '0')
+          : `rgba(255, 255, 255, ${alpha})`
+
+        offCtx.lineWidth = phase === 'hyperspace' ? 2 : 1
+        offCtx.beginPath()
+        offCtx.moveTo(psx, psy)
+        offCtx.lineTo(sx, sy)
+        offCtx.stroke()
+      }
+    }
+
+    // Target tracking HUD position
+    const targetX = cx + Math.sin(t * 0.001) * (W * 0.18)
+    const targetY = cy + Math.cos(t * 0.0012) * (H * 0.15)
+    const droneSize = 14
+
+    // Chaser interceptor position
+    const chaserX = cx + Math.sin(t * 0.0009 - 0.4) * (W * 0.15)
+    const chaserY = cy + 45 + Math.cos(t * 0.0011 - 0.3) * (H * 0.1)
+    const chaserSize = 28
+
+    if (phase === 'chase' || phase === 'countdown') {
+      // Draw locking brackets on target
+      offCtx.strokeStyle = 'rgba(74, 222, 128, 0.8)'
+      offCtx.lineWidth = 1.2
+      const bracketSize = 18
+      offCtx.beginPath()
+      // Top-left
+      offCtx.moveTo(targetX - bracketSize, targetY - bracketSize + 6)
+      offCtx.lineTo(targetX - bracketSize, targetY - bracketSize)
+      offCtx.lineTo(targetX - bracketSize + 6, targetY - bracketSize)
+      // Top-right
+      offCtx.moveTo(targetX + bracketSize, targetY - bracketSize + 6)
+      offCtx.lineTo(targetX + bracketSize, targetY - bracketSize)
+      offCtx.lineTo(targetX + bracketSize - 6, targetY - bracketSize)
+      // Bottom-left
+      offCtx.moveTo(targetX - bracketSize, targetY + bracketSize - 6)
+      offCtx.lineTo(targetX - bracketSize, targetY + bracketSize)
+      offCtx.lineTo(targetX - bracketSize + 6, targetY + bracketSize)
+      // Bottom-right
+      offCtx.moveTo(targetX + bracketSize, targetY + bracketSize - 6)
+      offCtx.lineTo(targetX + bracketSize, targetY + bracketSize)
+      offCtx.lineTo(targetX + bracketSize - 6, targetY + bracketSize)
+      offCtx.stroke()
+
+      offCtx.fillStyle = 'rgba(74, 222, 128, 0.9)'
+      offCtx.font = '9px monospace'
+      offCtx.fillText('LOCK // ESC-01', targetX - bracketSize, targetY - bracketSize - 4)
+
+      // Draw Chased Drone (Target)
+      offCtx.strokeStyle = 'rgba(255, 60, 60, 0.9)'
+      offCtx.lineWidth = 1.5
+      offCtx.beginPath()
+      offCtx.moveTo(targetX, targetY - droneSize * 0.5)
+      offCtx.lineTo(targetX + droneSize * 0.3, targetY)
+      offCtx.lineTo(targetX, targetY + droneSize * 0.4)
+      offCtx.lineTo(targetX - droneSize * 0.3, targetY)
+      offCtx.closePath()
+      offCtx.moveTo(targetX - droneSize * 0.3, targetY)
+      offCtx.lineTo(targetX - droneSize * 0.8, targetY - droneSize * 0.2)
+      offCtx.lineTo(targetX - droneSize * 0.7, targetY + droneSize * 0.3)
+      offCtx.lineTo(targetX - droneSize * 0.2, targetY + droneSize * 0.2)
+      offCtx.moveTo(targetX + droneSize * 0.3, targetY)
+      offCtx.lineTo(targetX + droneSize * 0.8, targetY - droneSize * 0.2)
+      offCtx.lineTo(targetX + droneSize * 0.7, targetY + droneSize * 0.3)
+      offCtx.lineTo(targetX + droneSize * 0.2, targetY + droneSize * 0.2)
+      offCtx.stroke()
+
+      // Target Thruster
+      const droneEngine = 3 + Math.sin(t * 0.05) * 1.5
+      offCtx.fillStyle = phase === 'countdown' ? 'rgba(0, 240, 255, 0.9)' : 'rgba(255, 100, 0, 0.8)'
+      offCtx.beginPath()
+      offCtx.arc(targetX, targetY + droneSize * 0.4, droneEngine, 0, Math.PI * 2)
+      offCtx.fill()
+
+      // Draw Chasing Interceptor
+      offCtx.strokeStyle = 'rgba(0, 255, 240, 0.95)'
+      offCtx.lineWidth = 1.8
+      offCtx.beginPath()
+      offCtx.moveTo(chaserX, chaserY - chaserSize * 0.8)
+      offCtx.lineTo(chaserX + chaserSize * 0.15, chaserY - chaserSize * 0.2)
+      offCtx.lineTo(chaserX + chaserSize * 0.2, chaserY + chaserSize * 0.4)
+      offCtx.lineTo(chaserX - chaserSize * 0.2, chaserY + chaserSize * 0.4)
+      offCtx.lineTo(chaserX - chaserSize * 0.15, chaserY - chaserSize * 0.2)
+      offCtx.closePath()
+      offCtx.moveTo(chaserX - chaserSize * 0.15, chaserY + chaserSize * 0.1)
+      offCtx.lineTo(chaserX - chaserSize * 0.9, chaserY - chaserSize * 0.3)
+      offCtx.lineTo(chaserX - chaserSize * 0.7, chaserY + chaserSize * 0.2)
+      offCtx.lineTo(chaserX - chaserSize * 0.2, chaserY + chaserSize * 0.3)
+      offCtx.moveTo(chaserX + chaserSize * 0.15, chaserY + chaserSize * 0.1)
+      offCtx.lineTo(chaserX + chaserSize * 0.9, chaserY - chaserSize * 0.3)
+      offCtx.lineTo(chaserX + chaserSize * 0.7, chaserY + chaserSize * 0.2)
+      offCtx.lineTo(chaserX + chaserSize * 0.2, chaserY + chaserSize * 0.3)
+      offCtx.stroke()
+
+      // Chaser Thrusters
+      const chaserEngine = 4 + Math.sin(t * 0.03) * 1.5
+      offCtx.fillStyle = 'rgba(0, 240, 255, 0.95)'
+      offCtx.beginPath()
+      offCtx.arc(chaserX - chaserSize * 0.15, chaserY + chaserSize * 0.4, chaserEngine * 0.7, 0, Math.PI * 2)
+      offCtx.arc(chaserX + chaserSize * 0.15, chaserY + chaserSize * 0.4, chaserEngine * 0.7, 0, Math.PI * 2)
+      offCtx.fill()
+    }
+
+    if (phase === 'chase') {
+      const shootInterval = 1200
+      const timeInInterval = t % shootInterval
+      if (timeInInterval < 150) {
+        const progress = timeInInterval / 150
+        offCtx.strokeStyle = 'rgba(255, 50, 50, 0.95)'
+        offCtx.lineWidth = 2
+
+        const lx1 = chaserX - chaserSize * 0.9
+        const ly1 = chaserY - chaserSize * 0.3
+        const lleftX = lx1 + (targetX - lx1) * progress
+        const lleftY = ly1 + (targetY - ly1) * progress
+        offCtx.beginPath()
+        offCtx.moveTo(lleftX - (targetX - lx1) * 0.15, lleftY - (targetY - ly1) * 0.15)
+        offCtx.lineTo(lleftX, lleftY)
+        offCtx.stroke()
+
+        const rx1 = chaserX + chaserSize * 0.9
+        const ry1 = chaserY - chaserSize * 0.3
+        const lrightX = rx1 + (targetX - rx1) * progress
+        const lrightY = ry1 + (targetY - ry1) * progress
+        offCtx.beginPath()
+        offCtx.moveTo(lrightX - (targetX - rx1) * 0.15, lrightY - (targetY - ry1) * 0.15)
+        offCtx.lineTo(lrightX, lrightY)
+        offCtx.stroke()
+
+        if (progress > 0.8) {
+          offCtx.strokeStyle = 'rgba(0, 255, 255, 0.8)'
+          offCtx.lineWidth = 1
+          offCtx.beginPath()
+          offCtx.arc(targetX, targetY, droneSize * 1.5 * (progress - 0.8) * 5, 0, Math.PI * 2)
+          offCtx.stroke()
+        }
+      }
+    }
+
+    if (phase === 'countdown') {
+      const countdownVal = Math.max(0, 12 - cycleTime)
+      offCtx.fillStyle = '#facc15'
+      offCtx.font = 'bold 12px monospace'
+      offCtx.fillText(`WARNING: ESCAPE VECTOR INITIATED`, cx - 110, cy + 50)
+      offCtx.fillText(`HYPERJUMP DETECTED IN: ${countdownVal.toFixed(2)}s`, cx - 110, cy + 68)
+
+      offCtx.strokeStyle = 'rgba(0, 240, 255, 0.7)'
+      offCtx.lineWidth = 1
+      for (let i = 0; i < 4; i++) {
+        const angle = t * 0.01 + (i * Math.PI / 2)
+        const rad = 25 - (t % 500) / 500 * 20
+        offCtx.beginPath()
+        offCtx.arc(targetX, targetY, rad, angle, angle + 0.5)
+        offCtx.stroke()
+      }
+    }
+
+    if (phase === 'jump') {
+      const p = (cycleTime - 12) / 2
+      const shipScale = 1 - p
+
+      const targetJumpX = targetX + (cx - targetX) * p
+      const targetJumpY = targetY + (cy - targetY) * p
+      const chaserJumpX = chaserX + (cx - chaserX) * (p * 0.8)
+      const chaserJumpY = chaserY + (cy - chaserY) * (p * 0.8)
+
+      if (p < 0.6) {
+        const droneSizeJ = droneSize * (1 - p / 0.6)
+        offCtx.strokeStyle = `rgba(255, 60, 60, ${1 - p / 0.6})`
+        offCtx.beginPath()
+        offCtx.moveTo(targetJumpX, targetJumpY - droneSizeJ * 0.5)
+        offCtx.lineTo(targetJumpX + droneSizeJ * 0.3, targetJumpY)
+        offCtx.lineTo(targetJumpX, targetJumpY + droneSizeJ * 0.4)
+        offCtx.lineTo(targetJumpX - droneSizeJ * 0.3, targetJumpY)
+        offCtx.closePath()
+        offCtx.stroke()
+      }
+
+      const chaserSizeJ = chaserSize * shipScale
+      offCtx.strokeStyle = `rgba(0, 255, 240, ${shipScale})`
+      offCtx.beginPath()
+      offCtx.moveTo(chaserJumpX, chaserJumpY - chaserSizeJ * 0.8)
+      offCtx.lineTo(chaserJumpX + chaserSizeJ * 0.15, chaserJumpY - chaserSizeJ * 0.2)
+      offCtx.lineTo(chaserJumpX + chaserSizeJ * 0.2, chaserJumpY + chaserSizeJ * 0.4)
+      offCtx.lineTo(chaserJumpX - chaserSizeJ * 0.2, chaserJumpY + chaserSizeJ * 0.4)
+      offCtx.lineTo(chaserJumpX - chaserSizeJ * 0.15, chaserJumpY - chaserSizeJ * 0.2)
+      offCtx.closePath()
+      offCtx.stroke()
+
+      const flashRad = p * Math.max(W, H) * 0.8
+      offCtx.strokeStyle = `rgba(255, 255, 255, ${1 - p})`
+      offCtx.lineWidth = 4 * (1 - p)
+      offCtx.beginPath()
+      offCtx.arc(cx, cy, flashRad, 0, Math.PI * 2)
+      offCtx.stroke()
+    }
+
+    if (phase === 'hyperspace') {
+      offCtx.fillStyle = '#ef4444'
+      offCtx.font = 'bold 12px monospace'
+      offCtx.fillText(`HYPERSPACE DRIVE STABLE`, cx - 75, cy + 50)
+      offCtx.font = '9px monospace'
+      offCtx.fillStyle = 'rgba(74, 222, 128, 0.8)'
+      offCtx.fillText(`WARP VECTOR FLUIDIC COHERENCE: 99.8%`, cx - 100, cy + 68)
+
+      offCtx.lineWidth = 1.5
+      const numCircles = 6
+      for (let i = 0; i < numCircles; i++) {
+        const offset = ((t * 0.001) + (i / numCircles)) % 1
+        const rad = offset * Math.max(W, H) * 0.7
+        const opacity = (1 - offset) * 0.4
+        const hue = (t * 0.05 + i * 60) % 360
+        offCtx.strokeStyle = `hsla(${hue}, 80%, 60%, ${opacity})`
+        offCtx.beginPath()
+        offCtx.arc(cx, cy, rad, 0, Math.PI * 2)
+        offCtx.stroke()
+      }
+    }
+
+    if (phase === 'exit') {
+      const p = (cycleTime - 22) / 4
+      offCtx.fillStyle = '#facc15'
+      offCtx.font = 'bold 12px monospace'
+      offCtx.fillText(`WARP DESYNCHRONIZATION IN PROGRESS`, cx - 110, cy + 50)
+
+      const targetJumpX = cx + (targetX - cx) * p
+      const targetJumpY = cy + (targetY - cy) * p
+      const chaserJumpX = cx + (chaserX - cx) * p
+      const chaserJumpY = cy + (chaserY - cy) * p
+
+      const droneSizeJ = droneSize * p
+      offCtx.strokeStyle = `rgba(255, 60, 60, ${p})`
+      offCtx.beginPath()
+      offCtx.moveTo(targetJumpX, targetJumpY - droneSizeJ * 0.5)
+      offCtx.lineTo(targetJumpX + droneSizeJ * 0.3, targetJumpY)
+      offCtx.lineTo(targetJumpX, targetJumpY + droneSizeJ * 0.4)
+      offCtx.lineTo(targetJumpX - droneSizeJ * 0.3, targetJumpY)
+      offCtx.closePath()
+      offCtx.stroke()
+
+      const chaserSizeJ = chaserSize * p
+      offCtx.strokeStyle = `rgba(0, 255, 240, ${p})`
+      offCtx.beginPath()
+      offCtx.moveTo(chaserJumpX, chaserJumpY - chaserSizeJ * 0.8)
+      offCtx.lineTo(chaserJumpX + chaserSizeJ * 0.15, chaserJumpY - chaserSizeJ * 0.2)
+      offCtx.lineTo(chaserJumpX + chaserSizeJ * 0.2, chaserJumpY + chaserSizeJ * 0.4)
+      offCtx.lineTo(chaserJumpX - chaserSizeJ * 0.2, chaserJumpY + chaserSizeJ * 0.4)
+      offCtx.lineTo(chaserJumpX - chaserSizeJ * 0.15, chaserJumpY - chaserSizeJ * 0.2)
+      offCtx.closePath()
+      offCtx.stroke()
+
+      const flashRad = (1 - p) * Math.max(W, H) * 0.5
+      offCtx.strokeStyle = `rgba(255, 255, 255, ${1 - p})`
+      offCtx.lineWidth = 2 * (1 - p)
+      offCtx.beginPath()
+      offCtx.arc(cx, cy, flashRad, 0, Math.PI * 2)
+      offCtx.stroke()
+    }
+
+    // Grid / Scan lines
     offCtx.strokeStyle = 'rgba(74, 222, 128, 0.04)'
     offCtx.lineWidth = 1
     for (let y = 0; y < H; y += 3) {
@@ -534,16 +679,35 @@ export const StarfieldScene = makeScene(
     }
     offCtx.stroke()
 
+    let statusText = 'STATUS: CHASE / LOCKED'
+    let speedText = '0.050c'
+    if (phase === 'chase') {
+      statusText = 'STATUS: CHASE / LOCKED'
+      speedText = `${(0.05 + speed * 2).toFixed(3)}c`
+    } else if (phase === 'countdown') {
+      statusText = 'STATUS: PRE-WARP ALERT'
+      speedText = `${(0.05 + speed * 2).toFixed(3)}c`
+    } else if (phase === 'jump') {
+      statusText = 'STATUS: WARP TRANSITION'
+      speedText = `WARP ${(9.9 * warpFactor).toFixed(1)}`
+    } else if (phase === 'hyperspace') {
+      statusText = 'STATUS: WARP ACTIVE'
+      speedText = 'WARP 9.98'
+    } else if (phase === 'exit') {
+      statusText = 'STATUS: EXIT ENTRANCE'
+      speedText = `WARP ${(9.9 * warpFactor).toFixed(1)}`
+    }
+
     const bottomY = H - 22
     offCtx.fillStyle = '#4ade80'
     offCtx.font = 'bold 10px monospace'
     offCtx.fillText(`SPEED: ${speedText}`, 25, bottomY)
-    
+
     let statusColor = '#4ade80'
-    if (statusText === 'STATUS: CRITICAL') statusColor = '#ef4444'
-    else if (statusText === 'STATUS: DECELLERATING') statusColor = '#facc15'
+    if (statusText.includes('ALERT') || statusText.includes('TRANSITION')) statusColor = '#facc15'
+    else if (statusText.includes('ACTIVE')) statusColor = '#ef4444'
     offCtx.fillStyle = statusColor
-    offCtx.fillText(statusText, W / 2 - 50, bottomY)
+    offCtx.fillText(statusText, W / 2 - 60, bottomY)
 
     offCtx.fillStyle = '#4ade80'
     const coordsText = `X: ${state.xCoord.toFixed(2)} Y: ${state.yCoord.toFixed(2)} Z: ${state.zCoord.toFixed(2)}`

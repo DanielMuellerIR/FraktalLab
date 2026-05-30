@@ -13,7 +13,7 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 > - [x] **RW-03 `ShaderRetroWave`** — floor()-Quantisierung raus → smooth Noise-Terrain. fwidth() für Grid-AA. Sun-Cuts glätten
 >
 > ### Tier 2 — Strukturelle Neuentwürfe
-> - [ ] **RW-04 `StarfieldScene`** — Raumschiff-Verfolgungsszene: Chase → Hyperraumsprung → Countdown → Star-Stretch-Tunnel → Exit
+> - [x] **RW-04 `StarfieldScene`** — Raumschiff-Verfolgungsszene: Chase → Hyperraumsprung → Countdown → Star-Stretch-Tunnel → Exit
 > - [ ] **RW-05 `VoxelDemoBW`** — Komplett neu: z.B. Overhead-Contourmap oder Spiral-Descent
 > - [ ] **RW-06 `NeuralNetPanel` (VoxelMatrix)** — Mehr Nodes, Topologie-Wechsel, farbcodierte Subnetze, Attack/Defense-Pakete
 > - [ ] **RW-07 `CADRobotPanel`** — Kindische Roboter ersetzen durch Hard-Sci-Fi: Industriearm, Mech-Walker, Satellit, Drone
@@ -23,9 +23,9 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 >
 > ### Tier 3 — Signifikante Verbesserungen
 > - [ ] **RW-11 `TunnelScene`** — Stargate-Stil: Kristallwände, Energiepulse, warpende Geometrie, Farbwechsel
-> - [ ] **RW-12 `ElitePanel`** — Wireframe weiß statt grün, kohärenter Dogfight-Ablauf
+> - [x] **RW-12 `ElitePanel`** — Wireframe weiß statt grün, kohärenter Dogfight-Ablauf
 > - [ ] **RW-13 `DNAHelix`** — Split-Layout: Helix links, Spezies-Info rechts (6 Spezies)
-> - [ ] **RW-14 `RetroErrorPanel`** — macOS Kernel Panic + Linux Oops/Panic ergänzen
+> - [x] **RW-14 `RetroErrorPanel`** — macOS Kernel Panic + Linux Oops/Panic ergänzen
 > - [ ] **RW-15 `VoxelDemoColor`** — Smooth-Camera-Interpolation, Sky-Gradient statt Schwarz, Soft-Fade
 > - [ ] **RW-16 `VoxelThermal`** — Rendering-Artefakte fixen, Soft-Vertical-Fade oben
 > - [ ] **RW-17 `VoxelLava`** — Anderer Flugpfad (Overhead/Spiral), eigenständiger Terrain-Charakter
