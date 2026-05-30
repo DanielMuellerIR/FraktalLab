@@ -1,6 +1,6 @@
 # AUDIT_FINDINGS.md — FraktalLab
 
-> **Status 2026-05-30:** Phasen 1 + 2 abgeschlossen (F-001..F-008, H-01..H-08, H-11 in Commits umgesetzt). **Phase 3 (Mess-Baseline) erledigt** — Harness `frontend/tests/perf-measure.spec.ts`, Ergebnisse + Verdikt in `PERF_NOTES.md`. Zwei getrennte Ergebnisse: (1) **H-07 nicht bestätigt** — keine durch `5264baf` eingeschleppte Regression (WASM byte-identisch, kein Frame-Time-Regress, B-3-Heap kein Leak). (2) **B-4 — die App ist Main-Thread-/CPU-bound, NICHT GPU-bound:** Headed-Messung auf echter M5-Max-GPU liefert dieselben Frame-Times wie der Software-Rasterizer; der geforderte 60-FPS-Akzeptanzfall (Review-Modus 4-Panel-Fraktal) erreicht nur **9 FPS**. Das eigentliche Performance-Problem ist strukturell, kein Regress. App-Version `1.6.x` auf Branch `audit/2026-05-29`. **Offen:** Phase 5 (Demoscene-Panel-Tiefen-Audit); B-4-Maßnahmen (Main-Thread-Entlastung, siehe `PERF_NOTES.md` §5).
+> **Status 2026-05-30:** Phasen 1 + 2 abgeschlossen (F-001..F-008, H-01..H-08, H-11 in Commits umgesetzt). **Phase 3 (Mess-Baseline) erledigt** — Harness `frontend/tests/perf-measure.spec.ts`, Ergebnisse + Verdikt in `PERF_NOTES.md`. Zwei getrennte Ergebnisse: (1) **H-07 nicht bestätigt** — keine durch `5264baf` eingeschleppte Regression (WASM byte-identisch, kein Frame-Time-Regress, B-3-Heap kein Leak). (2) **B-4 — die App ist Main-Thread-/CPU-bound, NICHT GPU-bound:** Headed-Messung auf echter M5-Max-GPU liefert dieselben Frame-Times wie der Software-Rasterizer; der geforderte 60-FPS-Akzeptanzfall (Review-Modus 4-Panel-Fraktal) erreicht nur **9 FPS**. Das eigentliche Performance-Problem ist strukturell, kein Regress. **B-4 adressiert:** Review-Freeze (M-1) + komplette WASM→GPU-Fraktal-Migration (alle 11 Panels, double-single-Shader) → M-01/M-03/M-07 jetzt 120 FPS (war 8–18); WASM-Pfad entfernt. **Phase 5 (Demoscene-Tiefenaudit) erledigt** — siehe Sektion „Demoscene-Audit" unten. App-Version `1.7.x` auf Branch `audit/2026-05-29`. **Offen:** nur noch optionale Folge-Punkte (Oscilloscope/Voxel-Aliase nacharbeiten, Code-Labels an Realität angleichen, Demoscene-Zusatz-Vorschläge — alles nach Freigabe).
 
 > Audit-Branch: `audit/2026-05-29`. Quelle: Inspektion gegen `AGENTS.md` (v1.2.7) und `blueprint_audit.md`. Methode: Read-only, drei parallele Investigator-Agents + Spot-Checks.
 
@@ -255,3 +255,69 @@ Alle in Phase 1 + Phase 2 identifizierten Befunde wurden in derselben Session um
 User hat zwischen Iter.-1- und Iter.-2-Fixes manuell getestet und Verbesserungen bestätigt (Fraktal-Cluster, ProTracker, GlitchOverlay, Aspect-Fix). Ein erneuter Komplett-Test der gesamten App nach H-05 (rAF-Migration aller verbliebenen 20 Panels) steht für die nächste Session aus.
 
 
+
+---
+
+## Demoscene-Audit (Phase 5) — 2026-05-30
+
+> Read-only Bewertung aller demoscene-inspirierten Panels nach den Dimensionen
+> Treffsicherheit / Tiefe / Variation / Reaktionsfähigkeit / Code-Eleganz
+> (`blueprint_audit.md` §5). **Diskussions-Material, kein Implementierungs-Auftrag.**
+> Methode: 4 parallele Code-Audit-Agents + visuelle Stichproben (Screenshots).
+
+### Per-Panel-Bewertung
+
+| Panel | Technik (echt?) | Render | Verdikt |
+|---|---|---|---|
+| **PlasmaDemo** | Sinus-Superposition + echtes Palette-Cycling (Crossfade), 3 Feld-Modi × 4 Paletten | GPU | **stark** |
+| **TunnelScene** | echte Winkel/Distanz-Parametrisierung | GPU | **stark** (Kommentar behauptet 2. Layer, der fehlt) |
+| **RotozoomScene** | echtes Rotate+Zoom-Sampling, 2×2-Supersampling | GPU | **stark** |
+| **MetaballsScene** | echtes Summenfeld 1/d² + Threshold | GPU | **stark** (geringste Variation) |
+| **FireScene** | FBM-Noise-Feuer (NICHT klassische CA/Diffusion), Jet-Branch ist Dead-Code (`isJet=0.0`) | GPU | akzeptabel |
+| **StarfieldScene** | echte 3D-Projektion + Bresenham-Warp-Streaks, Phasen-Zyklus | CPU | **stark** |
+| **DotCloudScene** | 2D-Knotengraph (kein Demoscene-Effekt); Label „300 NODES", real nur 40 | CPU | akzeptabel |
+| **ThreeBodyScene** | Sphere-Raycast-Renderer echt+gut; ABER keine Gravitation trotz Name (nur Bounce) | CPU | **stark** (Name fiktiv) |
+| **LissajousScene** | echte Parametrik + echter Phosphor-Trail | CPU | **stark** |
+| **VoxelThermal / VoxelLava** | echtes Voxel-Heightmap-Raycasting (Comanche-Stil), auf GPU | GPU | **stark** |
+| **VoxelNeon / VoxelMatrix** | **keine Voxel** — Aliase auf `VectorHudPanel` bzw. `NeuralNetPanel` | — | Label-Schuld |
+| **ShaderHackingCore** (DEMO-01) | 2D-Neon-Glow-HUD (`exp()`-Ringe); Kommentar behauptet fälschlich „Raymarched" | GPU | **schwach** |
+| **ShaderMandelbox** (DEMO-01) | echter 3D-Mandelbox-DE-Raymarch (boxfold/spherefold), Kamera-Flug | GPU | **stark** |
+| **ShaderRetroWave** (DEMO-01) | echtes Heightfield-Raymarch + Value-Noise, aber Synthwave-Klischee | GPU | akzeptabel |
+| **TixyPanel** (DEMO-02) | 3 selbstgeschriebene `f(i,x,y,t)`, gerundete Vektor-Kacheln (korrekt) | Canvas2D | akzeptabel |
+| **IQSmoothMin** (DEMO-03) | korrektes IQ-`smin` (2D), aber verfehlt 3D/Raymarch/Shadow-Anspruch | GPU | akzeptabel |
+| **IQDigitalStorm** (DEMO-03) | lehrbuchgetreuer IQ-Domain-Warp-FBM | GPU | **stark** |
+| **LovebyteShowcasePanel** (DEMO-04) | 3 echte Mini-Shader (Moiré/IFS-Kaliset/Plasma), 30s-Rotation | GPU | akzeptabel |
+| **OscilloscopePanel** | **kein Oszilloskop, keine Lissajous** — Fake-Spektrum-Balken + Wasserfall, RNG-getrieben | Canvas2D | **schwach / Wegfall-Kandidat** |
+
+### DEMO-01..04 Soll/Ist
+
+- **DEMO-01 (ShadertoyPanel): Kuratierungsziel NICHT erfüllt.** Geplant: 6–10 kuratierte echte Shadertoy-Werke mit CC-BY-NC-SA-Attribution + Footer-Quelllink. Real: **3** selbstgeschriebene Effekte, kein URL-/Lizenz-Feld (die `attribution`-Prop trägt nur Freitext), Credits sind Name-Drops („by iq (mod)"). 2 von 3 echte Technik, 1 (HackingCore) Glow-Fake mit falschem „raymarched"-Label.
+- **DEMO-02 (TixyPanel): erfüllt im Kern** (eigene Funktionen, gerundete Vektor-Kacheln statt Pixel-Bitmap). Schwächen: nur 3 Funktionen, keine User-Auswahl, **angezeigte `expr`-Labels stimmen nicht mit dem ausgeführten Code überein** (irreführend).
+- **DEMO-03 (IQTechniquePanel): teilweise.** DigitalStorm (Domain-Warp-FBM) ist top; SmoothMin ist nur 2D und verfehlt die geplanten 3D-SDF/Soft-Shadow/Domain-Repetition-Themen.
+- **DEMO-04 (LovebyteShowcasePanel): teilweise.** 3 statt geplanter 5–8 Mini-Shader; Subtitle ist eine **paraphrasierte** Pseudo-Formel, nicht die literale GLSL-Quellzeile. „256B"-Tags rein dekorativ.
+
+### Wegfall-/Nacharbeit-Kandidaten
+
+1. **OscilloscopePanel** — implementiert weder Oszilloskop noch Lissajous (beides existiert separat als `LissajousScene`, das es gut macht). Empfehlung: entweder zu „Spektrum/Wasserfall" umbenennen (ehrlich) **oder** durch echte Beam-/XY-Trace-Mathematik ersetzen. Aktuell irreführend.
+2. **VoxelNeon / VoxelMatrix** — sind Aliase auf nicht-Voxel-Panels. Entweder echte Voxel-Varianten daraus machen oder unter korrektem Namen führen.
+
+### Doku-Drift im Code (falsche Labels / Stale Comments)
+
+- TunnelScene: Kommentar verspricht 2. gegenläufige Ebene → existiert nicht.
+- MetaballsScene: Header beschreibt obsoleten CPU-3px-Raster (jetzt GPU per-Pixel).
+- FireScene: Header bewirbt Jets pro 4. Spalte → per `isJet=0.0` tot geschaltet.
+- DotCloudScene: Titel „300 NODES", real 40.
+- ThreeBodyScene: als Gravitations-/Dreikörper-Sim gerahmt, rechnet 0 Gravitation.
+- TixyPanel / LovebyteShowcase: angezeigte Formeln ≠ tatsächlicher Shader-/JS-Code.
+- VoxelNeon/Matrix: „Voxel"-Branding für nicht-Voxel-Panels.
+
+→ Empfehlung: Kommentare/Labels an den realen Code angleichen (kleiner, separater Commit nach Freigabe).
+
+### Eigene Zusatz-Vorschläge (neue Demoscene-Panels)
+
+- **Copper-Bars / Raster-Bars** (Amiga-Klassiker): horizontale Farbbalken mit Sinus-Bewegung + Glanzlicht. Trivial, sehr authentisch, fehlt komplett.
+- **Bump-/Phong-Mapping-Tunnel** oder **Twister** (gedrehtes Band aus Quads).
+- **Echte Klassik-Fire-CA** als Variante neben dem FBM-Feuer (Soll/Ist-Lehrstück).
+- **Bobs / Sprite-Multiplexer** (hunderte additive Glow-Bobs auf Lissajous-Bahnen).
+- **Shadertoy-Kuratierung wirklich umsetzen** (DEMO-01-Ziel): echte CC-lizenzierte Werke + Attribution-Infrastruktur (verknüpft mit DEMO-05).
+- **IQTechniquePanel ausbauen**: die geplanten 3D-Themen (SDF-Raymarch, Soft-Shadow, Domain-Repetition) als zusätzliche Modi.
