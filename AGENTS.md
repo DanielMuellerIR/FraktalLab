@@ -33,7 +33,7 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 > - [ ] **RW-19 `MetaballsScene`** — Split bei Kollision, dynamische Blob-Anzahl 2–8
 > - [ ] **RW-20 `DotCloudScene`** — 300+ Nodes, kontinuierlicher Kamera-Orbit, modern Color
 > - [ ] **RW-21 `RotozoomScene`** — Trampolin-Effekt: ease-in-out Bounce-Physik
-> - [ ] **RW-22 `LissajousScene`** — Hintergrund-Kreuz weg, aggressivere Parameter-Variation
+> - [x] **RW-22 `LissajousScene`** — Hintergrund-Kreuz weg, aggressivere Parameter-Variation
 >
 > ### Tier 4 — Fraktal-Parameter-Tweaks
 > - [x] **RW-23 `FractalSpiral`** — Gegen Uhrzeigersinn, kontinuierlicher Hue-Shift

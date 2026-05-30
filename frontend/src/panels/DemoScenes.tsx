@@ -1275,14 +1275,14 @@ export const LissajousScene = () => {
       ctx.stroke()
 
       const ts = t * 0.001
-      // Path variance: frequency modulation
-      const modX = 0.2 * Math.sin(ts * 1.2)
-      const modY = 0.2 * Math.cos(ts * 0.9)
-      const freqX = 3 + 0.5 * Math.sin(ts * 0.2) + modX
-      const freqY = 4 + 0.5 * Math.cos(ts * 0.3) + modY
+      // Path variance: aggressive frequency modulation for more varied patterns
+      const modX = 0.8 * Math.sin(ts * 0.7)
+      const modY = 0.8 * Math.cos(ts * 0.5)
+      const freqX = 3 + 1.5 * Math.sin(ts * 0.15) + modX
+      const freqY = 4 + 1.5 * Math.cos(ts * 0.22) + modY
 
-      phi1 += 0.014
-      phi2 += 0.009
+      phi1 += 0.018
+      phi2 += 0.012
 
       const maxSegments = 450
       const progress = 0.5 + 0.5 * Math.sin(ts * 0.7)
