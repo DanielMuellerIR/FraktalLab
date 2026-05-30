@@ -748,33 +748,49 @@ const TUNNEL_SHADER = `
     float r = length(uv) + 0.001;
     float angle = atan(uv.y, uv.x);
 
+    // Polar coordinates for cylindrical tunnel mapping
     float u = angle / 3.14159265;
-    float v = 0.5 / r;
+    float v = 1.0 / r; // depth coordinate
 
-    float wave = sin(u * 5.0 + ts * 2.0) * cos(v * 0.5 - ts * 3.0);
-    u += 0.06 * wave;
-    v += 0.15 * wave;
+    // Warp: geometry twisting and radial ripple wave
+    float twist = sin(v * 0.05 + ts * 1.0) * 0.4;
+    float ripple = sin(u * 5.0 - ts * 2.0) * 0.1;
+    u += twist + ripple;
+    v += cos(u * 3.0 + ts * 1.5) * 2.0;
 
-    float p1 = sin(u * 6.0 + ts) * cos(v * 2.0 - ts * 2.0);
-    float p2 = sin(u * 12.0 - ts * 1.5) * cos(v * 4.0 + ts * 3.0);
-    float plasma = 0.5 + 0.35 * p1 + 0.15 * p2;
+    // Continuous color shifting: cycles between cyan, deep blue, fuchsia, purple
+    float baseHue = 0.58 + 0.18 * sin(ts * 0.2 + v * 0.005);
+    vec3 tunnelBase = hsl2rgb(vec3(mod(baseHue, 1.0), 0.85, 0.4));
 
-    vec3 baseCol = mix(vec3(0.02, 0.04, 0.25), vec3(0.0, 0.85, 0.9), plasma);
-    baseCol = mix(baseCol, vec3(0.48, 0.05, 0.85), 0.3 * sin(v * 0.3 + ts));
-
-    float core = exp(-r * 3.5);
-    baseCol = mix(baseCol, vec3(0.9, 0.95, 1.0), core * 0.7);
-
-    float streakPattern = sin(u * 14.0 + sin(ts * 0.5) * 2.0) * cos(v * 0.8 - ts * 12.0);
-    float streaks = smoothstep(0.72, 0.98, streakPattern);
+    // Crystalline facet highlights (crystal walls)
+    float facet1 = abs(fract(u * 5.0 + v * 0.15 + ts * 0.1) - 0.5);
+    float facet2 = abs(fract(u * -5.0 + v * 0.15 - ts * 0.15) - 0.5);
+    float crystal = smoothstep(0.12, 0.0, abs(facet1 - facet2));
     
-    vec3 streakCol = vec3(0.85, 0.95, 1.0) * streaks * smoothstep(0.02, 0.25, r);
-    vec3 col = baseCol + streakCol * 1.4;
+    // Highlight sparkles based on angle/depth
+    float sparkles = smoothstep(0.8, 1.0, sin(u * 12.0 + v * 0.8 + ts * 4.0)) 
+                   * smoothstep(0.8, 1.0, cos(u * 8.0 - v * 1.2 + ts * 3.0));
+    
+    vec3 wallCol = mix(tunnelBase, vec3(1.0), crystal * 0.45);
+    wallCol += vec3(0.9, 0.95, 1.0) * sparkles * 0.8;
 
-    float centerFade = smoothstep(0.008, 0.08, r);
+    // Moving energy pulses/rings zipping through the tunnel
+    float pulse = exp(-pow(mod(v + ts * 28.0, 60.0) - 30.0, 2.0) * 0.04);
+    vec3 pulseCol = vec3(0.5, 0.9, 1.0) * pulse * 1.6;
+
+    // Final color assembly
+    vec3 col = wallCol + pulseCol;
+
+    // Glowing core/singularity at the tunnel center
+    float core = exp(-r * 4.0);
+    col = mix(col, vec3(1.0, 0.96, 0.9), core * 0.95);
+
+    // Fade out at the center and screen edges
+    float centerFade = smoothstep(0.005, 0.06, r);
     col *= centerFade;
 
-    col *= 0.95 + 0.05 * sin(fragCoord.y * 2.0);
+    // Subtle scanline overlay
+    col *= 0.93 + 0.07 * sin(fragCoord.y * 2.0);
 
     fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
   }

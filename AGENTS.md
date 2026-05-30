@@ -22,7 +22,7 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 > - [x] **RW-10 `NeuralLinkDecoderPanel`** — Mehr Nodes, schärfer, kein Grün, Hard-Sci-Fi-Palette
 >
 > ### Tier 3 — Signifikante Verbesserungen
-> - [ ] **RW-11 `TunnelScene`** — Stargate-Stil: Kristallwände, Energiepulse, warpende Geometrie, Farbwechsel
+> - [x] **RW-11 `TunnelScene`** — Stargate-Stil: Kristallwände, Energiepulse, warpende Geometrie, Farbwechsel
 > - [x] **RW-12 `ElitePanel`** — Wireframe weiß statt grün, kohärenter Dogfight-Ablauf
 > - [ ] **RW-13 `DNAHelix`** — Split-Layout: Helix links, Spezies-Info rechts (6 Spezies)
 > - [x] **RW-14 `RetroErrorPanel`** — macOS Kernel Panic + Linux Oops/Panic ergänzen
