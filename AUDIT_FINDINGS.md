@@ -1,6 +1,6 @@
 # AUDIT_FINDINGS.md — FraktalLab
 
-> **Status 2026-05-29 (Session-Ende):** Phasen 1 + 2 vollstaendig abgeschlossen. Sämtliche identifizierten Befunde (F-001..F-008, H-01..H-08, H-11) sind in Commits umgesetzt — siehe AGENTS.md Sektion "Code-Audit-Befunde" für die Status-Tabelle. App-Version `1.6.0` auf Branch `audit/2026-05-29`. **Offen für die nächste Session:** Phase 3 (Mess-Baseline gegen Pre-`5264baf`-Commit), Phase 5 (Demoscene-Panel-Tiefen-Audit, Wegfall-Kandidaten).
+> **Status 2026-05-30:** Phasen 1 + 2 abgeschlossen (F-001..F-008, H-01..H-08, H-11 in Commits umgesetzt). **Phase 3 (Mess-Baseline) erledigt** — Harness `frontend/tests/perf-measure.spec.ts`, Ergebnisse + Verdikt in `PERF_NOTES.md`: **H-07 nicht bestätigt** (WASM byte-identisch zur Baseline, kein eindeutiger Frame-Time-Regress; einziges Negativ-Signal Heap-Wachstum B-3). App-Version `1.6.0`+ auf Branch `audit/2026-05-29`. **Offen:** Phase 5 (Demoscene-Panel-Tiefen-Audit) + Phase-3-Follow-ups (Headed-GPU-Messung, Panel-Pool fixieren, B-3 Heap nachgehen).
 
 > Audit-Branch: `audit/2026-05-29`. Quelle: Inspektion gegen `AGENTS.md` (v1.2.7) und `blueprint_audit.md`. Methode: Read-only, drei parallele Investigator-Agents + Spot-Checks.
 
@@ -234,7 +234,7 @@ Alle in Phase 1 + Phase 2 identifizierten Befunde wurden in derselben Session um
 | H-04 | `7833455` | `ThreeBodyScene` 30-FPS-Cap via `makeScene(..., fpsCap)` |
 | H-05 | `743d12b` | 20 Panels auf zentralen `raf-coordinator` migriert |
 | H-06 | erledigt vor Audit | `handleSkipSlot`/`handleSkipMobileSlot` schon mit `useCallback` |
-| H-07 | offen | Mess-Baseline gegen Pre-`5264baf` — Phase 3 |
+| H-07 | ✅ widerlegt | Phase 3 gemessen (`PERF_NOTES.md`): WASM byte-identisch zur Baseline, kein eindeutiger Frame-Time-Regress. H-07 **nicht bestätigt**. Einziges Negativ-Signal: Heap-Wachstum +9 MB/25 s auf HEAD (B-3). |
 | H-11 (neu) | `c780297` | Aspect-preserving Coord-Mapping in Tunnel/Rotozoom/Metaballs/Plasma |
 | ProTracker-Reintegration | `034811e`, `c18cb4d`, `0d6e2bd` | Standalone-Hybrid: kein ScriptProcessor-Fallback, echte VU-Pegel, EMA, Race-Fix |
 | ProTracker-Features | `553347a`, `614d5b5`, `164a7ca`, `569bd90`, `c42659f`, `c931285` | Drop/Picker, Scrubber, 13-Track-Set + Attribution |
@@ -244,7 +244,7 @@ Alle in Phase 1 + Phase 2 identifizierten Befunde wurden in derselben Session um
 
 ### Offen für die nächste Session
 
-1. **Phase 3 — Mess-Baseline** (H-07): Worktree für `5264baf^`, Playwright + CDP Frame-Timing, M-01..M-06 fahren, `PERF_NOTES.md` mit Vergleichstabellen.
+1. ~~**Phase 3 — Mess-Baseline** (H-07)~~ ✅ erledigt 2026-05-30. Harness `frontend/tests/perf-measure.spec.ts`, Ergebnisse + Verdikt in `PERF_NOTES.md`. **H-07 nicht bestätigt.** Offene Follow-ups daraus: (a) Headed-GPU-Messung auf Apple-Silicon-Hardware für valide 60-FPS-Aussage; (b) Panel-Pool für saubere Frame-Time-Vergleiche fixieren; (c) B-3 Heap-Wachstum mit 60–120-s-Lauf nachgehen.
 2. **Phase 5 — Demoscene-Tiefenaudit**: Treffsicherheit, Tiefe, Variation der DEMO-01..04-Panels und der neuen demoscene-inspirierten Panels prüfen. Wegfall-Kandidaten markieren.
 3. **AGENTS.md-Auslagerungs-Vorschlag** (siehe Sektion Q-A oben): mechanische Umsetzung erst nach Freigabe.
 4. **Optional H-09** (DPI/`devicePixelRatio`-Handling): kontextabhängig, nur falls Schärfe-Feedback kommt.

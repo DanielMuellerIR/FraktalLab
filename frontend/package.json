@@ -1,14 +1,15 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "1.6.0",
+  "version": "1.6.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:panels": "playwright test tests/panel-check.spec.ts"
+    "test:panels": "playwright test tests/panel-check.spec.ts",
+    "test:perf": "playwright test tests/perf-measure.spec.ts"
   },
   "dependencies": {
     "react": "^19.2.6",
