@@ -12,6 +12,8 @@ export interface SidVisuals {
   envelopes: [number, number, number];
   frequencies: [number, number, number];
   gates: [number, number, number];
+  // Elapsed playback time in seconds (drives the scrubber / time display).
+  playtime: number;
 }
 
 /**
@@ -223,6 +225,17 @@ export class SidPlayer {
     this.pendingSubtune = subtune;
     if (this.workletNode) {
       this.workletNode.port.postMessage({ type: 'setSubtune', subtune });
+    }
+  }
+
+  /**
+   * Seek to a position in seconds. The worklet restarts the current subtune and
+   * fast-forwards the emulation (SID has no random access). No-op until the
+   * worklet has been set up and the tune sent (i.e. after the first play()).
+   */
+  seek(seconds: number) {
+    if (this.workletNode) {
+      this.workletNode.port.postMessage({ type: 'seek', seconds });
     }
   }
 

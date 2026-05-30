@@ -7,6 +7,16 @@ import { SidPlayer, type SidMetadata, type SidVisuals } from '../utils/sidplayer
 const AUDIO_ID = 'sid-player'
 const BASE = import.meta.env.BASE_URL
 
+// Scrubber range in seconds. SID files carry no length, so we use a fixed window
+// (6 min covers almost every tune before it loops). Position past this is clamped.
+const SCRUB_MAX = 360
+
+// Format seconds as "M:SS" for the time display.
+function fmtTime(sec: number): string {
+  const s = Math.max(0, Math.floor(sec))
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
 interface Track {
   id: string
   name: string
@@ -27,6 +37,43 @@ function isSidName(name: string): boolean {
   return name.toLowerCase().endsWith('.sid')
 }
 
+// Read a File into a Uint8Array (Promise wrapper around FileReader).
+function readFileAsUint8(file: File): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsArrayBuffer(file)
+  })
+}
+
+// Recursively walk dropped DataTransfer entries (files + folders) and collect
+// every .sid file. Folder drag&drop exposes a directory tree through the
+// non-standard webkitGetAsEntry() / FileSystemEntry API; readEntries() returns
+// a directory in batches, so we loop until it yields nothing more.
+async function collectSidFilesFromEntries(entries: any[]): Promise<File[]> {
+  const out: File[] = []
+  const walk = async (entry: any): Promise<void> => {
+    if (!entry) return
+    if (entry.isFile) {
+      const file: File = await new Promise((res, rej) => entry.file(res, rej))
+      if (isSidName(file.name)) out.push(file)
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader()
+      const readBatch = (): Promise<any[]> =>
+        new Promise((res, rej) => reader.readEntries(res, rej))
+      let batch: any[]
+      do {
+        batch = await readBatch()
+        for (const e of batch) await walk(e)
+      } while (batch.length > 0)
+    }
+  }
+  for (const e of entries) await walk(e)
+  out.sort((a, b) => a.name.localeCompare(b.name)) // stable, alphabetical order
+  return out
+}
+
 function OscilloscopePanel() {
   const [trackIdx, setTrackIdx] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -43,8 +90,17 @@ function OscilloscopePanel() {
   const dragDepthRef = useRef(0)
   
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const folderInputRef = useRef<HTMLInputElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // Scrubber: uncontrolled <input range> updated from the RAF loop via refs to
+  // avoid a React re-render ~43x/sec. seekingRef suppresses RAF updates while
+  // the user is dragging the slider.
+  const scrubberRef = useRef<HTMLInputElement>(null)
+  const timeLabelRef = useRef<HTMLSpanElement>(null)
+  const seekingRef = useRef(false)
+  const seekTimerRef = useRef<number | null>(null)
   
   // Singleton SidPlayer instance
   const [player] = useState(() => new SidPlayer())
@@ -61,52 +117,60 @@ function OscilloscopePanel() {
   const lastVisuals = useRef<SidVisuals>({
     envelopes: [0, 0, 0],
     frequencies: [0, 0, 0],
-    gates: [0, 0, 0]
+    gates: [0, 0, 0],
+    playtime: 0
   })
   
   // Animation phases for wave trace
   const phases = useRef<[number, number, number]>([0, 0, 0])
 
-  // Handle Drag & Drop Upload
-  const addUserFiles = (files: File[], playFirstAdded: boolean) => {
-    
-    for (const f of files) {
-      if (!isSidName(f.name)) continue
-      
-      const reader = new FileReader()
-      reader.onload = async (e) => {
-        const arrayBuf = e.target?.result as ArrayBuffer
-        if (!arrayBuf) return
-        
-        const uint8 = new Uint8Array(arrayBuf)
-        const baseName = f.name.replace(/\.sid$/i, '')
-        
-        const track: Track = {
+  // Add a batch of files (drag&drop, file picker or folder) to the user track
+  // list, and optionally start playing the first SID of the batch. Reads all
+  // files, deduplicates by id, appends them, then auto-plays the first one.
+  const addUserFiles = async (files: File[], playFirst: boolean) => {
+    const sids = files.filter(f => isSidName(f.name))
+    if (sids.length === 0) return
+
+    const newTracks: Track[] = []
+    for (const f of sids) {
+      try {
+        const buffer = await readFileAsUint8(f)
+        newTracks.push({
           id: `user:${f.name}:${f.size}`,
-          name: baseName,
+          name: f.name.replace(/\.sid$/i, ''),
           url: '',
           composer: 'Unknown Composer',
           year: 'N/A',
           isUser: true,
-          buffer: uint8
-        }
-        
-        setUserTracks(prev => {
-          // Deduplicate
-          if (prev.some(t => t.id === track.id)) return prev
-          const next = [...prev, track]
-          
-          if (playFirstAdded && next.indexOf(track) === next.length - 1) {
-            queueMicrotask(() => {
-              shouldAutoPlayRef.current = true
-              setTrackIdx(DEFAULT_TRACKS.length + prev.length)
-            })
-          }
-          return next
+          buffer,
         })
-      }
-      reader.readAsArrayBuffer(f)
+      } catch { /* skip unreadable file */ }
     }
+    if (newTracks.length === 0) return
+
+    const playId = newTracks[0].id // first dropped SID — the one we auto-play
+
+    setUserTracks(prev => {
+      const ids = new Set(prev.map(t => t.id))
+      const merged = [...prev]
+      for (const t of newTracks) {
+        if (ids.has(t.id)) continue // dedupe against existing list
+        ids.add(t.id)
+        merged.push(t)
+      }
+      if (playFirst) {
+        // Works for both freshly added and already-present (re-dropped) tunes.
+        const userIdx = merged.findIndex(t => t.id === playId)
+        if (userIdx >= 0) {
+          const targetIdx = DEFAULT_TRACKS.length + userIdx
+          queueMicrotask(() => {
+            shouldAutoPlayRef.current = true
+            setTrackIdx(targetIdx)
+          })
+        }
+      }
+      return merged
+    })
   }
 
   const onDragEnter: React.DragEventHandler = (e) => {
@@ -133,11 +197,33 @@ function OscilloscopePanel() {
     e.preventDefault()
     dragDepthRef.current = 0
     setDragOver(false)
-    const files = Array.from(e.dataTransfer.files || [])
-    addUserFiles(files, true)
+
+    const dt = e.dataTransfer
+    const items = dt.items
+    // Folder drop: capture the FileSystemEntry objects synchronously (they are
+    // only valid during the event), then walk them for .sid files. Falls back to
+    // the plain file list when the entry API isn't available.
+    if (items && items.length && typeof (items[0] as any).webkitGetAsEntry === 'function') {
+      const entries: any[] = []
+      for (let i = 0; i < items.length; i++) {
+        const entry = (items[i] as any).webkitGetAsEntry?.()
+        if (entry) entries.push(entry)
+      }
+      collectSidFilesFromEntries(entries).then(files => addUserFiles(files, true))
+      return
+    }
+    addUserFiles(Array.from(dt.files || []), true)
   }
 
   const onFilePickerChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+    const files = e.target.files ? Array.from(e.target.files) : []
+    addUserFiles(files, true)
+    e.target.value = ''
+  }
+
+  // Folder picker (button) — input has webkitdirectory set, so files contains
+  // every file in the chosen folder tree; we keep the .sid ones.
+  const onFolderPickerChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
     const files = e.target.files ? Array.from(e.target.files) : []
     addUserFiles(files, true)
     e.target.value = ''
@@ -176,6 +262,16 @@ function OscilloscopePanel() {
     }
   }, [player])
 
+  // The folder picker needs the non-standard `webkitdirectory` attribute, which
+  // JSX/TS won't accept directly — set it on the DOM node after mount.
+  useEffect(() => {
+    const el = folderInputRef.current
+    if (el) {
+      el.setAttribute('webkitdirectory', '')
+      el.setAttribute('directory', '')
+    }
+  }, [])
+
   // Load track data when index changes (NO AudioContext needed)
   useEffect(() => {
     const p = playerRef.current
@@ -183,7 +279,12 @@ function OscilloscopePanel() {
     setLoadError(null)
     setPlaying(false)
     p.stop()
-    
+
+    // Reset the scrubber/time display for the new track.
+    lastVisuals.current.playtime = 0
+    if (scrubberRef.current) scrubberRef.current.value = '0'
+    if (timeLabelRef.current) timeLabelRef.current.textContent = '0:00'
+
     const track = allTracks[trackIdx]
     if (!track) {
       setLoading(false)
@@ -223,6 +324,25 @@ function OscilloscopePanel() {
         setLoadError(String(err))
       }
     }
+  }
+
+  // Scrubber. React fires onChange continuously while a range slider is dragged,
+  // so we update the time label live but DEBOUNCE the actual seek: it only runs
+  // ~160ms after the user stops moving. That avoids firing a (costly) seek on
+  // every pixel and reliably re-enables RAF updates afterwards — no dependence on
+  // which "release" event the browser sends. seekingRef pauses the RAF loop so it
+  // doesn't fight the slider while the user is scrubbing.
+  const onScrub: React.FormEventHandler<HTMLInputElement> = (e) => {
+    seekingRef.current = true
+    const v = Number((e.target as HTMLInputElement).value)
+    if (timeLabelRef.current) timeLabelRef.current.textContent = fmtTime(v)
+    if (seekTimerRef.current != null) clearTimeout(seekTimerRef.current)
+    seekTimerRef.current = window.setTimeout(() => {
+      playerRef.current.seek(v)
+      lastVisuals.current.playtime = v // keep display steady until the next frame
+      seekingRef.current = false
+      seekTimerRef.current = null
+    }, 160)
   }
 
   // Change Subtune
@@ -316,6 +436,13 @@ function OscilloscopePanel() {
       const envelopes = visuals.envelopes
       const frequencies = visuals.frequencies
       const gates = visuals.gates
+
+      // Drive the scrubber + time display from live playtime (unless dragging).
+      if (!seekingRef.current && scrubberRef.current) {
+        const pt = visuals.playtime || 0
+        scrubberRef.current.value = String(Math.min(pt, SCRUB_MAX))
+        if (timeLabelRef.current) timeLabelRef.current.textContent = fmtTime(pt)
+      }
 
       // Calculate baselines for 3 split channel views
       const channelH = H / 3
@@ -477,6 +604,22 @@ function OscilloscopePanel() {
               onChange={onFilePickerChange}
               style={{ display: 'none' }}
             />
+
+            <button
+              type="button"
+              onClick={() => folderInputRef.current?.click()}
+              title="Load all .sid files from a folder"
+              className="bg-[#0f172a] border border-[#334155] active:bg-[#1e293b] px-1.5 py-0.5 text-[10px] text-neutral-300 font-bold cursor-pointer rounded"
+            >
+              FOLDER
+            </button>
+            <input
+              ref={folderInputRef}
+              type="file"
+              multiple
+              onChange={onFolderPickerChange}
+              style={{ display: 'none' }}
+            />
           </div>
 
           <div className="flex items-center gap-2">
@@ -526,6 +669,23 @@ function OscilloscopePanel() {
           </div>
           <div className="text-neutral-500 italic truncate">{displayInfo}</div>
           {loadError && <div className="text-red-500 font-bold mt-0.5">ERROR: {loadError}</div>}
+        </div>
+
+        {/* ─── Scrubber / Song Position ─────────────────────────────────── */}
+        <div className="flex items-center gap-2 px-2.5 py-1 shrink-0 text-[10px]">
+          <span ref={timeLabelRef} className="text-[#4ade80] tabular-nums w-9 text-right">0:00</span>
+          <input
+            ref={scrubberRef}
+            type="range"
+            min={0}
+            max={SCRUB_MAX}
+            step={1}
+            defaultValue={0}
+            onChange={onScrub}
+            className="flex-1 h-1 accent-[#4ade80] cursor-pointer"
+            title="Seek song position"
+          />
+          <span className="text-neutral-500 tabular-nums w-9">{fmtTime(SCRUB_MAX)}</span>
         </div>
 
         {/* ─── Oscilloscope Canvas ─────────────────────────────────────── */}

@@ -638,9 +638,25 @@ class SidPlayerProcessor {
     this.setVolume = function(vol) {
       volume = vol;
     };
-    
+
+    // Seek to a position in seconds. A SID tune has NO random access — it is
+    // produced by running the player routine frame by frame, so the only way to
+    // reach a position is to restart the current subtune and fast-forward the
+    // emulation up to the target time (running play() without emitting audio).
+    // We cap the work so a huge value can't freeze the audio thread for too long.
+    this.seek = function(seconds) {
+      if (!loaded) return;
+      let target = seconds > 0 ? seconds : 0;
+      const MAX_SEEK = 1200; // 20 min hard cap on fast-forward work
+      if (target > MAX_SEEK) target = MAX_SEEK;
+      init(subtune);                          // restart tune (resets playtime to 0)
+      const n = Math.floor(target * samplerate);
+      for (let i = 0; i < n; i++) play();      // advance state silently
+    };
+
     this.getChannelsData = function() {
-      // Returns current envelope levels, frequencies, and gate signals
+      // Returns current envelope levels, frequencies, gate signals and elapsed
+      // playtime (seconds) so the UI can drive the oscilloscope and the scrubber.
       return {
         envelopes: [envcnt[0] / 255.0, envcnt[1] / 255.0, envcnt[2] / 255.0],
         frequencies: [
@@ -652,7 +668,8 @@ class SidPlayerProcessor {
           memory[0xD404] & 1,
           memory[0xD40B] & 1,
           memory[0xD412] & 1
-        ]
+        ],
+        playtime: playtime
       };
     };
   }
@@ -682,6 +699,8 @@ class SidPlayerWorklet extends AudioWorkletProcessor {
         this.engine.initSubtune(data.subtune);
       } else if (data.type === 'setVolume') {
         this.engine.setVolume(data.volume);
+      } else if (data.type === 'seek') {
+        this.engine.seek(data.seconds);
       }
     };
   }
