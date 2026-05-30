@@ -147,11 +147,28 @@ async function heapUsed(cdp: CDPSession): Promise<number> {
 // Ergebnis-Sammler — alle Szenarien schreiben in dieses Objekt, das am Ende
 // der Suite als JSON rausgeschrieben wird.
 // ------------------------------------------------------------------
-const results: { tag: string; baseURL: string; sampleMs: number; scenarios: FrameStats[]; memory?: any } = {
+const results: { tag: string; baseURL: string; sampleMs: number; gpu?: any; scenarios: FrameStats[]; memory?: any } = {
   tag: PERF_TAG,
   baseURL: BASE_URL,
   sampleMs: SAMPLE_MS,
   scenarios: [],
+}
+
+// Liest den echten GPU-Renderer aus (WEBGL_debug_renderer_info). Zeigt z.B.
+// "Apple M5" bei echter GPU bzw. "...SwiftShader" / "ANGLE ... Software" bei
+// Software-Rasterizer. Damit ist headless (Software) von headed-GPU klar
+// unterscheidbar — Voraussetzung für eine valide 60-FPS-Aussage.
+async function gpuRenderer(page: Page) {
+  return page.evaluate(() => {
+    const c = document.createElement('canvas')
+    const gl = (c.getContext('webgl') || c.getContext('experimental-webgl')) as WebGLRenderingContext | null
+    if (!gl) return { renderer: 'no-webgl', vendor: '' }
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info')
+    return {
+      renderer: dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
+      vendor: dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR),
+    }
+  })
 }
 
 test.describe.configure({ mode: 'serial' })
@@ -169,6 +186,10 @@ test.describe(`Perf-Messung [${PERF_TAG}]`, () => {
   test('M-01 default-grid @1920', async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 })
     await page.goto(BASE_URL, { waitUntil: 'load' })
+    // GPU-Renderer einmal erfassen (entscheidet, ob die Zahlen GPU- oder
+    // Software-rasterisiert sind).
+    results.gpu = await gpuRenderer(page)
+    console.log('[GPU]', JSON.stringify(results.gpu))
     await page.waitForTimeout(WARMUP_MS)
     const stats = await recordFrames(page, 'M-01 default-grid @1920')
     console.log('[M-01]', JSON.stringify(stats))
@@ -184,6 +205,26 @@ test.describe(`Perf-Messung [${PERF_TAG}]`, () => {
     await page.waitForTimeout(WARMUP_MS)
     const stats = await recordFrames(page, 'M-03 dense-grid @2560')
     console.log('[M-03]', JSON.stringify(stats))
+    results.scenarios.push(stats)
+    expect(stats.frames).toBeGreaterThan(30)
+  })
+
+  // --- M-07: Review-Modus, 4-Panel-Seite mit Fraktal-Hero ---
+  // Der vom Auftraggeber explizit genannte Akzeptanz-Fall (blueprint §33:
+  // „Im Review-Modus (4 Panels) mit Fraktalen muss es eindeutig 60 FPS sein").
+  // reviewIdx=15 = FractalView → Seite zeigt ALL_PANELS[12..15]
+  // (FractalSwirl, AmiModPanel, SolarSystemPanel, FractalView).
+  // Existiert NUR auf HEAD (Review-Modus kam mit 5264baf) → kein Baseline-Vergleich.
+  test('M-07 review 4-panel fractal @1920', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('fraktallab_review_mode', 'true')
+      localStorage.setItem('fraktallab_review_idx', '15')
+    })
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    await page.goto(BASE_URL, { waitUntil: 'load' })
+    await page.waitForTimeout(WARMUP_MS)
+    const stats = await recordFrames(page, 'M-07 review 4-panel fractal @1920')
+    console.log('[M-07]', JSON.stringify(stats))
     results.scenarios.push(stats)
     expect(stats.frames).toBeGreaterThan(30)
   })
@@ -272,6 +313,7 @@ test.describe(`Perf-Messung [${PERF_TAG}]`, () => {
     const path = `tests/perf-results/${PERF_TAG}.json`
     writeFileSync(path, JSON.stringify(results, null, 2))
     console.log(`\n[PERF] Ergebnisse → ${path}`)
+    if (results.gpu) console.log('[PERF] GPU:', results.gpu)
     console.table(results.scenarios)
     if (results.memory) console.log('[PERF] Memory:', results.memory)
   })

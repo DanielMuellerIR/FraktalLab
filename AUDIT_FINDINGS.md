@@ -1,6 +1,6 @@
 # AUDIT_FINDINGS.md — FraktalLab
 
-> **Status 2026-05-30:** Phasen 1 + 2 abgeschlossen (F-001..F-008, H-01..H-08, H-11 in Commits umgesetzt). **Phase 3 (Mess-Baseline) erledigt** — Harness `frontend/tests/perf-measure.spec.ts`, Ergebnisse + Verdikt in `PERF_NOTES.md`: **H-07 nicht bestätigt** (WASM byte-identisch zur Baseline, kein eindeutiger Frame-Time-Regress; einziges Negativ-Signal Heap-Wachstum B-3). App-Version `1.6.0`+ auf Branch `audit/2026-05-29`. **Offen:** Phase 5 (Demoscene-Panel-Tiefen-Audit) + Phase-3-Follow-ups (Headed-GPU-Messung, Panel-Pool fixieren, B-3 Heap nachgehen).
+> **Status 2026-05-30:** Phasen 1 + 2 abgeschlossen (F-001..F-008, H-01..H-08, H-11 in Commits umgesetzt). **Phase 3 (Mess-Baseline) erledigt** — Harness `frontend/tests/perf-measure.spec.ts`, Ergebnisse + Verdikt in `PERF_NOTES.md`. Zwei getrennte Ergebnisse: (1) **H-07 nicht bestätigt** — keine durch `5264baf` eingeschleppte Regression (WASM byte-identisch, kein Frame-Time-Regress, B-3-Heap kein Leak). (2) **B-4 — die App ist Main-Thread-/CPU-bound, NICHT GPU-bound:** Headed-Messung auf echter M5-Max-GPU liefert dieselben Frame-Times wie der Software-Rasterizer; der geforderte 60-FPS-Akzeptanzfall (Review-Modus 4-Panel-Fraktal) erreicht nur **9 FPS**. Das eigentliche Performance-Problem ist strukturell, kein Regress. App-Version `1.6.x` auf Branch `audit/2026-05-29`. **Offen:** Phase 5 (Demoscene-Panel-Tiefen-Audit); B-4-Maßnahmen (Main-Thread-Entlastung, siehe `PERF_NOTES.md` §5).
 
 > Audit-Branch: `audit/2026-05-29`. Quelle: Inspektion gegen `AGENTS.md` (v1.2.7) und `blueprint_audit.md`. Methode: Read-only, drei parallele Investigator-Agents + Spot-Checks.
 
@@ -235,6 +235,7 @@ Alle in Phase 1 + Phase 2 identifizierten Befunde wurden in derselben Session um
 | H-05 | `743d12b` | 20 Panels auf zentralen `raf-coordinator` migriert |
 | H-06 | erledigt vor Audit | `handleSkipSlot`/`handleSkipMobileSlot` schon mit `useCallback` |
 | H-07 | ✅ widerlegt | Phase 3 gemessen (`PERF_NOTES.md`): WASM byte-identisch zur Baseline, kein eindeutiger Frame-Time-Regress. H-07 **nicht bestätigt**. B-3 (Heap +9 MB) per Forced-GC-Diagnose M-06b als GC-Sägezahn entlarvt — kein Leak. Kein nachweisbarer Regress übrig. |
+| **B-4 (neu)** | ⚠ offen | **Zentraler Perf-Befund:** App ist Main-Thread-/CPU-bound, nicht GPU-bound. Headed M5-Max-GPU-Messung ≈ Software-Rasterizer; 60-FPS-Akzeptanzfall (Review 4-Panel-Fraktal) nur **9 FPS**. Maßnahmen: Main-Thread-Entlastung statt GPU-Migration (`PERF_NOTES.md` §5). |
 | H-11 (neu) | `c780297` | Aspect-preserving Coord-Mapping in Tunnel/Rotozoom/Metaballs/Plasma |
 | ProTracker-Reintegration | `034811e`, `c18cb4d`, `0d6e2bd` | Standalone-Hybrid: kein ScriptProcessor-Fallback, echte VU-Pegel, EMA, Race-Fix |
 | ProTracker-Features | `553347a`, `614d5b5`, `164a7ca`, `569bd90`, `c42659f`, `c931285` | Drop/Picker, Scrubber, 13-Track-Set + Attribution |

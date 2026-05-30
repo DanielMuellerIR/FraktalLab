@@ -4,12 +4,19 @@
 > Verifikationsziel: Hypothese **H-07** — „Commit `5264baf` (v1.2.6) hat eine
 > Performance-Regression eingeführt" (Auftraggeber: „vor einigen Tagen lief es flüssig").
 >
-> **Kurzfassung des Verdikts:** H-07 ist **nicht bestätigt**. Der WASM-Fraktal-Hotpath
-> ist seit der Baseline byte-identisch; die gemessenen Frame-Time-Unterschiede sind
-> durch Panel-Komposition und Software-Rendering verfälscht und zeigen keine eindeutige
-> Regression. Das anfängliche Memory-Signal (HEAP +9 MB) wurde per Forced-GC-Diagnose
-> (M-06b) als GC-Sägezahn entlarvt — **kein Leak**. Es bleibt kein nachweisbarer
-> Performance- oder Memory-Regress gegenüber der Baseline. Details unten.
+> **Kurzfassung des Verdikts (zwei getrennte Aussagen):**
+>
+> 1. **Es gibt keine Regression durch `5264baf` (H-07 nicht bestätigt).** WASM-Binary
+>    byte-identisch zur Baseline, kein eindeutiger Frame-Time-Regress, das Memory-Signal
+>    (HEAP +9 MB) per Forced-GC-Diagnose (M-06b) als GC-Sägezahn entlarvt — kein Leak.
+>
+> 2. **ABER: die App ist auf der Zielhardware grundsätzlich nicht flüssig — und das
+>    liegt am Main-Thread, nicht an der GPU.** Headed-Messung im echten Chrome auf der
+>    Apple-Silicon-Hardware (`ANGLE Metal Renderer: Apple Apple-Silicon-Hardware`) liefert praktisch dieselben
+>    Frame-Times wie der Software-Rasterizer. Der explizit geforderte 60-FPS-Akzeptanzfall
+>    (Review-Modus, 4 Panels mit Fraktal) erreicht **9 FPS** (108 ms/Frame). Das ist kein
+>    eingeschleppter Regress, sondern ein strukturelles Main-Thread-Lastproblem (Canvas-2D
+>    pro Frame, viele gleichzeitige Panels). Siehe B-4. Details unten.
 
 ---
 
@@ -76,6 +83,39 @@ Frame-Time in Millisekunden (kleiner = besser). `over16` = Anteil Frames > 16.7 
 > jedem Sample, 100 s) zeigt nach GC einen stabilen Heap um ~6.8 MB, Steigung
 > −0.0054 MB/s → **kein Leak** (siehe B-3 unten, Daten in `heap-profile-HEAD.json`).
 
+### GPU- vs. Software-Rendering (HEAD) — der entscheidende Vergleich
+
+Dieselben Szenarien einmal headless (SwiftShader-Software) und einmal headed im
+echten Google Chrome auf der Zielhardware. GPU bestätigt aktiv:
+`ANGLE Metal Renderer: Apple Apple-Silicon-Hardware`. Daten: `frontend/tests/perf-results/HEAD-gpu.json`.
+
+| Szenario | Median headless (Software) | Median **headed (M5-Max-GPU)** | Differenz |
+|---|---|---|---|
+| M-01 default-grid @1920 | 66.67 ms | **66.66 ms** | ~0 |
+| M-03 dense-grid @2560 | 133.34 ms | **132.42 ms** | ~0 |
+
+→ Die echte GPU ändert die Frame-Time **praktisch nicht**. Die Last liegt nicht
+auf der GPU. Die exakte Übereinstimmung headless↔headed entkräftet zugleich den
+Verdacht auf rAF-Throttling eines verdeckten Fensters (sonst wären die Werte
+verschieden) — beide messen dieselbe reale CPU-/Main-Thread-Arbeit.
+
+### M-07 — Akzeptanzfall: Review-Modus, 4 Panels mit Fraktal (HEAD, M5-Max-GPU)
+
+Der von der Spezifikation explizit geforderte 60-FPS-Fall (`blueprint_audit.md` §33).
+Seite = `FractalSwirl`, `AmiModPanel`, `SolarSystemPanel`, `FractalView` (reviewIdx 15).
+
+| Metrik | Wert (M5-Max-GPU) | Ziel |
+|---|---|---|
+| Median | **108.3 ms** | < 16.7 ms |
+| FPS | **9.1** | 60 |
+| over16 | 100 % | 0 % |
+| Long-Tasks (10 s) | 92 (jeder Frame > 50 ms) | 0 |
+
+→ **Der geforderte Akzeptanzfall verfehlt 60 FPS um eine Größenordnung — auf der
+Zielhardware mit aktiver GPU.** Auffällig: das 4-Panel-Review ist *langsamer* als
+das 12–20-Panel-Grid (M-01, 66 ms), weil im Review jedes Panel großflächig rendert
+(Canvas-2D-Kosten ∝ Pixelfläche) und zwei der vier Panels teure Fraktale sind.
+
 ---
 
 ## 3. Einordnung & Einschränkungen (wichtig)
@@ -85,8 +125,10 @@ Die Absolutwerte sind **nicht** als „läuft die App flüssig?" lesbar. Drei Ve
 1. **Software-Rasterizer statt GPU.** Playwright-Headless-Chromium nutzt SwiftShader,
    keine echte GPU. WebGL-Shader-Panels (Plasma/Tunnel/Metaballs/Rotozoom/Fire) und
    Canvas-Blits laufen dadurch um Größenordnungen langsamer als auf dem Apple-Silicon-Hardware.
-   Die 7–18 FPS hier sagen **nichts** über die 60-FPS-Realität auf der Zielhardware.
-   Nur der **relative** Vergleich HEAD↔Baseline unter identischen Bedingungen ist gültig.
+   Ursprüngliche Annahme war, die 7–18 FPS sagten **nichts** über die Zielhardware.
+   Die Headed-GPU-Gegenmessung (siehe oben + B-4) hat das **widerlegt**: auf der
+   Apple-Silicon-Hardware sind die Frame-Times nahezu identisch → die App ist CPU-/Main-Thread-bound,
+   und die Software-Zahlen übertragen sich daher *doch* weitgehend auf die Realität.
 
 2. **Panel-Komposition confounded.** Der Seed macht *Grid-Geometrie* reproduzierbar,
    aber HEAD hat einen größeren Panel-Pool (87 Module / `ALL_PANELS` länger) als die
@@ -104,7 +146,7 @@ Die Absolutwerte sind **nicht** als „läuft die App flüssig?" lesbar. Drei Ve
 
 ## 4. Belastbare Befunde
 
-Trotz der Einschränkungen drei Aussagen, die robust sind:
+Trotz der Einschränkungen vier Aussagen, die robust sind:
 
 - **B-1 — WASM-Fraktal-Hotpath ist KEINE Regressionsquelle.** Das kompilierte
   WASM-Binary ist in beiden Ständen byte-identisch (`fraktallab_wasm_bg-BdVlVgwM.wasm`,
@@ -129,28 +171,51 @@ Trotz der Einschränkungen drei Aussagen, die robust sind:
   Damit fällt das letzte Negativ-Signal — es bleibt kein nachweisbarer Memory- oder
   Frame-Time-Regress gegenüber der Baseline übrig.
 
+- **B-4 — Die App ist Main-Thread-bound, nicht GPU-bound (zentraler Befund).**
+  Headed-Messung im echten Chrome auf der Zielhardware (`ANGLE Metal Renderer:
+  Apple Apple-Silicon-Hardware`) liefert nahezu identische Frame-Times wie der Software-Rasterizer
+  (M-01: 66.66 ms GPU vs. 66.67 ms Software; M-03: 132 vs. 133 ms). Die GPU ist also
+  **nicht** der Engpass — die Last liegt auf dem Main-Thread (Canvas-2D-Blits,
+  Pro-Frame-JS, viele gleichzeitig animierende Panels; jeder Frame ist ein Long-Task
+  > 50 ms). Der explizit geforderte 60-FPS-Akzeptanzfall (M-07, Review-Modus mit
+  Fraktal) erreicht auf der Apple-Silicon-Hardware nur **9 FPS** (108 ms/Frame). Das ist **unabhängig**
+  von H-07: keine eingeschleppte Regression, sondern ein strukturelles Lastproblem.
+  Konsequenz: GPU-Shader-Migrationen (GL-03 etc.) adressieren das Kernproblem **nicht**.
+
 ---
 
-## 5. Empfehlungen für eine definitive Aussage
+## 5. Empfehlungen
 
-1. **Headed-GPU-Messung auf dem Apple-Silicon-Hardware** (beantwortet die eigentliche Geschäftsfrage):
-   Playwright mit `headless:false`, `channel:'chrome'`, echter GPU. Erst dann ist die
-   60-FPS-Aussage für „butterweich" valide.
-2. **Panel-Pool fixieren** für saubere Frame-Time-Vergleiche: identischen Panel-Satz
-   in beiden Ständen erzwingen (z. B. URL-Param oder Test-Hook), statt geseedeter
-   Pool-Auswahl. Dann ist M-01/M-03 apples-to-apples.
-3. ~~**B-3 nachgehen:** M-06 mit 60–120 s Laufzeit + Heap-Snapshot-Diff~~ ✅ erledigt
-   (M-06b, Forced-GC-Diagnose) — kein Leak, B-3 entwarnt.
+**Methodik (für noch schärfere Aussagen):**
+1. ~~**Headed-GPU-Messung auf dem Apple-Silicon-Hardware**~~ ✅ erledigt — GPU bestätigt aktiv, ändert
+   nichts (B-4). Daten in `HEAD-gpu.json`, Profil `chrome-gpu` in `playwright.config.ts`.
+2. **Panel-Pool fixieren** für saubere HEAD↔Baseline-Frame-Time-Vergleiche (identischer
+   Panel-Satz statt geseedeter Pool-Auswahl). Niedrige Priorität — das Regress-Verdikt
+   steht bereits.
+3. ~~**B-3 nachgehen** (Heap-Leak)~~ ✅ erledigt (M-06b) — kein Leak.
+
+**Inhaltlich (gegen das eigentliche Performance-Problem, B-4):** Der Hebel ist
+Main-Thread-Entlastung, nicht GPU:
+- **Anzahl gleichzeitig animierender Panels begrenzen** (sichtbar/aktiv-gating
+  konsequent; `raf-coordinator` pausiert nur bei Layout-Switch, nicht pro Off-Screen-Panel).
+- **Canvas-2D-Hotpaths in Worker/OffscreenCanvas** auslagern (Fraktale, Voxel-Raycaster).
+- **Review-Modus:** nur das aktive Panel animieren, die drei inaktiven der 4er-Seite
+  einfrieren (Standbild) — würde M-07 direkt entlasten.
+- Erst danach lohnen weitere GPU-Migrationen.
 
 ---
 
 ## 6. Reproduktion
 
 ```bash
-# Aktueller Stand
+# Aktueller Stand (headless / Software-Rasterizer)
 cd frontend
 npm run build && npm run preview -- --port 4173 &
 VITE_URL=http://localhost:4173 PERF_TAG=HEAD npx playwright test tests/perf-measure.spec.ts
+
+# Headed-GPU auf der Zielhardware (echtes Chrome, Metal-GPU) — B-4
+VITE_URL=http://localhost:4173 PERF_TAG=HEAD-gpu \
+  npx playwright test tests/perf-measure.spec.ts --project=chrome-gpu -g "M-01|M-03|M-07"
 
 # Baseline
 git worktree add /tmp/p_fraktal_baseline 5264baf^
