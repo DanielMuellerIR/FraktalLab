@@ -32,6 +32,13 @@ function makeFractalScene(
   maxIter:         number,
   colorTransform?: ColorTransform,
   zoomMax:         number = 1e9,
+  extraOptions?: {
+    rotateRate?: number
+    zoomRate?: number
+    fadeZoomCeil?: number
+    hueShiftSpeed?: number
+    startZoom?: number
+  }
 ) {
   const colorMode = colorTransform ? COLOR_MODE[colorTransform] : 0
   // FractalGL braucht mindestens einen Viewport-Mittelpunkt. Julia-Panels haben
@@ -48,6 +55,7 @@ function makeFractalScene(
           colorMode={colorMode}
           maxIter={maxIter}
           zoomMax={zoomMax}
+          {...extraOptions}
         />
       </Panel>
     )
@@ -79,8 +87,9 @@ export const FractalSpiral = makeFractalScene(
   ],
   null,
   200,
-  'mono',
-  1e9
+  undefined, // Weicheres Regenbogen-Cycling statt Hacker-Grün-Mono
+  1e9,
+  { rotateRate: -0.12, hueShiftSpeed: 25.0 }
 )
 
 export const FractalLightning = makeFractalScene(
@@ -105,8 +114,9 @@ export const FractalElephant = makeFractalScene(
   ],
   null,
   140,
-  'hot',
-  1e9
+  'neon', // Neon magenta/purple to distinguish from Tendril's hot colors
+  1e9,
+  { rotateRate: 0 } // Disable tumbling
 )
 
 export const FractalMini = makeFractalScene(
@@ -115,11 +125,13 @@ export const FractalMini = makeFractalScene(
   [
     { cx: -1.7534, cy: 0.0016 },
     { cx: -1.6256, cy: 0.0019 },
+    { cx: -1.75,   cy: 0.0 }, // Added third location for more variety
   ],
   null,
   120,
   undefined,
-  1e9
+  1.5e5, // Prevent over-zooming
+  { zoomRate: 0.4, rotateRate: 0.03, startZoom: 100 } // Slower and less rotational motion
 )
 
 export const FractalDragon = makeFractalScene(
@@ -129,7 +141,8 @@ export const FractalDragon = makeFractalScene(
   { cx: 0.285, cy: 0.01 },
   200,
   'neon',
-  1e10
+  1e10,
+  { startZoom: 220, rotateRate: 0.08, zoomRate: 0.6 } // Start slightly closer to avoid flat start
 )
 
 export const FractalSatellite = makeFractalScene(
@@ -142,7 +155,8 @@ export const FractalSatellite = makeFractalScene(
   null,
   200,
   'cold',
-  1e9
+  1e9,
+  { rotateRate: 0 } // Disable tumbling
 )
 
 export const FractalDendrite = makeFractalScene(
@@ -165,7 +179,8 @@ export const FractalSwirl = makeFractalScene(
   null,
   220,
   'invert',
-  1e10
+  1e10,
+  { fadeZoomCeil: 1.2e5, zoomRate: 0.65 } // Earlier fade and slower zoom to avoid pixelation
 )
 
 export const FractalTendril = makeFractalScene(

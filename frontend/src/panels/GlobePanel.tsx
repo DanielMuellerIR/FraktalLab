@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from 'react'
 import ShaderPanel from '../ui/ShaderPanel'
 import Panel from '../ui/Panel'
+import { EARTH_BASE64 } from '../utils/earth-map-base64'
 
 const REAL_EARTH_SHADER = `
   precision highp float;
@@ -162,113 +163,44 @@ function GlobePanel() {
     canvas.width = 512
     canvas.height = 256
     const ctx = canvas.getContext('2d')
-    if (ctx) {
-      // Fill ocean (Red = 0, Green = 0)
-      ctx.fillStyle = 'rgb(0,0,0)'
-      ctx.fillRect(0, 0, 512, 256)
+    if (!ctx) return
 
-      let seed = 98765
-      const rnd = () => {
-        const x = Math.sin(seed++) * 10000
-        return x - Math.floor(x)
-      }
-
-      // Draw seed-deterministic continent blobs (Red channel > 115 representing Land)
-      ctx.fillStyle = 'rgb(255, 0, 0)'
+    const img = new Image()
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0, 512, 256)
       
-      // Eurasia & Africa masses
-      ctx.beginPath()
-      ctx.arc(320, 90, 70, 0, Math.PI * 2) // Asia/Europe
-      ctx.arc(280, 140, 55, 0, Math.PI * 2) // Africa
-      ctx.arc(380, 110, 45, 0, Math.PI * 2) // East Asia
-      ctx.fill()
-
-      // Americas masses
-      ctx.beginPath()
-      ctx.arc(120, 80, 45, 0, Math.PI * 2) // North America
-      ctx.arc(150, 170, 48, 0, Math.PI * 2) // South America
-      ctx.fill()
-      
-      // Central America bridge
-      ctx.lineWidth = 15
-      ctx.strokeStyle = 'rgb(255, 0, 0)'
-      ctx.beginPath()
-      ctx.moveTo(120, 100)
-      ctx.lineTo(140, 140)
-      ctx.stroke()
-
-      // Australia
-      ctx.beginPath()
-      ctx.arc(420, 180, 25, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Antarctica
-      ctx.fillRect(0, 230, 512, 26)
-
-      // Add fractal land details on boundaries
-      ctx.fillStyle = 'rgb(255, 0, 0)'
-      for (let i = 0; i < 260; i++) {
-        let cx = 0, cy = 0
-        const group = rnd()
-        if (group < 0.35) {
-          cx = 260 + rnd() * 150
-          cy = 60 + rnd() * 120
-        } else if (group < 0.7) {
-          cx = 90 + rnd() * 80
-          cy = 50 + rnd() * 140
-        } else if (group < 0.85) {
-          cx = 390 + rnd() * 50
-          cy = 160 + rnd() * 40
-        } else {
-          cx = rnd() * 512
-          cy = rnd() * 256
-        }
-        const r = 4 + rnd() * 20
-        ctx.beginPath()
-        ctx.arc(cx, cy, r, 0, Math.PI * 2)
-        ctx.fill()
-      }
-
-      // Generate City lights strictly on land (Green channel)
+      // Post-process the loaded map:
+      // - Ensure land has high Red channel (>115, e.g. 255)
+      // - City lights remain in the Green channel
       const imgData = ctx.getImageData(0, 0, 512, 256)
       const data = imgData.data
       
-      for (let y = 0; y < 256; y++) {
-        for (let x = 0; x < 512; x++) {
-          const idx = (y * 512 + x) * 4
-          const isLandPixel = data[idx] > 115
-          
-          if (isLandPixel) {
-            const latFactor = Math.cos((y - 128) / 128 * Math.PI) // lower city density near polar/extreme latitudes
-            const cityProb = rnd()
-            
-            // Antarctica cutoff (no cities below lat 0.8)
-            if (y > 210) continue;
-
-            if (cityProb > 0.985 * (1.5 - latFactor)) {
-              const radius = Math.floor(1 + rnd() * 3)
-              for (let dy = -radius; dy <= radius; dy++) {
-                for (let dx = -radius; dx <= radius; dx++) {
-                  const ny = y + dy
-                  const nx = (x + dx + 512) % 512
-                  if (ny >= 0 && ny < 256) {
-                    const nidx = (ny * 512 + nx) * 4
-                    if (data[nidx] > 115) { // Confirm city light is on land
-                      const dist = Math.sqrt(dx * dx + dy * dy)
-                      const intens = Math.max(0, 255 * (1.0 - dist / radius))
-                      data[nidx + 1] = Math.max(data[nidx + 1], Math.floor(intens))
-                    }
-                  }
-                }
-              }
-            }
-          }
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i]
+        const g = data[i + 1]
+        
+        if (r > 100) {
+          data[i] = 255     // Land mask (Red)
+          data[i + 1] = g   // Keep original city lights (Green)
+          data[i + 2] = 0   // Blue = 0
+        } else if (g > 100) {
+          // Tactical city nodes outside high red channel (ensure mapped as land + lights)
+          data[i] = 255
+          data[i + 1] = 255
+          data[i + 2] = 0
+        } else {
+          // Ocean: R = 0, G = 0, B = 0
+          data[i] = 0
+          data[i + 1] = 0
+          data[i + 2] = 0
         }
       }
       ctx.putImageData(imgData, 0, 0)
+      setEarthCanvas(canvas)
     }
-    setEarthCanvas(canvas)
+    img.src = `data:image/webp;base64,${EARTH_BASE64}`
   }, [])
+
 
   if (!earthCanvas) {
     return (

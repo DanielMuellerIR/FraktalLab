@@ -27,7 +27,15 @@ export default memo(function FractalView() {
         <span className="ml-auto text-red-900 text-xs animate-pulse">● LIVE</span>
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">
-        <FractalGL mode="mandelbrot" locations={LOCATIONS} maxIter={128} zoomMax={1.5e6} />
+        <FractalGL
+          mode="mandelbrot"
+          locations={LOCATIONS}
+          maxIter={128}
+          zoomMax={1.5e6}
+          rotateRate={0}
+          fadeZoomCeil={1.5e5}
+          zoomRate={0.6}
+        />
       </div>
     </div>
   )

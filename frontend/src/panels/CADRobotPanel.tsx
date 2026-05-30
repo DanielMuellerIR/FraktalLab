@@ -148,336 +148,234 @@ function makeRingStrip(
 // MODELL-BUILDER MIT GEZIELTEN MATERIAL-TYPEN
 // ─────────────────────────────────────────────────────────────────────────────
 
-function buildHumanoidRobot(): { vertices: Vec3[]; edges: Edge[]; faces: Face[] } {
+function addCylinder(
+  verts: Vec3[], edges: Edge[], faces: Face[],
+  cx: number, cy: number, cz: number,
+  r: number, h: number,
+  segments: number,
+  plane: 'xy' | 'xz' | 'yz',
+  colorType: 'base' | 'accent' | 'joint' | 'visor' | 'energy' = 'base'
+) {
+  const startIdx = verts.length
+  
+  // Cap rings offsets
+  const dy = plane === 'xz' ? h/2 : 0
+  const dx = plane === 'yz' ? h/2 : 0
+  const dz = plane === 'xy' ? h/2 : 0
+
+  // Ring 1 (Bottom/Left/Back)
+  const ring1 = makeRing(cx - dx, cy - dy, cz - dz, r, segments, plane, startIdx, colorType)
+  verts.push(...ring1.verts)
+  edges.push(...ring1.edges)
+  
+  // Ring 2 (Top/Right/Front)
+  const ring2 = makeRing(cx + dx, cy + dy, cz + dz, r, segments, plane, startIdx + segments, colorType)
+  verts.push(...ring2.verts)
+  edges.push(...ring2.edges)
+  
+  // Connect rings
+  for (let i = 0; i < segments; i++) {
+    edges.push({ a: startIdx + i, b: startIdx + segments + i, colorType })
+  }
+  faces.push(...makeRingStrip(segments, startIdx, startIdx + segments, colorType))
+  
+  // Add caps
+  faces.push({ verts: Array.from({ length: segments }, (_, i) => startIdx + segments - 1 - i), colorType })
+  faces.push({ verts: Array.from({ length: segments }, (_, i) => startIdx + segments + i), colorType })
+}
+
+function addBox(
+  verts: Vec3[], edges: Edge[], faces: Face[],
+  cx: number, cy: number, cz: number,
+  hw: number, hh: number, hd: number,
+  colorType: 'base' | 'accent' | 'joint' | 'visor' | 'energy' = 'base'
+) {
+  const { verts: bv, edges: be, faces: bf } = makeBox(cx, cy, cz, hw, hh, hd, verts.length, colorType)
+  verts.push(...bv)
+  edges.push(...be)
+  faces.push(...bf)
+}
+
+function buildRobotArm(): { vertices: Vec3[]; edges: Edge[]; faces: Face[] } {
   const verts: Vec3[] = []
   const edges: Edge[] = []
   const faces: Face[] = []
 
-  function addBox(cx: number, cy: number, cz: number, hw: number, hh: number, hd: number, colorType: 'base' | 'accent' | 'joint' | 'visor' | 'energy' = 'base') {
-    const { verts: bv, edges: be, faces: bf } = makeBox(cx, cy, cz, hw, hh, hd, verts.length, colorType)
-    verts.push(...bv)
-    edges.push(...be)
-    faces.push(...bf)
-  }
-
-  // Torso
-  addBox(0, 0.1, 0, 0.22, 0.30, 0.12, 'base')
-  // Schulterplatten (Akzente)
-  addBox(-0.25, 0.32, 0, 0.08, 0.06, 0.10, 'accent')
-  addBox(0.25, 0.32, 0, 0.08, 0.06, 0.10, 'accent')
-
-  // Kopf
-  addBox(0, 0.58, 0, 0.13, 0.13, 0.12, 'base')
-
-  // Hals (Kupfer-Joint)
-  const neckBase = verts.length
-  verts.push({ x: -0.04, y: 0.40, z: 0 }, { x: 0.04, y: 0.40, z: 0 })
-  verts.push({ x: -0.04, y: 0.44, z: 0 }, { x: 0.04, y: 0.44, z: 0 })
-  edges.push(
-    { a: neckBase, b: neckBase + 1, colorType: 'joint' },
-    { a: neckBase, b: neckBase + 2, colorType: 'joint' },
-    { a: neckBase + 1, b: neckBase + 3, colorType: 'joint' },
-    { a: neckBase + 2, b: neckBase + 3, colorType: 'joint' },
-  )
-  faces.push({ verts: [neckBase, neckBase + 1, neckBase + 3, neckBase + 2], colorType: 'joint' })
-
-  // Beine
-  addBox(-0.13, -0.30, 0, 0.07, 0.18, 0.08, 'base') // Oberschenkel L
-  addBox(-0.13, -0.62, 0, 0.06, 0.15, 0.07, 'base') // Unterschenkel L
-  addBox(-0.13, -0.82, 0, 0.09, 0.05, 0.12, 'accent') // Fuß L
-
-  addBox(0.13, -0.30, 0, 0.07, 0.18, 0.08, 'base') // Oberschenkel R
-  addBox(0.13, -0.62, 0, 0.06, 0.15, 0.07, 'base') // Unterschenkel R
-  addBox(0.13, -0.82, 0, 0.09, 0.05, 0.12, 'accent') // Fuß R
-
-  // Arme
-  addBox(-0.35, 0.15, 0, 0.05, 0.14, 0.05, 'base') // Oberarm L
-  addBox(-0.35, -0.12, 0, 0.04, 0.12, 0.04, 'base') // Unterarm L
-  addBox(-0.35, -0.28, 0, 0.06, 0.04, 0.06, 'accent') // Hand L
-
-  addBox(0.35, 0.15, 0, 0.05, 0.14, 0.05, 'base') // Oberarm R
-  addBox(0.35, -0.12, 0, 0.04, 0.12, 0.04, 'base') // Unterarm R
-  addBox(0.35, -0.28, 0, 0.06, 0.04, 0.06, 'accent') // Hand R
-
-  // Augen (leuchtendes Cyan Visier)
-  addBox(-0.05, 0.60, -0.12, 0.03, 0.03, 0.015, 'visor')
-  addBox(0.05, 0.60, -0.12, 0.03, 0.03, 0.015, 'visor')
-
-  // Brust-Reaktor (Gold/Energie)
-  addBox(0, 0.18, -0.12, 0.06, 0.06, 0.015, 'energy')
-
-  // Antenne auf dem Kopf
-  const antennaBase = verts.length
-  verts.push(
-    { x: 0, y: 0.71, z: 0 },
-    { x: 0, y: 0.90, z: 0 },
-    { x: -0.04, y: 0.83, z: 0 },
-    { x: 0.04, y: 0.83, z: 0 },
-  )
-  edges.push(
-    { a: antennaBase, b: antennaBase + 1, colorType: 'visor' },
-    { a: antennaBase + 2, b: antennaBase + 3, colorType: 'visor' },
-  )
+  // Platform Base (Cylinder)
+  addCylinder(verts, edges, faces, 0, -0.85, 0, 0.35, 0.15, 12, 'xz', 'base')
+  // Rotating shoulder hub
+  addCylinder(verts, edges, faces, 0, -0.7, 0, 0.22, 0.2, 10, 'xz', 'joint')
+  // Lower boom: twin plates
+  addBox(verts, edges, faces, -0.08, -0.3, 0, 0.04, 0.35, 0.08, 'base')
+  addBox(verts, edges, faces, 0.08, -0.3, 0, 0.04, 0.35, 0.08, 'base')
+  // Hydraulic piston between them
+  addCylinder(verts, edges, faces, 0, -0.35, 0.08, 0.035, 0.3, 8, 'xz', 'accent')
+  // Elbow Joint (transverse cylinder)
+  addCylinder(verts, edges, faces, 0, 0.05, 0, 0.12, 0.24, 10, 'xy', 'joint')
+  // Upper boom (forearm)
+  addBox(verts, edges, faces, 0, 0.4, 0, 0.07, 0.32, 0.07, 'base')
+  // Wrist rotator
+  addCylinder(verts, edges, faces, 0, 0.76, 0, 0.06, 0.08, 8, 'xz', 'joint')
+  // Gripper head
+  addBox(verts, edges, faces, 0, 0.84, 0, 0.1, 0.06, 0.1, 'accent')
+  // Gripper claws: Left/Right clamp fingers
+  addBox(verts, edges, faces, -0.06, 0.95, 0.04, 0.02, 0.09, 0.03, 'visor')
+  addBox(verts, edges, faces, 0.06, 0.95, 0.04, 0.02, 0.09, 0.03, 'visor')
+  // Glowing laser sensor beam inside claw
+  addBox(verts, edges, faces, 0, 0.88, 0.04, 0.015, 0.015, 0.04, 'energy')
 
   return { vertices: verts, edges, faces }
 }
 
-function buildAlien(): { vertices: Vec3[]; edges: Edge[]; faces: Face[] } {
+function buildWalkerMech(): { vertices: Vec3[]; edges: Edge[]; faces: Face[] } {
   const verts: Vec3[] = []
   const edges: Edge[] = []
   const faces: Face[] = []
 
-  // Kopf aus Ringen (Alien Grey-Ästhetik)
-  const headRings = [
-    { y: 0.80, r: 0.04, n: 8, mat: 'base' as const },
-    { y: 0.72, r: 0.10, n: 10, mat: 'base' as const },
-    { y: 0.62, r: 0.16, n: 12, mat: 'accent' as const },
-    { y: 0.52, r: 0.19, n: 14, mat: 'accent' as const },
-    { y: 0.42, r: 0.18, n: 14, mat: 'base' as const },
-    { y: 0.32, r: 0.15, n: 12, mat: 'base' as const },
-    { y: 0.22, r: 0.11, n: 10, mat: 'base' as const },
-    { y: 0.14, r: 0.07, n: 8, mat: 'base' as const },
+  // Main chassis cockpit (heavy armor box with beveled front)
+  addBox(verts, edges, faces, 0, 0.15, 0.05, 0.35, 0.28, 0.35, 'base')
+  // Cockpit glass visor
+  addBox(verts, edges, faces, 0, 0.22, -0.32, 0.2, 0.08, 0.02, 'visor')
+  // Side gun turrets (cylinders pointing forward)
+  addCylinder(verts, edges, faces, -0.4, 0.15, -0.1, 0.06, 0.35, 8, 'xy', 'energy')
+  addCylinder(verts, edges, faces, 0.4, 0.15, -0.1, 0.06, 0.35, 8, 'xy', 'energy')
+  // Radar scanner dish on top
+  addCylinder(verts, edges, faces, 0, 0.46, 0, 0.16, 0.04, 10, 'xz', 'accent')
+  // Thruster vents on back
+  addBox(verts, edges, faces, -0.18, 0.28, 0.4, 0.08, 0.08, 0.04, 'accent')
+  addBox(verts, edges, faces, 0.18, 0.28, 0.4, 0.08, 0.08, 0.04, 'accent')
+
+  // Hip pivot connector (heavy transverse cylinder at bottom)
+  addCylinder(verts, edges, faces, 0, -0.22, 0, 0.15, 0.55, 8, 'xy', 'joint')
+
+  // Four spider legs (Front-Left, Front-Right, Back-Left, Back-Right)
+  const hipPositions = [
+    { x: -0.28, z: -0.2, angle: Math.PI * 0.2 },
+    { x: 0.28, z: -0.2, angle: Math.PI * 1.8 },
+    { x: -0.28, z: 0.2, angle: Math.PI * 0.8 },
+    { x: 0.28, z: 0.2, angle: Math.PI * 1.2 }
   ]
 
-  const ringStartIndices: number[] = []
-  for (const ring of headRings) {
-    ringStartIndices.push(verts.length)
-    const { verts: rv, edges: re } = makeRing(0, ring.y, 0, ring.r, ring.n, 'xz', verts.length, ring.mat)
-    verts.push(...rv)
-    edges.push(...re)
-  }
-
-  // Längsverbindungen Kopf
-  for (let ri = 0; ri + 1 < headRings.length; ri++) {
-    const rA = headRings[ri]
-    const rB = headRings[ri + 1]
-    const nConn = Math.min(rA.n, rB.n)
-    const startA = ringStartIndices[ri]
-    const startB = ringStartIndices[ri + 1]
-    const mat = rA.mat
-    for (let k = 0; k < nConn; k += 2) {
-      edges.push({ a: startA + k, b: startB + k, colorType: mat })
-    }
-    faces.push(...makeRingStrip(nConn, startA, startB, mat))
-  }
-
-  // Riesige leuchtende Käferaugen (Visier-Klasse)
-  const eyeL = makeRing(-0.08, 0.30, -0.12, 0.08, 10, 'xy', verts.length, 'visor')
-  verts.push(...eyeL.verts); edges.push(...eyeL.edges)
-  const eyeR = makeRing(0.08, 0.30, -0.12, 0.08, 10, 'xy', verts.length, 'visor')
-  verts.push(...eyeR.verts); edges.push(...eyeR.edges)
-
-  // Hals (Kupfer-Joints)
-  const neckRings = [
-    { y: 0.08, r: 0.04, n: 6 },
-    { y: 0.00, r: 0.04, n: 6 },
-    { y: -0.08, r: 0.04, n: 6 },
-  ]
-  const neckStarts: number[] = []
-  for (const ring of neckRings) {
-    neckStarts.push(verts.length)
-    const { verts: rv, edges: re } = makeRing(0, ring.y, 0, ring.r, ring.n, 'xz', verts.length, 'joint')
-    verts.push(...rv); edges.push(...re)
-  }
-  for (let ri = 0; ri + 1 < neckRings.length; ri++) {
-    const n = neckRings[ri].n
-    for (let k = 0; k < n; k++) {
-      edges.push({ a: neckStarts[ri] + k, b: neckStarts[ri + 1] + k, colorType: 'joint' })
-    }
-    faces.push(...makeRingStrip(n, neckStarts[ri], neckStarts[ri + 1], 'joint'))
-  }
-
-  // Schmaler Torso
-  const { verts: tv, edges: te, faces: tf } = makeBox(0, -0.28, 0, 0.12, 0.18, 0.08, verts.length, 'base')
-  verts.push(...tv); edges.push(...te); faces.push(...tf)
-
-  // Arme und Beine (dünne Linien mit Kupfergelenken)
-  const limbMat = 'base'
-  const armL = verts.length
-  verts.push(
-    { x: -0.12, y: -0.12, z: 0 },
-    { x: -0.24, y: -0.25, z: 0 },
-    { x: -0.28, y: -0.42, z: 0 },
-  )
-  edges.push(
-    { a: armL, b: armL + 1, colorType: limbMat },
-    { a: armL + 1, b: armL + 2, colorType: 'joint' },
-  )
-
-  const armR = verts.length
-  verts.push(
-    { x: 0.12, y: -0.12, z: 0 },
-    { x: 0.24, y: -0.25, z: 0 },
-    { x: 0.28, y: -0.42, z: 0 },
-  )
-  edges.push(
-    { a: armR, b: armR + 1, colorType: limbMat },
-    { a: armR + 1, b: armR + 2, colorType: 'joint' },
-  )
-
-  const legL = verts.length
-  verts.push(
-    { x: -0.08, y: -0.46, z: 0 },
-    { x: -0.14, y: -0.65, z: 0.04 },
-    { x: -0.14, y: -0.85, z: 0.0 },
-  )
-  edges.push(
-    { a: legL, b: legL + 1, colorType: limbMat },
-    { a: legL + 1, b: legL + 2, colorType: 'joint' },
-  )
-
-  const legR = verts.length
-  verts.push(
-    { x: 0.08, y: -0.46, z: 0 },
-    { x: 0.14, y: -0.65, z: 0.04 },
-    { x: 0.14, y: -0.85, z: 0.0 },
-  )
-  edges.push(
-    { a: legR, b: legR + 1, colorType: limbMat },
-    { a: legR + 1, b: legR + 2, colorType: 'joint' },
-  )
-
-  return { vertices: verts, edges, faces }
-}
-
-function buildCombatMech(): { vertices: Vec3[]; edges: Edge[]; faces: Face[] } {
-  const verts: Vec3[] = []
-  const edges: Edge[] = []
-  const faces: Face[] = []
-
-  function addBox(cx: number, cy: number, cz: number, hw: number, hh: number, hd: number, colorType: 'base' | 'accent' | 'joint' | 'visor' | 'energy' = 'base') {
-    const { verts: bv, edges: be, faces: bf } = makeBox(cx, cy, cz, hw, hh, hd, verts.length, colorType)
-    verts.push(...bv); edges.push(...be); faces.push(...bf)
-  }
-
-  // Wuchtiger Torso
-  addBox(0, 0.15, 0, 0.32, 0.24, 0.20, 'base')
-  addBox(0, -0.12, 0, 0.24, 0.10, 0.16, 'base')
-
-  // Große schwere Schultergelenke (Kupfer/Joints) + Schulterpanzer (Rot/Akzent)
-  addBox(-0.40, 0.22, 0, 0.09, 0.08, 0.12, 'accent')
-  addBox(0.40, 0.22, 0, 0.09, 0.08, 0.12, 'accent')
-
-  // Arme mit dicken Kanonen (Schadenslaser in Orange/Energy)
-  addBox(-0.42, 0.00, 0, 0.06, 0.14, 0.06, 'base') // L Oberarm
-  addBox(-0.42, -0.22, 0.04, 0.05, 0.12, 0.05, 'base') // L Unterarm
-  addBox(-0.42, -0.36, 0.08, 0.04, 0.04, 0.15, 'energy') // L Plasmakanone
-
-  addBox(0.42, 0.00, 0, 0.06, 0.14, 0.06, 'base') // R Oberarm
-  addBox(0.42, -0.22, 0.04, 0.05, 0.12, 0.05, 'base') // R Unterarm
-  addBox(0.42, -0.36, 0.08, 0.04, 0.04, 0.15, 'energy') // R Plasmakanone
-
-  // Kopf / Pilotenkanzel (Großes leuchtendes Visier)
-  addBox(0, 0.44, 0.05, 0.15, 0.12, 0.15, 'base')
-  addBox(0, 0.42, -0.11, 0.10, 0.06, 0.02, 'visor') // Visier
-
-  // Schwere Beine
-  addBox(-0.16, -0.34, 0, 0.10, 0.16, 0.10, 'base') // Oberschenkel L
-  addBox(-0.16, -0.62, 0.04, 0.08, 0.14, 0.08, 'base') // Unterschenkel L
-  addBox(-0.16, -0.80, 0.06, 0.12, 0.06, 0.14, 'accent') // Riesenfuß L
-
-  addBox(0.16, -0.34, 0, 0.10, 0.16, 0.10, 'base') // Oberschenkel R
-  addBox(0.16, -0.62, 0.04, 0.08, 0.14, 0.08, 'base') // Unterschenkel R
-  addBox(0.16, -0.80, 0.06, 0.12, 0.06, 0.14, 'accent') // Riesenfuß R
-
-  return { vertices: verts, edges, faces }
-}
-
-function buildSpiderBot(): { vertices: Vec3[]; edges: Edge[]; faces: Face[] } {
-  const verts: Vec3[] = []
-  const edges: Edge[] = []
-  const faces: Face[] = []
-
-  // Runder Rumpf (aus Ringen)
-  const torsoRings = [
-    { y: 0.06, r: 0.22, n: 14, mat: 'base' as const },
-    { y: 0.00, r: 0.26, n: 14, mat: 'accent' as const },
-    { y: -0.06, r: 0.22, n: 14, mat: 'base' as const },
-  ]
-  const torsoStarts: number[] = []
-  for (const ring of torsoRings) {
-    torsoStarts.push(verts.length)
-    const { verts: rv, edges: re } = makeRing(0, ring.y, 0, ring.r, ring.n, 'xz', verts.length, ring.mat)
-    verts.push(...rv); edges.push(...re)
-  }
-  for (let ri = 0; ri + 1 < torsoRings.length; ri++) {
-    const mat = torsoRings[ri].mat
-    for (let k = 0; k < torsoRings[ri].n; k += 2) {
-      edges.push({ a: torsoStarts[ri] + k, b: torsoStarts[ri + 1] + k, colorType: mat })
-    }
-    faces.push(...makeRingStrip(torsoRings[ri].n, torsoStarts[ri], torsoStarts[ri + 1], mat))
-  }
-
-  // Kuppel oben (Sensorkopf)
-  const domeRing = makeRing(0, 0.12, 0, 0.12, 10, 'xz', verts.length, 'visor')
-  verts.push(...domeRing.verts); edges.push(...domeRing.edges)
-  const domeBaseIdx = torsoStarts[0]
-  for (let k = 0; k < 10; k++) {
-    edges.push({ a: domeBaseIdx + k, b: domeRing.edges[k].a, colorType: 'visor' })
-  }
-
-  // 4 Spinnenbeine, weit ausgreifend (jeweils aus 4 Segmenten)
-  const legAngles = [
-    Math.PI * 0.2, // Vorne Links
-    Math.PI * 0.8, // Hinten Links
-    Math.PI * 1.2, // Hinten Rechts
-    Math.PI * 1.8, // Vorne Rechts
-  ]
-
-  legAngles.forEach((ang) => {
-    const cos = Math.cos(ang)
-    const sin = Math.sin(ang)
-
-    const basePt = verts.length
-    verts.push(
-      { x: cos * 0.20, y: 0.0, z: sin * 0.20 }, // Ansatz am Rumpf (Kupfer-Joint)
-      { x: cos * 0.38, y: 0.22, z: sin * 0.38 }, // Knie Oben (Base)
-      { x: cos * 0.58, y: -0.15, z: sin * 0.58 }, // Knie Unten (Base)
-      { x: cos * 0.70, y: -0.42, z: sin * 0.70 }, // Fußspitze (Kupfer-Spike)
-    )
-
-    edges.push(
-      { a: basePt, b: basePt + 1, colorType: 'joint' },
-      { a: basePt + 1, b: basePt + 2, colorType: 'base' },
-      { a: basePt + 2, b: basePt + 3, colorType: 'joint' },
-    )
+  hipPositions.forEach(hp => {
+    // Upper thigh (femur) box
+    const cos = Math.cos(hp.angle)
+    const sin = Math.sin(hp.angle)
+    const fx = hp.x + cos * 0.15
+    const fz = hp.z + sin * 0.15
+    addBox(verts, edges, faces, fx, -0.28, fz, 0.08, 0.15, 0.08, 'base')
+    // Knee joint (copper cylinder)
+    addCylinder(verts, edges, faces, fx + cos * 0.12, -0.44, fz + sin * 0.12, 0.05, 0.12, 8, 'xz', 'joint')
+    // Lower shin (tibia) box
+    const sx = fx + cos * 0.24
+    const sz = fz + sin * 0.24
+    addBox(verts, edges, faces, sx, -0.65, sz, 0.06, 0.16, 0.06, 'base')
+    // Foot ankle joint and pad
+    addCylinder(verts, edges, faces, sx, -0.82, sz, 0.04, 0.08, 8, 'xz', 'joint')
+    addBox(verts, edges, faces, sx, -0.87, sz, 0.14, 0.03, 0.14, 'accent')
   })
 
-  // Leuchtende Energiewaffe an der Unterseite
-  const weaponIdx = verts.length
-  verts.push(
-    { x: 0, y: -0.15, z: 0.0 },
-    { x: 0, y: -0.15, z: -0.22 },
-  )
-  edges.push({ a: weaponIdx, b: weaponIdx + 1, colorType: 'energy' })
+  return { vertices: verts, edges, faces }
+}
+
+function buildSatellite(): { vertices: Vec3[]; edges: Edge[]; faces: Face[] } {
+  const verts: Vec3[] = []
+  const edges: Edge[] = []
+  const faces: Face[] = []
+
+  // Main body: Octagonal core prism
+  addCylinder(verts, edges, faces, 0, 0, 0, 0.35, 0.6, 8, 'xz', 'base')
+  // Gold thermal blankets (Accents on top/bottom)
+  addCylinder(verts, edges, faces, 0, 0.31, 0, 0.36, 0.06, 8, 'xz', 'accent')
+  addCylinder(verts, edges, faces, 0, -0.31, 0, 0.36, 0.06, 8, 'xz', 'accent')
+
+  // Solar Arrays: Left Wing and Right Wing
+  // Left Solar Panel Array
+  addBox(verts, edges, faces, -1.0, 0, 0, 0.6, 0.24, 0.02, 'visor')
+  // Array support struts (copper joints)
+  addCylinder(verts, edges, faces, -0.4, 0, 0, 0.03, 0.08, 6, 'xz', 'joint')
+  
+  // Right Solar Panel Array
+  addBox(verts, edges, faces, 1.0, 0, 0, 0.6, 0.24, 0.02, 'visor')
+  addCylinder(verts, edges, faces, 0.4, 0, 0, 0.03, 0.08, 6, 'xz', 'joint')
+
+  // Large High-Gain Parabolic Communications Dish facing forward/down
+  addCylinder(verts, edges, faces, 0, -0.5, -0.15, 0.26, 0.08, 12, 'xz', 'energy')
+  // Dish support stand
+  addBox(verts, edges, faces, 0, -0.38, -0.05, 0.04, 0.08, 0.08, 'joint')
+
+  // Magnetometer Boom Arm extending upwards
+  addBox(verts, edges, faces, 0, 0.6, 0.1, 0.02, 0.3, 0.02, 'base')
+  // Sensor package at end of boom
+  addBox(verts, edges, faces, 0, 0.92, 0.1, 0.06, 0.06, 0.06, 'visor')
+
+  // Attitude control thruster nozzle clusters (Amber cones)
+  addCylinder(verts, edges, faces, -0.32, 0.2, 0.2, 0.04, 0.06, 6, 'xz', 'energy')
+  addCylinder(verts, edges, faces, 0.32, 0.2, 0.2, 0.04, 0.06, 6, 'xz', 'energy')
+
+  return { vertices: verts, edges, faces }
+}
+
+function buildStealthDrone(): { vertices: Vec3[]; edges: Edge[]; faces: Face[] } {
+  const verts: Vec3[] = []
+  const edges: Edge[] = []
+  const faces: Face[] = []
+
+  // Main fuselage: sleek wedge/diamond box
+  addBox(verts, edges, faces, 0, 0.05, 0, 0.18, 0.12, 0.8, 'base') // Main body
+  addBox(verts, edges, faces, 0, 0.02, -0.6, 0.08, 0.05, 0.4, 'accent') // Nose cone tip
+  
+  // Swept wings (diamond shapes, simulated with boxes)
+  // Left Wing
+  addBox(verts, edges, faces, -0.65, 0.04, 0.1, 0.5, 0.015, 0.28, 'base')
+  // Left Winglet (angled down)
+  addBox(verts, edges, faces, -1.18, -0.06, 0.1, 0.08, 0.08, 0.18, 'accent')
+
+  // Right Wing
+  addBox(verts, edges, faces, 0.65, 0.04, 0.1, 0.5, 0.015, 0.28, 'base')
+  // Right Winglet
+  addBox(verts, edges, faces, 1.18, -0.06, 0.1, 0.08, 0.08, 0.18, 'accent')
+
+  // Twin tail stabilizers (V-tail angle)
+  addBox(verts, edges, faces, -0.16, 0.22, 0.65, 0.02, 0.18, 0.16, 'base')
+  addBox(verts, edges, faces, 0.16, 0.22, 0.65, 0.02, 0.18, 0.16, 'base')
+
+  // Engine exhaust intake / nozzle on back (Orange glow)
+  addCylinder(verts, edges, faces, 0, 0.05, 0.8, 0.08, 0.04, 8, 'xz', 'energy')
+
+  // Underbelly camera sensor gimbal sphere (visor green)
+  addCylinder(verts, edges, faces, 0, -0.14, -0.3, 0.09, 0.12, 8, 'xz', 'visor')
+
+  // Warning decal stripes on wings
+  addBox(verts, edges, faces, -0.5, 0.05, 0.0, 0.04, 0.01, 0.25, 'energy')
+  addBox(verts, edges, faces, 0.5, 0.05, 0.0, 0.04, 0.01, 0.25, 'energy')
 
   return { vertices: verts, edges, faces }
 }
 
 const MODELS: ModelDef[] = [
   {
-    name: 'HUMANOID-BOT MK-7',
-    polyCount: 1248,
-    dimensions: '1.82m × 0.58m × 0.38m',
-    ...buildHumanoidRobot(),
+    name: 'INDUSTRIAL ROBOTIC MANIPULATOR',
+    polyCount: 94,
+    dimensions: '2.40m × 0.80m × 0.80m',
+    ...buildRobotArm(),
   },
   {
-    name: 'XENOMORPH-GREY UNIT',
-    polyCount: 2016,
-    dimensions: '1.90m × 0.28m × 0.22m',
-    ...buildAlien(),
+    name: 'HEAVY WALKER CRAWLER V-4',
+    polyCount: 168,
+    dimensions: '2.10m × 1.80m × 1.80m',
+    ...buildWalkerMech(),
   },
   {
-    name: 'TACTICAL MECH V-4',
-    polyCount: 2640,
-    dimensions: '2.10m × 1.35m × 1.10m',
-    ...buildCombatMech(),
+    name: 'ORBITAL RESEARCH SATELLITE',
+    polyCount: 114,
+    dimensions: '1.60m × 2.80m × 1.20m',
+    ...buildSatellite(),
   },
   {
-    name: 'ARACHNO-DRONE T-8',
-    polyCount: 3104,
-    dimensions: '0.42m × 1.40m × 1.40m',
-    ...buildSpiderBot(),
+    name: 'STEALTH RECONNAISSANCE UAV',
+    polyCount: 88,
+    dimensions: '0.80m × 2.40m × 2.20m',
+    ...buildStealthDrone(),
   },
 ]
 

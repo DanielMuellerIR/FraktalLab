@@ -75,31 +75,27 @@ const MOON_SHADER = `
       
       // Sun position rotates slowly, generating moon phases (synodic month simulation)
       vec3 sunDir = normalize(vec3(sin(iTime * 0.05 - 0.5), 0.05, cos(iTime * 0.05 - 0.5)));
-      float diff = dot(perturbedNormal, sunDir);
       
       // Lunar surface coloring (basaltic Maria vs anorthositic Highlands)
-      // Base texture gives the reflectivity/albedo
       vec3 highlands = vec3(0.72, 0.70, 0.67);
       vec3 maria = vec3(0.24, 0.23, 0.24);
       
-      // Mix highlands vs maria based on texture brightness + procedural high-frequency noise
       float microNoise = noise(rotatedP * 80.0) * 0.12 - 0.06;
       float albedoBlend = smoothstep(0.22, 0.65, baseHeight + microNoise);
       vec3 moonAlbedo = mix(maria, highlands, albedoBlend);
       
-      // Faint ejecta rays (bright lines extending from craters)
       float rayNoise = smoothstep(0.48, 0.58, noise(rotatedP * 24.0 + vec3(12.0)));
       moonAlbedo += vec3(0.08) * rayNoise * smoothstep(0.3, 1.0, albedoBlend);
       
-      // Lighting: diffuse shading
-      float diffuse = clamp(diff, 0.0, 1.0);
+      // Lommel-Seeliger light reflection law for planetary dust/regolith
+      float mu0 = clamp(dot(perturbedNormal, sunDir), 0.0, 1.0);
+      float mu = clamp(normal.z, 0.0, 1.0);
+      float ls = mu0 / (mu0 + mu + 0.04);
       
-      // Faint Earthshine (ambient light on the dark side of the moon)
-      float earthshine = clamp(-diff, 0.0, 1.0) * 0.015;
-      vec3 dayCol = moonAlbedo * (diffuse + earthshine);
+      float earthshine = clamp(-dot(perturbedNormal, sunDir), 0.0, 1.0) * 0.02;
+      vec3 dayCol = moonAlbedo * (ls * 1.85 + earthshine * 0.15);
       
-      // Phong specular highlights on steeper crater rims
-      if (diffuse > 0.0) {
+      if (mu0 > 0.0) {
         vec3 R = reflect(-sunDir, perturbedNormal);
         float rimSpec = pow(clamp(R.z, 0.0, 1.0), 8.0) * 0.05 * (1.0 - albedoBlend);
         dayCol += vec3(rimSpec);
@@ -107,12 +103,10 @@ const MOON_SHADER = `
       
       col = dayCol;
       
-      // Edge shading / limb darkening (Minnaert shading approximation for retroreflective dust)
       float edgeFade = pow(1.0 - normal.z, 1.5);
       col *= (1.0 - edgeFade * 0.25);
     }
     
-    // Add subtle scanline filter
     col *= 0.96 + 0.04 * sin(fragCoord.y * 2.0);
     fragColor = vec4(col, 1.0);
   }
@@ -133,72 +127,62 @@ function MoonPanel() {
         return x - Math.floor(x)
       }
 
-      // Base texture: dark basalt maria vs bright highlands
       ctx.fillStyle = '#888888'
       ctx.fillRect(0, 0, 512, 256)
 
-      // Dark maria basins
+      // Dark basalt maria representing actual lunar geography
       ctx.fillStyle = '#3a3a3a'
-      for (let i = 0; i < 8; i++) {
-        const x = rnd() * 512
-        const y = rnd() * 256
-        const r = 35 + rnd() * 45
-        ctx.beginPath()
-        ctx.arc(x, y, r, 0, Math.PI * 2)
-        ctx.fill()
-        // Wrap S
-        ctx.beginPath()
-        ctx.arc(x + 512, y, r, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.beginPath()
-        ctx.arc(x - 512, y, r, 0, Math.PI * 2)
-        ctx.fill()
-      }
+      const mariaBasins = [
+        { x: 150, y: 128, rx: 70, ry: 90 }, // Oceanus Procellarum
+        { x: 220, y: 80, rx: 50, ry: 45 },  // Mare Imbrium
+        { x: 290, y: 90, rx: 35, ry: 35 },  // Mare Serenitatis
+        { x: 340, y: 120, rx: 40, ry: 30 }, // Mare Tranquillitatis
+        { x: 420, y: 110, rx: 25, ry: 22 }, // Mare Crisium
+        { x: 360, y: 170, rx: 35, ry: 30 }, // Mare Fecunditatis
+        { x: 200, y: 180, rx: 40, ry: 35 }  // Mare Nubium
+      ]
 
-      // Craters (bright rim, dark floor)
+      mariaBasins.forEach(mb => {
+        ctx.beginPath()
+        ctx.ellipse(mb.x, mb.y, mb.rx, mb.ry, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.beginPath()
+        ctx.ellipse(mb.x + 512, mb.y, mb.rx, mb.ry, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.beginPath()
+        ctx.ellipse(mb.x - 512, mb.y, mb.rx, mb.ry, 0, 0, Math.PI * 2)
+        ctx.fill()
+      })
+
+      // Craters (bright rim, dark floor, central peaks)
       for (let i = 0; i < 180; i++) {
         const x = rnd() * 512
         const y = rnd() * 256
         const r = 2 + rnd() * 14
 
-        // Crater outer slope (slight darkening around rim)
         ctx.fillStyle = '#222222'
-        ctx.beginPath()
-        ctx.arc(x, y, r * 1.3, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.beginPath()
-        ctx.arc(x + 512, y, r * 1.3, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.beginPath()
-        ctx.arc(x - 512, y, r * 1.3, 0, Math.PI * 2)
-        ctx.fill()
+        ctx.beginPath(); ctx.arc(x, y, r * 1.35, 0, Math.PI * 2); ctx.fill()
+        ctx.beginPath(); ctx.arc(x + 512, y, r * 1.35, 0, Math.PI * 2); ctx.fill()
+        ctx.beginPath(); ctx.arc(x - 512, y, r * 1.35, 0, Math.PI * 2); ctx.fill()
 
-        // Bright crater rim
         ctx.fillStyle = '#dddddd'
-        ctx.beginPath()
-        ctx.arc(x, y, r, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.beginPath()
-        ctx.arc(x + 512, y, r, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.beginPath()
-        ctx.arc(x - 512, y, r, 0, Math.PI * 2)
-        ctx.fill()
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill()
+        ctx.beginPath(); ctx.arc(x + 512, y, r, 0, Math.PI * 2); ctx.fill()
+        ctx.beginPath(); ctx.arc(x - 512, y, r, 0, Math.PI * 2); ctx.fill()
 
-        // Dark crater center basin
         ctx.fillStyle = '#4a4a4a'
-        ctx.beginPath()
-        ctx.arc(x, y, r * 0.75, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.beginPath()
-        ctx.arc(x + 512, y, r * 0.75, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.beginPath()
-        ctx.arc(x - 512, y, r * 0.75, 0, Math.PI * 2)
-        ctx.fill()
+        ctx.beginPath(); ctx.arc(x, y, r * 0.75, 0, Math.PI * 2); ctx.fill()
+        ctx.beginPath(); ctx.arc(x + 512, y, r * 0.75, 0, Math.PI * 2); ctx.fill()
+        ctx.beginPath(); ctx.arc(x - 512, y, r * 0.75, 0, Math.PI * 2); ctx.fill()
+
+        if (r > 4.5) {
+          ctx.fillStyle = '#dddddd'
+          ctx.beginPath(); ctx.arc(x, y, 0.8 + r * 0.08, 0, Math.PI * 2); ctx.fill()
+          ctx.beginPath(); ctx.arc(x + 512, y, 0.8 + r * 0.08, 0, Math.PI * 2); ctx.fill()
+          ctx.beginPath(); ctx.arc(x - 512, y, 0.8 + r * 0.08, 0, Math.PI * 2); ctx.fill()
+        }
       }
 
-      // Fine procedural heightmap noise
       const imgData = ctx.getImageData(0, 0, 512, 256)
       const data = imgData.data
       for (let j = 0; j < data.length; j += 4) {

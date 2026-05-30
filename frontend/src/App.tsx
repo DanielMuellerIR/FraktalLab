@@ -69,6 +69,7 @@ import PhysicsSandboxPanel from './panels/PhysicsSandboxPanel'
 import NuclearExplosionPanel from './panels/NuclearExplosionPanel'
 import ThermonuclearWarPanel from './panels/ThermonuclearWarPanel'
 import SupervolcanoPanel from './panels/SupervolcanoPanel'
+import { MandelbulbScene, ApollonianGasketScene, MengerSpongeScene } from './panels/DEFractalScenes'
 
 // ── Panel-Pools ───────────────────────────────────────────────────────────────
 const POOL_TEXT: React.ComponentType[] = [
@@ -80,7 +81,7 @@ const POOL_TEXT: React.ComponentType[] = [
 
 // Alle visuellen Panels in einem Pool — AllYourBase und EnhanceView sind normale Einträge
 const POOL_GFX: React.ComponentType[] = [
-  VoxelDemoColor, VoxelDemoBW, GlobePanel, VoxelThermal, VoxelLava, VoxelNeon, /* VoxelMatrix, */
+  VoxelDemoColor, VoxelDemoBW, GlobePanel, VoxelThermal, VoxelLava, VoxelNeon, VoxelMatrix,
 
   FireScene, StarfieldScene, ThreeBodyScene, /* LissajousScene, */
   /* OscilloscopePanel, */ TunnelScene, MetaballsScene, RotozoomScene, DotCloudScene,
@@ -95,6 +96,7 @@ const POOL_GFX: React.ComponentType[] = [
   TixyPanel, IQSmoothMin, IQDigitalStorm, LovebyteShowcasePanel,
   MoonPanel, PhysicsSandboxPanel, NuclearExplosionPanel,
   ThermonuclearWarPanel, SupervolcanoPanel,
+  MandelbulbScene, ApollonianGasketScene, MengerSpongeScene,
 ]
 
 POOL_TEXT.forEach((Comp, idx) => {
@@ -420,6 +422,9 @@ const ALL_PANELS: { name: string; Component: React.ComponentType }[] = [
   { name: 'NuclearExplosionPanel', Component: NuclearExplosionPanel },
   { name: 'ThermonuclearWarPanel', Component: ThermonuclearWarPanel },
   { name: 'SupervolcanoPanel',   Component: SupervolcanoPanel },
+  { name: 'MandelbulbScene',     Component: MandelbulbScene },
+  { name: 'ApollonianGasketScene', Component: ApollonianGasketScene },
+  { name: 'MengerSpongeScene',   Component: MengerSpongeScene },
 
   // --- Text Panels ---
   { name: 'ICQChatPanel',       Component: ICQChatPanel },

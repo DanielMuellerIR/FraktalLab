@@ -3,11 +3,9 @@
 Universelle Referenz für alle Coding-Agents und KI-Modelle.
 Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 
-> **Status (Stand 2026-05-30): Audit abgeschlossen und in `main` gemergt.** Der gesamte Code-Audit (`blueprint_audit.md`, Phasen 1–3 + 5) ist erledigt und als `--no-ff`-Merge in `main` (App-Version **v1.7.6**). Der Branch `audit/2026-05-29` ist History. **Du arbeitest jetzt auf `main`** (`git status` prüfen) — für neue, in sich geschlossene Arbeit jeweils einen eigenen **Feature-Branch** von `main` anlegen (z.B. `feat/panel-rework`). Die Anweisung in `blueprint_audit.md` §"Erste Schritte" (Audit-Branch anlegen) ist **obsolet**.
+> **Status (Stand 2026-05-30): Panel-Rework Phase 1–5 läuft auf `feat/panel-rework-2026-05-30`.** Bisherige Erfolge der Session (App-Version **v1.7.8**): 32 Panels erfolgreich überarbeitet, C64 SID Player integriert, DNAHelix split-layout fertig, alle Grafik-Panels weg vom Standard-Hackergrün auf farbige CSS-Paletten migriert. 120 FPS Rendering-Performance auf Apple GPU nachgewiesen und Playwright-Verifikation erfolgreich durchgelaufen.
 >
-> **Audit-Kernergebnisse** (Details: `AUDIT_FINDINGS.md`, `PERF_NOTES.md`): H-07-Regressionsverdacht **widerlegt**; eigentlicher Befund **B-4** — App war Main-Thread-/CPU-bound, nicht GPU-bound. **Adressiert:** Review-Freeze (nur aktives Panel animiert) + komplette WASM→GPU-Fraktal-Migration (alle Fraktale via `FractalGL`, double-single-Shader; **kein WASM/Rust mehr**) → Grid/Review von 8–18 auf **120 FPS**. Tief-Zoom auf Apple/Metal bei `SAFE_ZOOM_CEIL=5e5` gedeckelt (ds-Präzision; tiefer bräuchte Perturbations-Rendering). **Phase 5** (Demoscene-Tiefenaudit) liefert pro-Panel-Bewertungen + Wegfall-Kandidaten (`AUDIT_FINDINGS.md` → „Demoscene-Audit").
->
-> **Nächste geplante Session — Panel-Inhalts-Rework:** Kritik kommt per JSON aus dem **Review-Modus** (COPY-Button → Zwischenablage). Format: Array von `{ panel: string, rating: 'up'|'down', comment: string, ts: number }`, wobei `panel` der **Komponenten-Name** ist (stabile ID, identisch mit den Namen in `ALL_PANELS` und der Demoscene-Audit-Tabelle). Panel-Name → Datei in `frontend/src/panels/` bzw. `components/` mappen, Kritik umsetzen. Erledigte Action-Pläne (QW/PERF/GL/DEMO) → `ARCHIVE.md`; langfristige Roadmap (LR-*) unten.
+> **Nächste Schritte:** Die verbleibenden 10 down-bewerteten Panels (u.a. `ParallaxPanel`, `RadarSweepPanel` (DRADIS), `DaggerfallPanel` (Netrunner), `LidarScanPanel`, `TixyPanel`, `IQTechniquePanel`, `LovebyteShowcasePanel`, `PhysicsSandboxPanel`, `NuclearExplosionPanel`) überarbeiten, um den `PANEL_REWORK_PLAN.md` komplett abzuschließen.
 
 ---
 
@@ -20,7 +18,7 @@ Thematischer Rahmen: Ein fiktives „Neural Intrusion Dashboard", das Hacker-Kli
 
 **Speed-first-Regel:** Jedes Feature muss in einer einzigen Session vollständig lauffähig implementiert werden können. Features, die das nicht schaffen, werden auf kleineres Scope reduziert oder verschoben. Keine halbfertigen Implementierungen.
 
-Aktueller Stand: **v1.7.6** auf `main` (Audit gemergt). Deployment auf Netcup-Webspace (Apache).
+Aktueller Stand: **v1.7.8** auf Feature-Branch `feat/panel-rework-2026-05-30` (Rework in progress). Deployment auf Netcup-Webspace (Apache).
 
 ---
 

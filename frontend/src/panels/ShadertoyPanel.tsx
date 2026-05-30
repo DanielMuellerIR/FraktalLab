@@ -7,57 +7,63 @@ const HACKING_CORE_SHADER = `
     vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;
     float time = iTime * 0.8;
     
-    // Rotate coordinate system for dynamic target sweeps
-    float a = time * 0.1;
-    float c = cos(a), s = sin(a);
-    vec2 rotUv = uv * mat2(c, s, -s, c);
+    vec3 baseCol = vec3(1.0, 0.55, 0.1);
+    vec3 accentCol = vec3(1.0, 0.8, 0.3);
+    vec3 warningCol = vec3(0.9, 0.15, 0.05);
     
     vec3 col = vec3(0.0);
     
-    // 1. Digital grid background
-    float grid = step(0.97, fract(rotUv.x * 12.0)) + step(0.97, fract(rotUv.y * 12.0));
-    col += vec3(0.0, 0.22, 0.1) * grid * exp(-length(uv) * 1.5);
+    vec2 gridUv = uv * 35.0;
+    float grid = step(0.95, fract(gridUv.x)) * step(0.95, fract(gridUv.y));
+    col += baseCol * grid * 0.08 * exp(-length(uv) * 1.2);
     
-    // 2. Raymarched Holographic Core
     float d = length(uv);
-    float coreRadius = 0.22 + 0.015 * sin(time * 6.0);
-    float coreGlow = exp(-abs(d - coreRadius) * 22.0);
-    col += vec3(0.0, 1.0, 0.4) * coreGlow;
+    float angle = atan(uv.y, uv.x);
     
-    // Pulsing inner sphere
+    float coreRadius = 0.18 + 0.008 * sin(time * 5.0);
+    float coreGlow = exp(-abs(d - coreRadius) * 28.0);
+    col += baseCol * coreGlow * 1.5;
+    
     if (d < coreRadius) {
-        float innerPulse = abs(sin(d * 40.0 - time * 8.0));
-        col += vec3(0.0, 0.8, 0.3) * innerPulse * (1.0 - d / coreRadius);
+        float pattern = abs(sin(d * 80.0 - time * 6.0));
+        float sectors = step(0.15, fract(angle * 4.0 / 3.14159));
+        col += accentCol * pattern * sectors * (1.0 - d / coreRadius) * 0.6;
     }
     
-    // 3. Rotating Target Rings & Diagnostic Sweeps
-    float ring1 = exp(-abs(d - 0.36) * 50.0);
-    float ringAngle = atan(rotUv.y, rotUv.x);
-    // Dashed ring
-    if (sin(ringAngle * 8.0) > 0.0) {
-        col += vec3(0.0, 0.85, 0.95) * ring1;
-    }
+    float ring1 = exp(-abs(d - 0.28) * 60.0);
+    float select1 = step(0.35, sin(angle * 6.0 + time * 2.2));
+    col += baseCol * ring1 * select1 * 0.9;
     
-    // Outer bracket ring
-    float ring2 = exp(-abs(d - 0.42) * 60.0);
-    if (cos(ringAngle * 3.0 + time * 1.5) > 0.5) {
-        col += vec3(0.0, 0.7, 0.95) * ring2;
-    }
+    float ring2 = exp(-abs(d - 0.35) * 80.0);
+    float nodeAngle = angle - time * 0.8;
+    float nodeSelect = step(0.85, cos(nodeAngle * 8.0));
+    col += mix(baseCol * 0.5, accentCol * 2.2, nodeSelect) * ring2;
     
-    // Hacking sweep laser line
-    float sweep = smoothstep(0.015, 0.0, abs(rotUv.x));
-    col += vec3(0.0, 0.9, 0.3) * sweep * step(0.0, rotUv.y) * exp(-d * 2.0);
+    float ring3 = exp(-abs(d - 0.42) * 50.0);
+    float arcSelect = step(-0.2, sin(angle * 3.0 - time * 1.2));
+    col += baseCol * ring3 * arcSelect * 0.7;
     
-    // 4. Target lock crosshair brackets
-    float cross = smoothstep(0.008, 0.0, abs(uv.x)) * step(abs(uv.y), 0.05) +
-                  smoothstep(0.008, 0.0, abs(uv.y)) * step(abs(uv.x), 0.05);
-    col += vec3(0.0, 1.0, 0.5) * cross * exp(-d * 4.0);
+    float targetLine = smoothstep(0.006, 0.0, abs(uv.x)) * step(abs(uv.y), 0.06) +
+                       smoothstep(0.006, 0.0, abs(uv.y)) * step(abs(uv.x), 0.06);
+    col += accentCol * targetLine * exp(-d * 3.0);
     
-    // Add micro-noise and vignette
-    col *= 0.5 + 0.5 * sin(fragCoord.y * 3.1415); // Scanlines
-    col *= 1.0 - d * 0.8; // Vignette
+    float border = exp(-abs(d - 0.48) * 120.0);
+    col += baseCol * border * 0.8;
     
-    fragColor = vec4(col, 1.0);
+    float sweepAngle = time * 1.5;
+    vec2 sweepDir = vec2(cos(sweepAngle), sin(sweepAngle));
+    float distToSweep = length(uv - sweepDir * clamp(dot(uv, sweepDir), 0.0, 0.48));
+    float sweepGlow = exp(-distToSweep * 45.0) * step(0.0, dot(uv, sweepDir));
+    col += accentCol * sweepGlow * 0.45;
+    
+    float warnNode = step(0.96, cos(angle - 1.2)) * step(0.92, sin(time * 4.0));
+    float ring4 = exp(-abs(d - 0.45) * 70.0);
+    col += warningCol * ring4 * warnNode * 2.0;
+    
+    col *= 0.9 + 0.1 * sin(fragCoord.y * 2.2);
+    col *= 1.0 - d * 0.65;
+    
+    fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
   }
 `
 
@@ -65,8 +71,8 @@ export const ShaderHackingCore = React.memo(function ShaderHackingCore() {
   return (
     <ShaderPanel
       fragmentShader={HACKING_CORE_SHADER}
-      title="HOLOGRAPHIC HACKING CORE // SYSTEM FOCUS"
-      attribution="Hacking Core by Antigravity (Shader-Upgrade)"
+      title="HOLOGRAPHIC HACKING CORE // AMBER INTERFACE"
+      attribution="Hacking Core by Antigravity (Mass Effect Style)"
     />
   )
 })
@@ -107,7 +113,6 @@ const MANDELBOX_SHADER = `
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;
     
-    // Smooth flying camera inside the fractal cavern
     float time = iTime * 0.22;
     vec3 ro = vec3(0.55 * sin(time * 0.7), 0.38 * cos(time * 0.5), 0.55 * sin(time * 0.9));
     vec3 target = vec3(0.55 * sin(time * 0.7 + 0.8), 0.38 * cos(time * 0.5 + 0.8), 0.55 * sin(time * 0.9 + 0.8));
@@ -117,7 +122,6 @@ const MANDELBOX_SHADER = `
     vec3 vv = cross(uu, ww);
     vec3 rd = normalize(uv.x * uu + uv.y * vv + 1.1 * ww);
     
-    // Camera roll
     float roll = sin(time * 0.4) * 0.25;
     float cr = cos(roll), sr = sin(roll);
     rd.xy = rd.xy * mat2(cr, -sr, sr, cr);
@@ -132,7 +136,7 @@ const MANDELBOX_SHADER = `
       float dist = de(p);
       glow += exp(-dist * 18.0) * 0.09;
       if (dist < 0.0006 || d > maxD) break;
-      d += dist * 0.75; // Safer step size inside the fractal
+      d += dist * 0.75;
       steps += 1.0;
     }
     
@@ -143,28 +147,23 @@ const MANDELBOX_SHADER = `
       vec3 p = ro + rd * d;
       vec3 normal = getNormal(p);
       
-      // Rich metallic colors
-      vec3 matCol = vec3(1.0, 0.72, 0.22); // Core gold
+      vec3 matCol = vec3(1.0, 0.72, 0.22);
       matCol = mix(matCol, vec3(0.95, 0.1, 0.55), smoothstep(-0.2, 0.8, sin(p.x * 6.0) * 0.5 + 0.5));
       
       float diffuse = max(0.0, dot(normal, lightDir));
       vec3 halfV = normalize(lightDir - rd);
       float spec = pow(max(0.0, dot(normal, halfV)), 18.0) * 0.95;
       
-      // Ambient occlusion based on ray steps
       float ao = clamp(1.0 - steps / 75.0, 0.0, 1.0);
       
       col = matCol * (0.15 + 0.85 * diffuse) * ao + vec3(spec) * ao;
     }
     
-    // Rich volumetric atmospheric colorful glows (cyan + purple/magenta)
     vec3 glowCol = mix(vec3(0.75, 0.08, 0.92), vec3(0.0, 0.95, 0.85), sin(time * 0.8 + d) * 0.5 + 0.5);
     col += glowCol * glow;
     
-    // Atmospheric fog at distance
     col = mix(col, vec3(0.005, 0.01, 0.04), 1.0 - exp(-0.6 * d * d));
     
-    // Scanlines and screen bloom
     col *= 0.94 + 0.06 * sin(fragCoord.y * 1.5);
     fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
   }
@@ -198,10 +197,8 @@ const RETRO_WAVE_SHADER = `
   }
 
   float getTerrainHeight(vec2 p) {
-    // Create a central valley corridor
     float valley = smoothstep(0.08, 0.85, abs(p.x));
     
-    // Mountain peaks and ridges
     float hills1 = sin(p.x * 2.2) * cos(p.y * 1.1) * 0.2;
     float hills2 = noise(p * 4.5) * 0.08;
     float waves = sin(p.y * 3.5) * 0.045;
@@ -210,56 +207,83 @@ const RETRO_WAVE_SHADER = `
     return valley * 0.42 + hills * valley;
   }
 
+  float drawPalm2D(vec2 p, float time) {
+    float trunk = 0.0;
+    float trunkCurve = 0.15 * sin(p.y * 1.8 + 1.2);
+    float dx = p.x - trunkCurve;
+    if (p.y > -2.2 && p.y < 0.0) {
+        float width = 0.045 * (1.0 - 0.55 * (p.y + 2.2) / 2.2);
+        width += 0.005 * sin(p.y * 25.0);
+        trunk = smoothstep(width, width - 0.015, abs(dx));
+    }
+
+    float leaves = 0.0;
+    vec2 crown = vec2(0.15 * sin(1.2), 0.0);
+    vec2 lp = p - crown;
+    float r = length(lp);
+    float a = atan(lp.y, lp.x);
+
+    for (int i = 0; i < 6; i++) {
+        float angle = float(i) * 3.14159 / 3.0 + 0.15 * sin(time + float(i)*1.5);
+        float fa = a - angle;
+        fa = atan(sin(fa), cos(fa));
+        
+        float bend = 0.45 * r * r;
+        float maxR = 0.65 + 0.15 * cos(float(i) * 3.7);
+        if (r < maxR && r > 0.04) {
+            float stemVal = abs(fa);
+            float blade = abs(sin(r * 45.0 + float(i)*2.0));
+            float bladeLimit = 0.18 * blade * (1.0 - r/maxR);
+            if (stemVal < bladeLimit) {
+                leaves = max(leaves, 1.0 - r/maxR);
+            }
+        }
+    }
+    return max(trunk, leaves);
+  }
+
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;
     float time = iTime * 0.8;
-    
-    // Horizon line
     float horizon = -0.06;
     
-    // 1. Sky Background (Purple-Blue Gradient + Twinkling Stars)
-    vec3 col = mix(vec3(0.05, 0.01, 0.12), vec3(0.18, 0.02, 0.22), uv.y + 0.5);
+    vec3 skyCol = mix(vec3(0.04, 0.01, 0.10), vec3(0.85, 0.04, 0.42), uv.y + 0.5);
+    vec3 col = skyCol;
     
-    // Twinkling stars
     if (uv.y > horizon) {
       vec2 starUV = uv * 32.0;
       float sHash = hash(floor(starUV));
-      if (sHash > 0.985) {
+      if (sHash > 0.988) {
         float twinkle = sin(time * 3.5 + sHash * 6.28) * 0.5 + 0.5;
-        col += vec3(twinkle * 0.9);
+        col += vec3(twinkle * 0.85);
       }
     }
     
-    // 2. The Outrun Sun
-    vec2 sunPos = vec2(0.0, 0.16);
-    float r = 0.26;
+    vec2 sunPos = vec2(0.0, 0.14);
+    float r = 0.28;
     float dist = length(uv - sunPos);
     if (dist < r && uv.y > horizon) {
-      // Yellow to neon-pink gradient
       float grad = (uv.y - sunPos.y + r) / (2.0 * r);
-      vec3 sunCol = mix(vec3(0.98, 0.22, 0.58), vec3(0.98, 0.92, 0.18), grad);
+      vec3 sunCol = mix(vec3(0.98, 0.18, 0.52), vec3(0.98, 0.92, 0.12), grad);
       
-      // Slicing horizontal lines (wider at the bottom)
-      float bar = fract(uv.y * 14.0 - time * 0.4);
+      float bar = fract(uv.y * 14.0 - time * 0.35);
       float threshold = 0.05 + 0.65 * (1.0 - (uv.y - horizon) / (2.0 * r));
       if (bar > threshold) {
         col = sunCol;
       }
     }
     
-    // Sun Glow
-    float sunGlow = exp(-dist * 4.2) * 0.38;
-    col += vec3(0.98, 0.18, 0.58) * sunGlow;
+    float sunGlow = exp(-dist * 4.5) * 0.35;
+    col += vec3(0.98, 0.18, 0.52) * sunGlow;
     
-    // 3. Raymarched Ground Terrain
+    float t_dist = -1.0;
+    vec3 hitPos = vec3(0.0);
+    bool hit = false;
+    vec3 ro = vec3(0.0, 0.38, time * 0.72);
+    vec3 rd = normalize(vec3(uv.x, uv.y - 0.04, 0.65));
+
     if (uv.y <= horizon) {
-      vec3 ro = vec3(0.0, 0.38, time * 0.72);
-      // Ray direction looking slightly down
-      vec3 rd = normalize(vec3(uv.x, uv.y - 0.04, 0.65));
-      
-      float t_dist = 0.0;
-      vec3 hitPos = vec3(0.0);
-      bool hit = false;
+      t_dist = 0.0;
       for (int i = 0; i < 75; i++) {
         vec3 p = ro + rd * t_dist;
         float h = getTerrainHeight(p.xz);
@@ -272,37 +296,72 @@ const RETRO_WAVE_SHADER = `
       }
       
       if (hit) {
-        // Constant world-space grid thickness to prevent lines from expanding and merging in the distance
         float thick = 0.016;
         float blur = 0.008;
         float gx = 1.0 - smoothstep(thick - blur, thick + blur, min(fract(hitPos.x * 5.0), 1.0 - fract(hitPos.x * 5.0)));
         float gz = 1.0 - smoothstep(thick - blur, thick + blur, min(fract(hitPos.z * 5.0), 1.0 - fract(hitPos.z * 5.0)));
         float grid = max(gx, gz);
         
-        // Blue grid over dark purple terrain
-        vec3 baseCol = vec3(0.02, 0.0, 0.06);
-        vec3 gridCol = vec3(0.0, 0.68, 0.98); // Neon blue grid lines
+        vec3 baseCol = vec3(0.02, 0.0, 0.05);
+        vec3 gridCol = vec3(0.0, 0.68, 0.98);
         
-        // Pink mountain reflection glow
         float peakGlow = smoothstep(0.05, 0.38, hitPos.y);
         baseCol += vec3(0.92, 0.1, 0.58) * peakGlow * 0.42;
         
         vec3 terrainCol = mix(baseCol, gridCol, grid);
-        
-        // Distance fog
         float fog = clamp(t_dist / 6.2, 0.0, 1.0);
         col = mix(terrainCol, vec3(0.18, 0.02, 0.22), fog);
       } else {
-        col = vec3(0.18, 0.02, 0.22); // Sky horizon fog
+        col = vec3(0.18, 0.02, 0.22);
       }
     }
     
-    // Horizon Glow Line
-    float horizGlow = exp(-abs(uv.y - horizon) * 16.0);
-    col += vec3(0.95, 0.18, 0.55) * horizGlow * 0.52;
+    float palmCoverage = 0.0;
+    float palmAberration = 0.0;
     
-    // Scanlines and screen vignette
-    col *= 0.94 + 0.06 * sin(fragCoord.y * 1.5);
+    float spacing = 2.4;
+    float startZ = floor(ro.z / spacing) * spacing;
+    
+    for (int k = 0; k < 6; k++) {
+        float z_pos = startZ + float(k) * spacing;
+        for (float side = -1.0; side <= 1.0; side += 2.0) {
+            float x_pos = side * 1.35;
+            float y_pos = -0.05;
+            
+            vec3 p_crown = vec3(x_pos, y_pos + 1.25, z_pos);
+            vec3 camCrown = p_crown - ro;
+            
+            if (camCrown.z > 0.1) {
+                if (hit && camCrown.z > (hitPos.z - ro.z)) {
+                    continue;
+                }
+                
+                float sz = 1.0 / camCrown.z;
+                vec2 projCrown = vec2(camCrown.x / camCrown.z * 0.65, (camCrown.y / camCrown.z * 0.65) + 0.04);
+                
+                vec2 localUV = (uv - projCrown) / sz;
+                float palmShape = drawPalm2D(localUV, time * 1.5 + z_pos);
+                palmCoverage = max(palmCoverage, palmShape);
+                
+                vec2 abUV = (uv + vec2(0.006 * sz * side, 0.0) - projCrown) / sz;
+                float abShape = drawPalm2D(abUV, time * 1.5 + z_pos);
+                palmAberration = max(palmAberration, abShape);
+            }
+        }
+    }
+    
+    vec3 palmCol = vec3(0.01, 0.005, 0.02);
+    col = mix(col, palmCol, palmCoverage);
+    if (palmAberration > 0.0 && palmCoverage < 0.95) {
+        col = mix(col, vec3(0.98, 0.18, 0.42), 0.35 * palmAberration);
+    }
+    
+    float horizGlow = exp(-abs(uv.y - horizon) * 16.0);
+    col += vec3(0.95, 0.18, 0.55) * horizGlow * 0.45;
+    
+    col *= 0.93 + 0.07 * sin(fragCoord.y * 1.8);
+    col *= 1.0 - length(uv) * 0.45;
+    
     fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
   }
 `
@@ -311,8 +370,8 @@ export const ShaderRetroWave = React.memo(function ShaderRetroWave() {
   return (
     <ShaderPanel
       fragmentShader={RETRO_WAVE_SHADER}
-      title="SYNTHWAVE SUN // CORE VIBRATIONS"
-      attribution="Outrun Sun by FabriceNeyret2 (mod)"
+      title="RETRO OUTRUN // HORIZON SCAN"
+      attribution="Outrun Landscape by Antigravity"
     />
   )
 })

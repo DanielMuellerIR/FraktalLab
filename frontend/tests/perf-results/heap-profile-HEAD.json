@@ -2,47 +2,47 @@
   "series": [
     {
       "t": 10,
-      "afterGcMB": 8.49
+      "afterGcMB": 3.31
     },
     {
       "t": 20,
-      "afterGcMB": 5.61
+      "afterGcMB": 3.33
     },
     {
       "t": 30,
-      "afterGcMB": 6.44
+      "afterGcMB": 3.37
     },
     {
       "t": 40,
-      "afterGcMB": 7.59
+      "afterGcMB": 3.27
     },
     {
       "t": 50,
-      "afterGcMB": 6.66
+      "afterGcMB": 3.37
     },
     {
       "t": 60,
-      "afterGcMB": 7.46
+      "afterGcMB": 3.88
     },
     {
       "t": 70,
-      "afterGcMB": 6.76
+      "afterGcMB": 3.52
     },
     {
       "t": 80,
-      "afterGcMB": 7.04
+      "afterGcMB": 3.6
     },
     {
       "t": 90,
-      "afterGcMB": 5.25
+      "afterGcMB": 3.54
     },
     {
       "t": 100,
-      "afterGcMB": 7.63
+      "afterGcMB": 4.39
     }
   ],
-  "slopeMBperSec": -0.0054,
-  "firstHalfAvgMB": 6.96,
-  "secondHalfAvgMB": 6.83,
+  "slopeMBperSec": 0.0082,
+  "firstHalfAvgMB": 3.33,
+  "secondHalfAvgMB": 3.79,
   "verdict": "STABIL (Plateau → Einmal-Init)"
 }

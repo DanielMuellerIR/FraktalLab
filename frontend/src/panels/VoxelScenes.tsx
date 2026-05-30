@@ -351,6 +351,7 @@ function makeVoxelScene(
       uCamPos: [0.0, 0.0],
       uAngle: 0.0,
       uCamH: 100.0,
+      uRoll: 0.0,
     })
 
     useEffect(() => {
@@ -408,11 +409,15 @@ function makeVoxelScene(
         }
         const camH = Math.max(terrainAtCam + camHFloor, camHBase + camHAmp * Math.sin(t * 0.0004))
 
+        // Dynamic roll for lava flow (slow rotation)
+        const roll = title.includes('LAVA') ? (t * 0.0002) % (Math.PI * 2) : 0.0
+
         const u = uniformsRef.current
         u.uCamPos[0] = c.x
         u.uCamPos[1] = c.y
         u.uAngle = c.angle
         u.uCamH = camH
+        u.uRoll = roll
 
         // Rekursiver rAF-Aufruf entfaellt: subscribe ruft loop() jeden Tick.
       }
@@ -428,6 +433,7 @@ function makeVoxelScene(
       uniform vec2 uCamPos;
       uniform float uAngle;
       uniform float uCamH;
+      uniform float uRoll;
 
       ${colorGlsl}
 
@@ -440,15 +446,24 @@ function makeVoxelScene(
         vec3 horizonSkyCol = ${title.includes('LAVA') ? 'vec3(0.55, 0.11, 0.02)' : 'vec3(0.0, 0.35, 0.25)'};
         vec3 spaceCol = ${title.includes('LAVA') ? 'vec3(0.04, 0.005, 0.0)' : 'vec3(0.0, 0.02, 0.05)'};
 
-        float skyY = fragCoord.y - horizon;
-        if (skyY >= 0.0) {
-            float skyGlow = exp(-skyY * 0.03);
-            vec3 skyCol = horizonSkyCol * skyGlow + spaceCol;
+        // Rotate screen coordinates by uRoll to support rolling flight
+        vec2 screen = fragCoord - iResolution.xy * 0.5;
+        float cr = cos(uRoll);
+        float sr = sin(uRoll);
+        vec2 rotScreen = screen * mat2(cr, sr, -sr, cr);
+
+        float skyY = rotScreen.y;
+        float slope = skyY / scale;
+
+        // If the ray points upwards (slope > 0) and we start above the terrain, we might miss the terrain
+        if (slope > 0.0 && uCamH > 255.0) {
+            float skyGlow = exp(-skyY * 0.025);
+            vec3 skyCol = mix(spaceCol, horizonSkyCol, skyGlow);
             fragColor = vec4(skyCol, 1.0);
             return;
         }
 
-        float rayAngle = uAngle - fov/2.0 + (fragCoord.x / iResolution.x) * fov;
+        float rayAngle = uAngle - fov/2.0 + ((rotScreen.x + iResolution.x * 0.5) / iResolution.x) * fov;
         float rdx = cos(rayAngle);
         float rdy = sin(rayAngle);
 
@@ -458,12 +473,29 @@ function makeVoxelScene(
         for (int i = 0; i < 300; i++) {
             if (z >= 600.0) break;
             vec2 wpos = uCamPos + vec2(rdx * z, rdy * z);
-            float wz = uCamH + (fragCoord.y - horizon) * z / scale;
+            float wz = uCamH + slope * z;
             
             float th = texture2D(uHeightmap, wpos / 512.0).r * 255.0;
             ${waveGlsl ? `th += ${waveGlsl};` : ''}
             
             if (wz < th) {
+                // Refine intersection point via binary search
+                float prevZ = z - (1.0 + (z - 1.0) * 0.015);
+                float t_refine = 0.5;
+                for (int j = 0; j < 3; j++) {
+                    float currZ = mix(prevZ, z, t_refine);
+                    vec2 wpos_c = uCamPos + vec2(rdx * currZ, rdy * currZ);
+                    float wz_c = uCamH + slope * currZ;
+                    float th_c = texture2D(uHeightmap, wpos_c / 512.0).r * 255.0;
+                    ${waveGlsl ? `th_c += ${waveGlsl.replace(/wpos\./g, 'wpos_c.')};` : ''}
+                    if (wz_c < th_c) {
+                        z = currZ;
+                        t_refine *= 0.5;
+                    } else {
+                        prevZ = currZ;
+                        t_refine = (t_refine + 1.0) * 0.5;
+                    }
+                }
                 hitZ = z;
                 hitHeight = th;
                 break;
@@ -471,14 +503,16 @@ function makeVoxelScene(
             z += 1.0 + z * 0.015;
         }
 
+        vec3 skyCol = mix(spaceCol, horizonSkyCol, exp(-max(0.0, skyY) * 0.025));
+
         if (hitZ < 0.0) {
-            fragColor = vec4(horizonSkyCol + spaceCol, 1.0);
+            fragColor = vec4(skyCol, 1.0);
             return;
         }
 
         float fog = clamp(hitZ / far, 0.0, 1.0);
         vec3 col = getTerrainColor(hitHeight, fog);
-        col = mix(col, horizonSkyCol + spaceCol, fog);
+        col = mix(col, skyCol, fog);
 
         ${brightBoost ? `
         float lum = max(col.r, max(col.g, col.b));
@@ -487,7 +521,7 @@ function makeVoxelScene(
         }
         ` : ''}
 
-        float wz_above = uCamH + ((fragCoord.y + 1.0) - horizon) * hitZ / scale;
+        float wz_above = uCamH + (skyY + 1.0) * hitZ / scale;
         bool isTop = (wz_above >= hitHeight);
         float fade = 1.0 - fog;
         if (isTop) {
@@ -604,8 +638,33 @@ const hmLava = buildHeightmap([
 ])
 
 // ── Variante: NEON GRID ───────────────────────────────────────────────────────
-import VectorHudPanel from './VectorHudPanel'
-export const VoxelNeon = VectorHudPanel
+const NEON_GLSL_COLOR = `
+  vec3 getTerrainColor(float th, float fog) {
+    float t = th / 255.0;
+    float f = 1.0 - fog * 0.65;
+    vec3 col = mix(vec3(0.95, 0.02, 0.65), vec3(0.0, 0.9, 0.95), sin(t * 10.0 + iTime * 1.5) * 0.5 + 0.5);
+    return col * f;
+  }
+`
+
+const hmNeon = buildHeightmap([
+  { sx: 0.012, sy: 0.012, amp: 40 },
+  { sx: 0.035, sy: 0.035, amp: 22, px: 0.8, py: 1.2 },
+])
+
+export const VoxelNeon = makeVoxelScene(
+  'VOXEL NEON // RETRO SYNTH',
+  480, 300,
+  hmNeon,
+  NEON_GLSL_COLOR,
+  { vx: 1.2, vy: 0.6, va: 0.0006, speedMin: 0.8, speedMax: 2.5 },
+  {
+    camHBase: 85, camHAmp: 20, camHFloor: 42,
+    brightBoost: 1.3,
+    brightThreshold: 160,
+    waveGlsl: 'sin(wpos.x * 0.09 + iTime * 2.2) * 10.0 + cos(wpos.y * 0.09 - iTime * 1.8) * 10.0',
+  }
+)
 
 // ── Variante: LAVA FLOW ───────────────────────────────────────────────────────
 const LAVA_GLSL_COLOR = `
@@ -648,5 +707,5 @@ export const VoxelLava = makeVoxelScene(
 )
 
 // ── Variante: PHOSPHOR TERRAIN ────────────────────────────────────────────────
-import NeuralNetPanel from './NeuralNetPanel'
-export const VoxelMatrix = NeuralNetPanel
+import { MengerSpongeScene } from './DEFractalScenes'
+export const VoxelMatrix = MengerSpongeScene
