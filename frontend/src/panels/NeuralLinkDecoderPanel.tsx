@@ -18,7 +18,7 @@ const SCI_FI_LABELS = [
 
 export function NeuralLinkDecoderPanel() {
   const [rows, setRows] = useState<DecryptRow[]>(() => 
-    Array.from({ length: 6 }, (_, i) => ({
+    Array.from({ length: 10 }, (_, i) => ({
       synapseId: SCI_FI_LABELS[i % SCI_FI_LABELS.length],
       address: `0x${(0x7F2A + i * 0x3F).toString(16).toUpperCase()}`,
       hash: Math.random().toString(16).substring(2, 8).toUpperCase(),
@@ -100,11 +100,11 @@ export function NeuralLinkDecoderPanel() {
           <div className="flex justify-between items-start bg-black/65 border border-slate-800/40 p-2 rounded backdrop-blur-md">
             <div>
               <div className="text-cyan-400 font-bold text-[10px] tracking-widest">COGNITIVE INTERCEPT INTERFACE</div>
-              <div className="text-slate-400 mt-0.5">MATRIX DENSITY: {telemetry.totalNeurons} NEURONS // STABILITY: <span className={telemetry.stability < 96.5 ? 'text-rose-500 font-bold' : 'text-emerald-400 font-bold'}>{telemetry.stability}%</span></div>
+              <div className="text-slate-400 mt-0.5">MATRIX DENSITY: {telemetry.totalNeurons} NEURONS // STABILITY: <span className={telemetry.stability < 96.5 ? 'text-rose-500 font-bold' : 'text-cyan-400 font-bold'}>{telemetry.stability}%</span></div>
             </div>
             <div className="text-right">
               <div className="text-fuchsia-400 font-bold">BANDWIDTH: {telemetry.bandwidth} GB/s</div>
-              <div className="text-slate-500">SECURE TARGETS: {telemetry.synapsesSecured} / 8 ACTIVE</div>
+              <div className="text-slate-500">SECURE TARGETS: {telemetry.synapsesSecured} / 12 ACTIVE</div>
             </div>
           </div>
 
@@ -112,7 +112,7 @@ export function NeuralLinkDecoderPanel() {
           <div className="flex-1 my-2 flex gap-2 min-h-0 overflow-hidden">
             
             {/* Left Box: Active Synapses Table */}
-            <div className="flex-1 bg-black/70 border border-slate-800/45 p-2 rounded backdrop-blur-sm overflow-y-auto">
+            <div className="flex-1 bg-black/70 border border-slate-800/45 p-2 rounded backdrop-blur-sm overflow-y-auto scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
               <div className="text-cyan-400/80 font-bold border-b border-slate-800/60 pb-1 mb-1.5 flex justify-between uppercase tracking-wider text-[8px]">
                 <span>Synapse ID</span>
                 <span>Addr</span>
@@ -127,7 +127,7 @@ export function NeuralLinkDecoderPanel() {
                     
                     {/* Signal Progress Dot */}
                     <span className="flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: row.status === 'OVERLOAD' ? '#f43f5e' : row.status === 'SYNCHRONISED' ? '#10b981' : '#06b6d4' }} />
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: row.status === 'OVERLOAD' ? '#f43f5e' : row.status === 'SYNCHRONISED' ? '#a855f7' : '#06b6d4' }} />
                       <span>{row.signalLevel.toFixed(0)}dB</span>
                     </span>
 
@@ -137,7 +137,7 @@ export function NeuralLinkDecoderPanel() {
                         <span className="text-cyan-400 animate-pulse">{row.hash} [DCR]</span>
                       )}
                       {row.status === 'SYNCHRONISED' && (
-                        <span className="text-emerald-400">SECURED</span>
+                        <span className="text-fuchsia-400">SECURED</span>
                       )}
                       {row.status === 'OVERLOAD' && (
                         <span className="text-rose-500 font-bold animate-bounce">OVERFLOW</span>
@@ -155,7 +155,7 @@ export function NeuralLinkDecoderPanel() {
                 <div className="space-y-1 text-slate-400">
                   <div className="flex justify-between"><span>LOBE-L</span><span className="text-slate-300">0.24ms</span></div>
                   <div className="flex justify-between"><span>LOBE-R</span><span className="text-slate-300">0.18ms</span></div>
-                  <div className="flex justify-between"><span>AXON-S</span><span className="text-emerald-400 font-bold">STABLE</span></div>
+                  <div className="flex justify-between"><span>AXON-S</span><span className="text-fuchsia-400 font-bold">STABLE</span></div>
                   <div className="flex justify-between"><span>THETA</span><span className="text-cyan-400">8.2Hz</span></div>
                   <div className="flex justify-between"><span>GAMMA</span><span className="text-cyan-400">42.1Hz</span></div>
                 </div>

@@ -19,7 +19,7 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 > - [x] **RW-07 `CADRobotPanel`** — Kindische Roboter ersetzen durch Hard-Sci-Fi: Industriearm, Mech-Walker, Satellit, Drone
 > - [x] **RW-08 `OscilloscopePanel`** — Chiptune-Player mit SID-Emulation + Visualizer
 > - [x] **RW-09 `ShaderHackingCore`** — Mass-Effect-Hacking-Spiel: konzentrische Ringe, rotierende Segmente, Bypass-Nodes
-> - [ ] **RW-10 `NeuralLinkDecoderPanel`** — Mehr Nodes, schärfer, kein Grün, Hard-Sci-Fi-Palette
+> - [x] **RW-10 `NeuralLinkDecoderPanel`** — Mehr Nodes, schärfer, kein Grün, Hard-Sci-Fi-Palette
 >
 > ### Tier 3 — Signifikante Verbesserungen
 > - [ ] **RW-11 `TunnelScene`** — Stargate-Stil: Kristallwände, Energiepulse, warpende Geometrie, Farbwechsel
