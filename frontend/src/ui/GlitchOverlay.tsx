@@ -168,40 +168,43 @@ function drawTrackingBarGlitch(
   ctx.clearRect(0, 0, W, H)
 
   // Varianten-Konfiguration
-  let blurRadius = 0.9
-  let streakDensity = 160
-  let skewStrength = 26
-  let diagonalNoiseIntensity = 0.04
-  let colorBleed = 8
+  let blurRadius = 0.8
+  let streakDensity = 140
+  let skewStrength = 22
+  let diagonalNoiseIntensity = 0.02
+  let colorBleed = 6
+  let darkUnderlayOpacity = 0.22 // Transparent background so dashboard shines through
 
   if (variant === 2) {
-    // Variante 2: Massiver Sync-Drift, dichtere Streifen
+    // Variante 2: Dünnerer, aber extrem heller Kern, stärkere Biegung
     blurRadius = 0.5
-    streakDensity = 220
-    skewStrength = 48
-    diagonalNoiseIntensity = 0.07
-    colorBleed = 14
+    streakDensity = 120
+    skewStrength = 38
+    diagonalNoiseIntensity = 0.04
+    colorBleed = 10
+    darkUnderlayOpacity = 0.12
   } else if (variant === 3) {
-    // Variante 3: Sehr weichgezeichneter Stoerstreifen mit weniger Drift
-    blurRadius = 1.8
-    streakDensity = 110
-    skewStrength = 14
-    diagonalNoiseIntensity = 0.02
-    colorBleed = 5
+    // Variante 3: Etwas weicherer, dickerer Stoerstreifen mit minimalem Drift
+    blurRadius = 1.6
+    streakDensity = 90
+    skewStrength = 12
+    diagonalNoiseIntensity = 0.015
+    colorBleed = 4
+    darkUnderlayOpacity = 0.28
   }
 
   const timeFactor = performance.now() * 0.015
 
-  // 1. Diagonale Helligkeits-/Farbrausch-Bänder (Rainbow/Herringbone Waves) über den ganzen Screen
+  // 1. Diagonale Helligkeits-/Farbrausch-Bänder (Rainbow Waves)
   ctx.save()
   ctx.globalCompositeOperation = 'screen'
-  const diagonalBands = 6
+  const diagonalBands = 5
   const bandSpacing = H / diagonalBands
   for (let i = 0; i < diagonalBands; i++) {
-    const yOffset = (i * bandSpacing + timeFactor * 18) % H
+    const yOffset = (i * bandSpacing + timeFactor * 12) % H
     
     ctx.strokeStyle = `rgba(225, 40, 140, ${diagonalNoiseIntensity * intensity})`
-    ctx.lineWidth = 32
+    ctx.lineWidth = 28
     ctx.beginPath()
     ctx.moveTo(-50, yOffset)
     ctx.lineTo(W + 50, yOffset + H * 0.5)
@@ -209,14 +212,14 @@ function drawTrackingBarGlitch(
     
     ctx.strokeStyle = `rgba(30, 180, 220, ${diagonalNoiseIntensity * intensity})`
     ctx.beginPath()
-    ctx.moveTo(-50, yOffset + 18)
-    ctx.lineTo(W + 50, yOffset + 18 + H * 0.5)
+    ctx.moveTo(-50, yOffset + 15)
+    ctx.lineTo(W + 50, yOffset + 15 + H * 0.5)
     ctx.stroke()
   }
   ctx.restore()
 
-  // 2. Dunkler Hintergrund-Unterleger für den Stoerstreifen (VCR-Kopfspalt-Austastung)
-  ctx.fillStyle = `rgba(22, 22, 22, ${0.75 * intensity})`
+  // 2. Durchscheinender Hintergrund-Unterleger (dashboard shines through!)
+  ctx.fillStyle = `rgba(15, 15, 15, ${darkUnderlayOpacity * intensity})`
   const wrappedY = (barY + H) % H
   if (wrappedY + barH > H) {
     ctx.fillRect(0, wrappedY, W, H - wrappedY)
@@ -225,7 +228,7 @@ function drawTrackingBarGlitch(
     ctx.fillRect(0, wrappedY, W, barH)
   }
 
-  // 3. Weisse/bunte Stoerstreifen (feine Linien statt grober Pixelblöcke!)
+  // 3. Stoerstreifen (feine Linien - der Kern ist hell, der Rest schwach)
   ctx.save()
   if (blurRadius > 0) {
     ctx.filter = `blur(${blurRadius}px)`
@@ -237,22 +240,30 @@ function drawTrackingBarGlitch(
     const offset = Math.sin(angle) * (barH * 0.5)
     const y = (barY + barH / 2 + offset + H) % H
 
-    const len = 15 + Math.random() * 160
+    const len = 10 + Math.random() * 140
     const x = Math.random() * W
     
+    // Kern-Erkennung (die inneren 25% der Barhöhe)
+    const distToCenter = Math.abs(offset)
+    const normalizedDist = distToCenter / (barH * 0.5)
+    const isCore = normalizedDist < 0.25
+
+    // Kern ist heller/deckender, äußere Bereiche sind schwächer/durchscheinender
+    const baseAlpha = isCore 
+      ? (0.65 + Math.random() * 0.35) 
+      : (0.12 + Math.random() * 0.25)
+
     let color = 'rgba(252,252,252,'
     const r = Math.random()
-    if (r < 0.12) {
+    if (r < 0.10) {
       color = 'rgba(0,253,253,' // Cyan
-    } else if (r < 0.24) {
+    } else if (r < 0.20) {
       color = 'rgba(253,0,130,' // Fuchsia
-    } else if (r < 0.32) {
-      color = 'rgba(235,245,170,' // Warmes Gelb
     }
 
-    const alpha = (0.35 + Math.random() * 0.55) * intensity
+    const alpha = baseAlpha * intensity
     ctx.fillStyle = `${color}${alpha})`
-    const lineH = 1 + Math.floor(Math.random() * 2)
+    const lineH = isCore ? (1 + Math.floor(Math.random() * 2)) : 1
 
     ctx.fillRect(x, y, len, lineH)
     if (x + len > W) {
@@ -261,14 +272,14 @@ function drawTrackingBarGlitch(
   }
   ctx.restore()
 
-  // 4. Feine, schwarze horizontale Cutouts zur Zerteilung der Streifen (Tape Dropout)
-  const gapCount = variant === 2 ? 8 : 4
+  // 4. Feine, schwarze Cutouts zur Zerteilung (sehr dezent, nur 2-4 Zeilen)
+  const gapCount = variant === 2 ? 4 : 2
   for (let i = 0; i < gapCount; i++) {
-    const gy = (barY + (Math.random() - 0.5) * (barH * 1.3) + H) % H
-    const gh = 1 + Math.random() * 3
+    const gy = (barY + (Math.random() - 0.5) * (barH * 1.2) + H) % H
+    const gh = 1 + Math.random() * 2
     const gx = Math.random() * W
-    const gw = 35 + Math.random() * 130
-    ctx.fillStyle = `rgba(12,12,12,${0.9 * intensity})`
+    const gw = 20 + Math.random() * 80
+    ctx.fillStyle = `rgba(12,12,12,${0.75 * intensity})`
     ctx.fillRect(gx, gy, gw, gh)
     if (gx + gw > W) {
       ctx.fillRect(0, gy, (gx + gw) - W, gh)
@@ -292,24 +303,24 @@ function drawTrackingBarGlitch(
 
     if (proximity > 0.05) {
       // Fuchsia Chroma-Bleed
-      ctx.fillStyle = `rgba(255, 0, 128, ${0.16 * proximity * intensity})`
+      ctx.fillStyle = `rgba(255, 0, 128, ${0.12 * proximity * intensity})`
       ctx.fillRect(shift - colorBleed, wy, W, sliceH)
       // Cyan Chroma-Bleed
-      ctx.fillStyle = `rgba(0, 255, 255, ${0.16 * proximity * intensity})`
+      ctx.fillStyle = `rgba(0, 255, 255, ${0.12 * proximity * intensity})`
       ctx.fillRect(shift + colorBleed, wy, W, sliceH)
       // Weisser Kern-Versetzer
-      ctx.fillStyle = `rgba(255, 255, 255, ${0.08 * proximity * intensity})`
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.06 * proximity * intensity})`
       ctx.fillRect(shift, wy, W, sliceH)
     }
   }
 
-  // 6. Feine Helligkeits-Streifen über das restliche Bild (feines Signalrauschen)
-  const screenNoise = 12
+  // 6. Feine Helligkeits-Streifen über das restliche Bild (sehr schwach)
+  const screenNoise = 8
   for (let i = 0; i < screenNoise; i++) {
     const y = Math.random() * H
     const x = Math.random() * W
-    const w = 5 + Math.random() * 35
-    ctx.fillStyle = `rgba(255,255,255,${0.08 * intensity})`
+    const w = 5 + Math.random() * 25
+    ctx.fillStyle = `rgba(255,255,255,${0.05 * intensity})`
     ctx.fillRect(x, y, w, 1)
   }
 
@@ -371,7 +382,6 @@ export default function GlitchOverlay() {
     let glitchType: 'composite' | 'tracking_bar' = 'composite'
     let trackingBarY = 0
     let trackingBarH = 0
-    let trackingDriftSpeed = 0
     let trackingVariant = 1
 
     function stopEpisode() {
@@ -410,7 +420,10 @@ export default function GlitchOverlay() {
       if (intensity > 0.05) {
         if (glitchType === 'tracking_bar') {
           const H = canvas!.height
-          const currentY = (trackingBarY + trackingDriftSpeed * (elapsed / 1000) + H) % H
+          // Minimaler Wobble statt dauerhaftem Wandern
+          const wobble = Math.sin(elapsed * 0.003) * 6
+          const currentY = (trackingBarY + wobble + H) % H
+          
           drawTrackingBarGlitch(
             ctx!,
             canvas!.width,
@@ -466,10 +479,6 @@ export default function GlitchOverlay() {
         } else {
           trackingBarY = H * 0.20 + Math.random() * (H * 0.50)
         }
-
-        // Drift-Geschwindigkeit: 20-50 px/s (rauf/runter)
-        const dir = Math.random() > 0.5 ? 1 : -1
-        trackingDriftSpeed = dir * (20 + Math.random() * 30)
       } else {
         // Composite Glitch: 1.0s - 2.5s
         episodeDuration = 1000 + Math.random() * 1500
