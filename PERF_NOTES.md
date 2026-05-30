@@ -261,9 +261,34 @@ Daten: `HEAD-gpu-stage2.json`.
 ein kleines 128×96-Bild aus (GPU-Stall). Bei mehreren Fraktalen summiert sich das,
 beeinträchtigt die 120 FPS hier aber nicht.
 
-**Offen:** FractalJulia (6-Param, Stufe 3); WASM-Render-Pfad entfernen (Stufe 4).
-Zu beachten: WebGL-Context-Budget (`webgl-pool`, MAX_GL_CONTEXTS=8) bei sehr vielen
-gleichzeitigen Fraktal-/Shader-Panels (FractalGL zeigt bei Eviction kein Wake-Overlay).
+### M-2 Stufe 3 — FractalJulia (6-Param) auf GPU
+
+`FractalJulia` rendert via `FractalGL` mit `juliaSet`-Cycling (Crossfade zwischen
+c-Parametern, Shader-Uniform `uJuliaC2`) + HUD-Overlay. Julia-spezifisch: quadratische,
+auflösungsunabhängige Pixel-Skala, Center-Drift + Low-Detail-Erkennung per Farb-
+Histogramm. Visuell verifiziert (DENDRITE/DRAGON zentriert, reich, Param-Cycling).
+
+### M-2 Stufe 4 — WASM-Render-Pfad entfernt
+
+Da alle 11 Fraktal-Panels jetzt auf der GPU laufen, ist das Rust/WASM-Modul restlos
+entfernt: `wasm/`-Crate, `utils/wasm-loader.ts`, `@wasm`-Vite-Alias und die devDeps
+`vite-plugin-wasm`/`vite-plugin-top-level-await`. Build ist reines JS/Vite (kein
+`wasm-pack` mehr). Doku (AGENTS/DEV_GUIDE/netlify) entsprechend bereinigt.
+
+### Output-Vergleich GPU vs. WASM (Komponenten-Upgrade-Regel)
+
+- **Verbesserung:** durchgängig 120 FPS statt 8–18; tieferer Zoom möglich
+  (double-single ~1e13 statt f64-CPU, das real bei 1.5e6–1e10 cross-fadete);
+  schärfere Darstellung (`imageRendering: auto` statt `pixelated`).
+- **Färbung identisch:** Hue/HSL + alle Color-Transforms 1:1 aus dem Shader
+  repliziert, visuell geprüft.
+- **Verhaltens-Änderungen (neutral):** FractalScenes nutzte bidirektionalen Zoom
+  (rein+raus); jetzt Zoom-rein + Crossfade zur nächsten Location. FractalJulia:
+  Tumbling/Drift → einfacher Drift + Crossfade-Param-Cycling. Animations-Tempo ist
+  jetzt frame-raten-unabhängig (zeitbasiert), war vorher an die Frame-Zahl gekoppelt.
+- **Zu beachten:** WebGL-Context-Budget (`webgl-pool`, MAX_GL_CONTEXTS=8) bei sehr
+  vielen gleichzeitigen Fraktal-/Shader-Panels; FractalGL zeigt bei Eviction (noch)
+  kein Wake-Overlay wie ShaderPanel.
 
 ---
 

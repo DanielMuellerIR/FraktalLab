@@ -84,14 +84,14 @@ Voxel-Terrain à la Comanche ist *historisch* aus Hardware-Gründen pixelig, abe
 
 ```
 Frontend:     React 19, Vite 8, TypeScript 6, Tailwind CSS v4
-WASM-Modul:   Rust + wasm-pack  (wasm32-unknown-unknown)  →  wasm/pkg/
-              Cargo Release-Profil: opt-level = 3, lto = true
-Build-Plugins: vite-plugin-wasm, vite-plugin-top-level-await
+Fraktale:     GPU-Fragment-Shader (WebGL) mit double-single-Präzision
+              → frontend/src/components/FractalGL.tsx + utils/fractal-gl-shader.ts
+              (KEIN WASM/Rust mehr — seit der B-4-GPU-Migration entfernt)
 Prod-Server:  Apache (Netcup) via frontend/public/.htaccess
 Dev-Server:   Vite (setzt COOP/COEP-Header via vite.config.ts)
-Testing:      Playwright (@playwright/test) — visueller Panel-Check
+Testing:      Playwright (@playwright/test) — visueller Panel-Check + Perf-Suite
 Audio:        Eigene ProTracker-MOD-Implementierung in frontend/src/utils/modplayer/
-              (AudioWorklet + ScriptProcessor-Fallback, kein libopenmpt nötig)
+              (AudioWorklet, kein libopenmpt nötig)
 ```
 
 ---
@@ -99,14 +99,13 @@ Audio:        Eigene ProTracker-MOD-Implementierung in frontend/src/utils/modpla
 ## Repo-Struktur
 
 ```
-wasm/                       Rust-Crate (cdylib). Build-Output: wasm/pkg/
-  src/lib.rs                RenderParams, render() (Mandelbrot), render_julia()
 frontend/
   src/
     App.tsx                 Grid-Layout-System, Pool-Definitionen, Layout-Wechsel-Logik,
                             Review-Modus (localStorage), Mobile-Layout (md:-Breakpoint)
     components/
-      FractalCanvas.tsx     WASM-Mandelbrot, animierter Zoom durch 8 Koordinaten
+      FractalGL.tsx         GPU-Fraktal-Renderer (Mandelbrot/Julia, WebGL-Shader,
+                            double-single-Präzision, Auto-Zoom-Navigation, Crossfade)
       EnhancePhoto.tsx      Enhance-Slideshow (12 Stufen, 4s Zyklus, nur urbane Fotos)
     panels/                 Alle Panel-Komponenten (je eine Datei, siehe Inventar unten)
     ui/
@@ -116,7 +115,7 @@ frontend/
       Panel.tsx             Rahmen mit grünem Border + Titelzeile
       Clock.tsx, StatBar.tsx, ScrollingLog.tsx
     utils/
-      wasm-loader.ts        Singleton-Loader für das WASM-Modul (geteilt zwischen Panels)
+      fractal-gl-shader.ts  GLSL für FractalGL (Mandelbrot/Julia, double-single, Färbung)
       shared-audio.ts       Singleton AudioContext mit iOS-Session-Konfiguration
       modplayer/            Selbstgeschriebener ProTracker-MOD-Player (TypeScript)
         player.ts, fallback-processor.ts, loader.ts, mod.ts
@@ -131,9 +130,9 @@ server/                     Express Prod-Server (wird auf Netcup nicht genutzt)
 
 ## Architektur-Kernpunkte
 
-**WASM ↔ React-Grenze:** `wasm/src/lib.rs` exportiert `render()` (Mandelbrot) und `render_julia()` (Julia-Menge). Die beiden Funktionen verwenden **derzeit inkonsistente Speicher-Patterns** — siehe Action Plan QW-01. Das WASM-Modul wird via `frontend/src/utils/wasm-loader.ts` als Singleton geladen; alle Fraktal-Panels teilen sich dieselbe Modul-Instanz.
+**Fraktal-Rendering (GPU):** Alle Mandelbrot-/Julia-Panels rendern über `FractalGL` (`frontend/src/components/FractalGL.tsx`) mit einem WebGL-Fragment-Shader (`utils/fractal-gl-shader.ts`). Der Shader nutzt **double-single-Arithmetik** (vec2 hi/lo) für Tief-Zoom bis ~1e13. Auto-Zoom-Navigation (Detail statt Schwarzraum) läuft über ein kleines Offscreen-Readback; Crossfade zwischen Locations/Julia-Parametern im selben Shader-Pass. WebGL-Contexts werden über `utils/webgl-pool.ts` budgetiert (`MAX_GL_CONTEXTS=8`, LRU-Eviction). **Kein WASM/Rust mehr** (seit Befund B-4 entfernt; alte Variante in der Git-History).
 
-**HTTP-Header (kritisch):** Vite-Dev-Server und `.htaccess` setzen `Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Embedder-Policy: credentialless`. Ohne diese Header verweigern Chrome und Safari den WASM-Load. `credentialless` (nicht `require-corp`) erlaubt Cross-Origin-Medien wie das archive.org-Video, ohne SharedArrayBuffer aufzugeben.
+**HTTP-Header:** Vite-Dev-Server und `.htaccess` setzen `Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Embedder-Policy: credentialless`. `credentialless` erlaubt Cross-Origin-Medien wie das archive.org-Video. (Früher zusätzlich für WASM-SharedArrayBuffer nötig — das ist entfallen, die Header bleiben aber gesetzt und schaden nicht.)
 
 **Tailwind v4:** Via `@tailwindcss/vite`-Plugin, kein `tailwind.config.js`. CSS-Einstiegspunkt: `frontend/src/index.css` mit `@import "tailwindcss"`.
 
@@ -196,11 +195,9 @@ Diese Sektion dokumentiert die Ergebnisse einer vollständigen Inspektion der Ha
 
 Folgende Implementierungen sind solide und sollen erhalten bleiben:
 
-- **`panels/FractalJulia.tsx`** — Referenz-Implementierung. Gemeinsamer Buffer (Z. 134–136), IntersectionObserver, Auflösungs-Management, bidirektionaler Zoom mit `isLowDetail()`-Detection. Pattern für andere Fraktal-Panels.
+- **`components/FractalGL.tsx`** — GPU-Fraktal-Renderer für ALLE Fraktal-Panels. WebGL-Shader (double-single), webgl-pool-Slot, zeitbasierte Animation, Offscreen-Nav-Readback, Crossfade. `FractalView`, `FractalJulia` und die `FractalScenes`-Familie sind dünne Wrapper darum.
 - **`utils/modplayer/`** — Vollständiger ProTracker-MOD-Player in TypeScript. Header-Validierung in `loader.ts`, AudioWorklet jetzt Pflicht (ScriptProcessorNode-Fallback wurde in Iter. 2 entfernt, da Main-Thread-blockierend). Alle Standardeffekte implementiert (Arpeggio, Vibrato, Slides, Portamento). **Macht libopenmpt-WASM überflüssig.** Standalone-Variante in `p_modplayer_singlehtml/` — Verbesserungen werden zwischen den Projekten hybridisiert.
-- **`utils/wasm-loader.ts`** — Korrekter Singleton. WASM wird einmal geladen, alle Panels teilen sich das Modul.
 - **`utils/shared-audio.ts`** — Singleton AudioContext mit iOS-Audio-Session-Konfiguration. Genau richtig.
-- **`Cargo.toml`** — `opt-level = 3` und `lto = true` ergeben ein 23 KB WASM-Binary. Saubere Release-Konfiguration.
 - **`panels/DemoScenes.tsx` `makeScene`-Factory** — elegante DRY-Lösung. Gemeinsame Infrastruktur (Resize, IntersectionObserver, OffscreenCanvas, Cached ImageData), Variation nur im `draw`-Callback. **Hat bereits einen `pixelated`-Parameter (Z. 156) — nur Default umstellen, siehe Pixel-Quality-Policy.**
 - **`ui/PanelSlot.tsx`** — Kompakt und korrekt. Lokaler `localIdx`, Fade-Übergang via opacity, kein State-Lift zum Parent.
 - **`isAudioPlaying()` in `App.tsx`** Z. 434 — pragmatisches Audio-Detection, blockiert Auto-Switch bei laufendem Sound.
@@ -215,13 +212,14 @@ Folgende Implementierungen sind solide und sollen erhalten bleiben:
 
 ## Panel-Inventar
 
-### Fraktal-Panels (WASM-basiert) — Kategorie B (glatt)
+### Fraktal-Panels (GPU-Shader via FractalGL) — Kategorie B (glatt)
 
 | Datei | Inhalt |
 |---|---|
-| `components/FractalCanvas.tsx` | Mandelbrot, animierter Zoom durch 8 Koordinaten — als großes Hero-Panel über `FractalView` |
-| `panels/FractalJulia.tsx` | Julia-Menge, 6 Parameter-Paare, 12s-Zyklus, WASM `render_julia()` |
-| `panels/FractalScenes.tsx` | Aktive Mini-Panels: `FractalSeahorse`, `FractalSpiral`, `FractalLightning`, `FractalElephant`, `FractalMini`, `FractalSatellite`, `FractalTendril`, `FractalDragon`, `FractalDendrite`, `FractalSwirl` |
+| `components/FractalGL.tsx` | Gemeinsamer GPU-Renderer (Mandelbrot/Julia, double-single, Crossfade, HUD) |
+| `panels/FractalView.tsx` | Hero-Panel: Mandelbrot, animierter Zoom durch 8 Koordinaten |
+| `panels/FractalJulia.tsx` | Julia-Menge, 6 Parameter-Paare (Crossfade-Cycling, HUD) |
+| `panels/FractalScenes.tsx` | Mini-Panels: `FractalSeahorse`, `FractalSpiral`, `FractalLightning`, `FractalElephant`, `FractalMini`, `FractalSatellite`, `FractalTendril`, `FractalDragon`, `FractalDendrite`, `FractalSwirl` |
 
 ### Text-Panels (Hacker-Themen)
 
@@ -938,6 +936,6 @@ Falls FraktalLab je außerhalb des privaten Showcases gezeigt wird:
 - **Speed-first-Regel weiterhin gültig:** jeder Eintrag > eine Session wird in Teilschritte zerlegt. Halbfertiges wird nicht committed.
 - **Demoszene-Etiquette:** Autoren werden namentlich genannt, Originalquellen verlinkt, Modifikationen dokumentiert. Die Szene ist klein und vernetzt — gute Attribution zahlt sich aus.
 - **Visualtests laufen lassen:** nach jedem Refactoring `npm run test:panels` und ggf. Review-Modus durchklicken. `tests/screenshots/panels/*.png` als Diff-Quelle.
-- **WASM-Builds nicht vergessen:** Änderungen in `wasm/src/lib.rs` brauchen `wasm-pack build` (siehe `DEV_GUIDE.md`).
+- **Kein WASM mehr:** Fraktale laufen auf GPU-Shadern (`FractalGL`/`fractal-gl-shader.ts`). Kein Rust/`wasm-pack`-Build. Frühere Audit-Tabellen (AUDIT-01/QW-01 etc.) und Action-Plan-Einträge, die `wasm/src/lib.rs` erwähnen, sind historisch.
 - **Bei Unsicherheit zwischen „CPU-Optimierung" und „GPU-Migration":** wenn das Panel Kategorie B ist und auf großen Layouts > 1 Vollbild-Renderpass macht, ist GPU-Migration der richtige Weg. CPU-Mikro-Optimierungen lohnen sich nur bei Panels, die ohnehin CPU bleiben (Vektor, Text, retro-authentic).
 - **Wenn ein Quick-Win unerwartete Visual-Regressions erzeugt** (anders aussehende Panels im Playwright-Diff): Pixel-Quality-Policy konsultieren, prüfen ob das Panel in Kategorie A oder B fällt, danach entscheiden ob die neue Darstellung gewünscht ist oder ob ein `pixelated: true` Override für dieses Panel die Lösung ist.

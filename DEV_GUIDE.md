@@ -8,11 +8,6 @@ Diese Datei enthält nur Hinweise, die für AI-Coding-Agents relevant sind.
 ## Build-Befehle
 
 ```bash
-# WASM bauen (nach Änderungen an wasm/src/lib.rs)
-source "$HOME/.cargo/env"
-cd /Users/dm0/local/Arbeit/Viben/p_fraktal
-wasm-pack build wasm --target web --out-dir pkg
-
 # Frontend Dev-Server (COOP/COEP via vite.config.ts)
 cd frontend && npm run dev
 
@@ -24,7 +19,14 @@ cd frontend && npm run lint
 
 # Visueller Panel-Check (Dev-Server muss laufen)
 cd frontend && npm run test:panels
+
+# Performance-Messung (Production-Preview muss laufen, siehe PERF_NOTES.md)
+cd frontend && npm run test:perf
 ```
+
+> **Hinweis:** Es gibt kein WASM-Modul mehr. Die Fraktale wurden auf einen
+> GPU-Fragment-Shader migriert (`src/components/FractalGL.tsx` +
+> `src/utils/fractal-gl-shader.ts`, Befund B-4). Kein Rust/`wasm-pack`-Build nötig.
 
 ---
 
@@ -34,7 +36,9 @@ cd frontend && npm run test:panels
 
 **IntersectionObserver-Muster:** Neue Canvas-Panels sollen den rAF-Loop pausieren, wenn der Container unsichtbar ist (`if (!isVisible) { rafId = rAF(loop); return }`).
 
-**HTTP-Header:** COOP/COEP sind Pflicht für WASM. Nicht aus `vite.config.ts` oder `.htaccess` entfernen.
+**HTTP-Header:** COOP/COEP bleiben gesetzt (credentialless) — erlauben Cross-Origin-Medien wie das archive.org-Video. Nicht aus `vite.config.ts` oder `.htaccess` entfernen. (WASM-SharedArrayBuffer ist seit der GPU-Fraktal-Migration kein Grund mehr, aber die Header schaden nicht.)
+
+**Fraktale = GPU-Shader:** Mandelbrot/Julia laufen über `FractalGL` (WebGL-Fragment-Shader, double-single-Präzision in `fractal-gl-shader.ts`), nicht mehr über WASM. Neue Fraktal-Varianten via `makeFractalScene`/`FractalGL`-Props, nicht über Rust.
 
 **Tailwind v4:** Kein `tailwind.config.js`. Konfiguration ausschließlich via CSS in `frontend/src/index.css`.
 

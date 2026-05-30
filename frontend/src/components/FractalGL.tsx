@@ -126,7 +126,10 @@ function FractalGL({ mode, locations, juliaC, juliaSet, colorMode = 0, maxIter =
     }
 
     function initGL(): boolean {
-      gl = (canvas!.getContext('webgl', { preserveDrawingBuffer: false }) ||
+      // preserveDrawingBuffer: true, damit der Canvas-Inhalt nach dem Frame
+      // auslesbar bleibt (Visual-Test panel-check.spec.ts liest per readPixels;
+      // ohne dies sieht der Test ein schwarzes Bild). Vgl. ShaderPanel.
+      gl = (canvas!.getContext('webgl', { preserveDrawingBuffer: true }) ||
             canvas!.getContext('experimental-webgl')) as WebGLRenderingContext | null
       if (!gl) { console.error('[FractalGL] Kein WebGL-Context'); return false }
 
