@@ -41,7 +41,8 @@ export const FRACTAL_FRAGMENT_SHADER = `
   uniform float uAngle;          // Rotation in Radiant
   uniform int   uMaxIter;        // Iterationstiefe
   uniform int   uMode;           // 0 = Mandelbrot, 1 = Julia
-  uniform vec2  uJuliaC;         // fester Julia-Parameter c (nur bei uMode==1)
+  uniform vec2  uJuliaC;         // Julia-Parameter c des primären Fraktals
+  uniform vec2  uJuliaC2;        // Julia-Parameter c des Crossfade-Partners
   uniform int   uColorMode;      // 0 base,1 mono,2 cold,3 hot,4 neon,5 invert
 
   // Crossfade: optional ein zweites Fraktal (andere Location) einblenden.
@@ -160,7 +161,7 @@ export const FRACTAL_FRAGMENT_SHADER = `
 
   // Rendert EIN Fraktal für den aktuellen Pixel und gibt die fertige Farbe zurück.
   // centerHi/Lo + scale + angle beschreiben den Viewport (für Crossfade variabel).
-  vec3 renderFractal(vec2 fragPx, vec2 centerHi, vec2 centerLo, vec2 scale, float angle) {
+  vec3 renderFractal(vec2 fragPx, vec2 centerHi, vec2 centerLo, vec2 scale, float angle, vec2 jc) {
     // Pixel → Offset in der komplexen Ebene (klein genug für einfache floats).
     float dx = (fragPx.x - uResolution.x * 0.5) * scale.x;
     float dy = (fragPx.y - uResolution.y * 0.5) * scale.y;
@@ -177,8 +178,8 @@ export const FRACTAL_FRAGMENT_SHADER = `
 
     int iter;
     if (uMode == 1) {
-      // Julia: Startwert = Pixelpunkt, c = fester Parameter
-      iter = iterate(ds_set(uJuliaC.x), ds_set(uJuliaC.y), px, py, uMaxIter);
+      // Julia: Startwert = Pixelpunkt, c = übergebener Parameter
+      iter = iterate(ds_set(jc.x), ds_set(jc.y), px, py, uMaxIter);
     } else {
       // Mandelbrot: Startwert = 0, c = Pixelpunkt
       iter = iterate(px, py, ds_set(0.0), ds_set(0.0), uMaxIter);
@@ -191,11 +192,11 @@ export const FRACTAL_FRAGMENT_SHADER = `
   }
 
   void main() {
-    vec3 col = renderFractal(gl_FragCoord.xy, uCenterHi, uCenterLo, uPixelScale, uAngle);
+    vec3 col = renderFractal(gl_FragCoord.xy, uCenterHi, uCenterLo, uPixelScale, uAngle, uJuliaC);
 
     // Crossfade: nur wenn aktiv das zweite Fraktal berechnen (spart Kosten).
     if (uFade > 0.0) {
-      vec3 col2 = renderFractal(gl_FragCoord.xy, uCenter2Hi, uCenter2Lo, uPixelScale2, uAngle2);
+      vec3 col2 = renderFractal(gl_FragCoord.xy, uCenter2Hi, uCenter2Lo, uPixelScale2, uAngle2, uJuliaC2);
       col = mix(col, col2, uFade);
     }
 
