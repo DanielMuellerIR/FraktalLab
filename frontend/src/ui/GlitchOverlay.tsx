@@ -422,7 +422,8 @@ export default function GlitchOverlay() {
         const params = new URLSearchParams(window.location.search)
         const loopActive = params.has('glitch_loop')
         
-        let next = 8_000 + Math.random() * 10_000
+        // Ca. 1 Minute Pause im Normalbetrieb (50 - 70 Sekunden)
+        let next = 50_000 + Math.random() * 20_000
         if (loopActive) {
           next = 2000 // 2 Sekunden Pause fuer Inspektion / Review
         }
@@ -432,7 +433,6 @@ export default function GlitchOverlay() {
 
       let intensity = 0
       if (glitchType === 'tracking_bar') {
-        // Kein langsames An- und Abschwellen im Verlauf des Glitches, sondern permanentes Flimmern
         intensity = 0.65 + Math.random() * 0.35
       } else {
         const u = elapsed / episodeDuration
@@ -446,7 +446,6 @@ export default function GlitchOverlay() {
       if (intensity > 0.05) {
         if (glitchType === 'tracking_bar') {
           const H = canvas!.height
-          // Minimaler Wobble statt dauerhaftem Wandern
           const wobble = Math.sin(elapsed * 0.003) * 6
           const currentY = (trackingBarY + wobble + H) % H
           
@@ -482,19 +481,20 @@ export default function GlitchOverlay() {
         glitchType = Math.random() > 0.5 ? 'tracking_bar' : 'composite'
       }
 
-      // Variante waehlen
+      // Variante waehlen (Standard ist nun die bevorzugte Variante 2)
       if (forceVariant) {
-        trackingVariant = parseInt(forceVariant, 10) || 1
+        trackingVariant = parseInt(forceVariant, 10) || 2
       } else {
-        trackingVariant = 1 + Math.floor(Math.random() * 3)
+        // Zu 75% Variante 2 nutzen, sonst 1 oder 3
+        const r = Math.random()
+        trackingVariant = r < 0.75 ? 2 : (r < 0.88 ? 1 : 3)
       }
 
       if (glitchType === 'tracking_bar') {
-        // 10s bei Loop-Aktivierung (Review), sonst 4-6s
-        episodeDuration = loopActive ? 10000 : (4000 + Math.random() * 2000)
+        // 10s bei Loop-Aktivierung (Review), sonst 3-4s wie gewuenscht
+        episodeDuration = loopActive ? 10000 : (3000 + Math.random() * 1000)
         trackingBarH = Math.floor(window.innerHeight * 0.10)
 
-        
         // y-Position: meist oben/unten (45% oben, 45% unten, 10% mitte)
         const rand = Math.random()
         const H = window.innerHeight
@@ -521,7 +521,8 @@ export default function GlitchOverlay() {
 
     const params = new URLSearchParams(window.location.search)
     const hasForce = params.has('glitch_type') || params.has('glitch_variant')
-    const firstDelay = hasForce ? 200 : 1_000 + Math.random() * 2_000
+    // Erster Glitch nach 20-30 Sekunden (wie gefordert)
+    const firstDelay = hasForce ? 200 : (20_000 + Math.random() * 10_000)
     nextTimeout = setTimeout(startEpisode, firstDelay)
 
     return () => {
