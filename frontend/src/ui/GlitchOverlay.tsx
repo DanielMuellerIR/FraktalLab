@@ -155,7 +155,8 @@ function drawGlitchFrame(
 }
 
 // Zeichnet einen VHS-Tracking-Stoerstreifen (ca. 10% Bildhoehe) aus weissen,
-// verschwommenen Pixeln/analogem Schnee, inklusive horizontalem Sync-Drift.
+// verschwommenen horizontalen Streifen, inklusive diagonalem Farbrauschen (Rainbow Waves)
+// und horizontalem Sync-Drift, passend zum analogen Referenzbild.
 function drawTrackingBarGlitch(
   ctx: CanvasRenderingContext2D,
   W: number, H: number,
@@ -167,93 +168,152 @@ function drawTrackingBarGlitch(
   ctx.clearRect(0, 0, W, H)
 
   // Varianten-Konfiguration
-  let blurRadius = 1.2
-  let snowDensity = 0.55
-  let skewStrength = 32
-  let colorBleed = 10
+  let blurRadius = 0.9
+  let streakDensity = 160
+  let skewStrength = 26
+  let diagonalNoiseIntensity = 0.04
+  let colorBleed = 8
 
   if (variant === 2) {
-    // Variante 2: Schaerferer Schnee, massiver Sync-Drift / Verbiegung
-    blurRadius = 0.6
-    snowDensity = 0.45
-    skewStrength = 55
-    colorBleed = 16
+    // Variante 2: Massiver Sync-Drift, dichtere Streifen
+    blurRadius = 0.5
+    streakDensity = 220
+    skewStrength = 48
+    diagonalNoiseIntensity = 0.07
+    colorBleed = 14
   } else if (variant === 3) {
-    // Variante 3: Sehr weichgezeichneter, breiterer Stoerstreifen mit weniger Drift
-    blurRadius = 2.2
-    snowDensity = 0.70
-    skewStrength = 18
-    colorBleed = 6
+    // Variante 3: Sehr weichgezeichneter Stoerstreifen mit weniger Drift
+    blurRadius = 1.8
+    streakDensity = 110
+    skewStrength = 14
+    diagonalNoiseIntensity = 0.02
+    colorBleed = 5
   }
 
-  // 1. Der verschwommene Schnee-Streifen selbst
+  const timeFactor = performance.now() * 0.015
+
+  // 1. Diagonale Helligkeits-/Farbrausch-Bänder (Rainbow/Herringbone Waves) über den ganzen Screen
+  ctx.save()
+  ctx.globalCompositeOperation = 'screen'
+  const diagonalBands = 6
+  const bandSpacing = H / diagonalBands
+  for (let i = 0; i < diagonalBands; i++) {
+    const yOffset = (i * bandSpacing + timeFactor * 18) % H
+    
+    ctx.strokeStyle = `rgba(225, 40, 140, ${diagonalNoiseIntensity * intensity})`
+    ctx.lineWidth = 32
+    ctx.beginPath()
+    ctx.moveTo(-50, yOffset)
+    ctx.lineTo(W + 50, yOffset + H * 0.5)
+    ctx.stroke()
+    
+    ctx.strokeStyle = `rgba(30, 180, 220, ${diagonalNoiseIntensity * intensity})`
+    ctx.beginPath()
+    ctx.moveTo(-50, yOffset + 18)
+    ctx.lineTo(W + 50, yOffset + 18 + H * 0.5)
+    ctx.stroke()
+  }
+  ctx.restore()
+
+  // 2. Dunkler Hintergrund-Unterleger für den Stoerstreifen (VCR-Kopfspalt-Austastung)
+  ctx.fillStyle = `rgba(22, 22, 22, ${0.75 * intensity})`
+  const wrappedY = (barY + H) % H
+  if (wrappedY + barH > H) {
+    ctx.fillRect(0, wrappedY, W, H - wrappedY)
+    ctx.fillRect(0, 0, W, barH - (H - wrappedY))
+  } else {
+    ctx.fillRect(0, wrappedY, W, barH)
+  }
+
+  // 3. Weisse/bunte Stoerstreifen (feine Linien statt grober Pixelblöcke!)
   ctx.save()
   if (blurRadius > 0) {
     ctx.filter = `blur(${blurRadius}px)`
   }
 
-  const cellH = 4
-  const rows = Math.floor(barH / cellH)
-  const cols = 60
-  const cellW = W / cols
+  for (let i = 0; i < streakDensity; i++) {
+    // Verteilung konzentriert um das Zentrum des Stoerstreifens
+    const angle = (Math.random() - 0.5) * Math.PI
+    const offset = Math.sin(angle) * (barH * 0.5)
+    const y = (barY + barH / 2 + offset + H) % H
 
-  for (let r = 0; r < rows; r++) {
-    const y = barY + r * cellH
-    const wrappedY = (y + H) % H
+    const len = 15 + Math.random() * 160
+    const x = Math.random() * W
+    
+    let color = 'rgba(252,252,252,'
+    const r = Math.random()
+    if (r < 0.12) {
+      color = 'rgba(0,253,253,' // Cyan
+    } else if (r < 0.24) {
+      color = 'rgba(253,0,130,' // Fuchsia
+    } else if (r < 0.32) {
+      color = 'rgba(235,245,170,' // Warmes Gelb
+    }
 
-    for (let c = 0; c < cols; c++) {
-      if (Math.random() < snowDensity) {
-        const val = 180 + Math.floor(Math.random() * 75)
-        const alpha = (0.25 + Math.random() * 0.55) * intensity
-        ctx.fillStyle = `rgba(${val},${val},${val},${alpha})`
-        ctx.fillRect(c * cellW, wrappedY, cellW, cellH)
-      } else if (Math.random() > 0.85) {
-        ctx.fillStyle = `rgba(0,0,0,${0.8 * intensity})`
-        ctx.fillRect(c * cellW, wrappedY, cellW, cellH)
-      }
+    const alpha = (0.35 + Math.random() * 0.55) * intensity
+    ctx.fillStyle = `${color}${alpha})`
+    const lineH = 1 + Math.floor(Math.random() * 2)
+
+    ctx.fillRect(x, y, len, lineH)
+    if (x + len > W) {
+      ctx.fillRect(0, y, (x + len) - W, lineH)
     }
   }
   ctx.restore()
 
-  // 2. Feine, kontrastreiche Stoerlinien/Ausfaelle direkt um den Streifen
-  const gapCount = variant === 2 ? 6 : 3
+  // 4. Feine, schwarze horizontale Cutouts zur Zerteilung der Streifen (Tape Dropout)
+  const gapCount = variant === 2 ? 8 : 4
   for (let i = 0; i < gapCount; i++) {
-    const gy = (barY + (Math.random() - 0.5) * (barH * 1.5) + H) % H
+    const gy = (barY + (Math.random() - 0.5) * (barH * 1.3) + H) % H
     const gh = 1 + Math.random() * 3
-    ctx.fillStyle = `rgba(0,0,0,${0.85 * intensity})`
-    ctx.fillRect(0, gy, W, gh)
+    const gx = Math.random() * W
+    const gw = 35 + Math.random() * 130
+    ctx.fillStyle = `rgba(12,12,12,${0.9 * intensity})`
+    ctx.fillRect(gx, gy, gw, gh)
+    if (gx + gw > W) {
+      ctx.fillRect(0, gy, (gx + gw) - W, gh)
+    }
   }
 
-  // 3. Horizontaler Sync-Drift (Verschiebung der Bildzeilen in der Naehe des Streifens)
-  const bendZoneH = barH * (variant === 2 ? 3.2 : 2.2)
-  const bendSlices = variant === 2 ? 28 : 18
+  // 5. Horizontaler Sync-Drift (Verschiebung der Bildzeilen in der Naehe des Streifens)
+  const bendZoneH = barH * (variant === 2 ? 3.5 : 2.5)
+  const bendSlices = variant === 2 ? 30 : 20
   const sliceH = bendZoneH / bendSlices
   const startY = barY - bendZoneH / 2
 
   for (let i = 0; i < bendSlices; i++) {
     const y = startY + i * sliceH
-    const wrappedY = (y + H) % H
+    const wy = (y + H) % H
 
     const distToCenter = Math.abs(y - (barY + barH / 2))
     const proximity = Math.max(0, 1 - distToCenter / (bendZoneH / 2))
 
-    const timeFactor = performance.now() * 0.012
-    const shift = Math.sin(y * 0.04 + timeFactor) * skewStrength * proximity * intensity
+    const shift = Math.sin(y * 0.05 + timeFactor) * skewStrength * proximity * intensity
 
     if (proximity > 0.05) {
       // Fuchsia Chroma-Bleed
       ctx.fillStyle = `rgba(255, 0, 128, ${0.16 * proximity * intensity})`
-      ctx.fillRect(shift - colorBleed, wrappedY, W, sliceH)
+      ctx.fillRect(shift - colorBleed, wy, W, sliceH)
       // Cyan Chroma-Bleed
       ctx.fillStyle = `rgba(0, 255, 255, ${0.16 * proximity * intensity})`
-      ctx.fillRect(shift + colorBleed, wrappedY, W, sliceH)
+      ctx.fillRect(shift + colorBleed, wy, W, sliceH)
       // Weisser Kern-Versetzer
       ctx.fillStyle = `rgba(255, 255, 255, ${0.08 * proximity * intensity})`
-      ctx.fillRect(shift, wrappedY, W, sliceH)
+      ctx.fillRect(shift, wy, W, sliceH)
     }
   }
 
-  // 4. Head-Switching-Noise ganz unten am Bildschirmrand (Vollbild-Verschiebung)
+  // 6. Feine Helligkeits-Streifen über das restliche Bild (feines Signalrauschen)
+  const screenNoise = 12
+  for (let i = 0; i < screenNoise; i++) {
+    const y = Math.random() * H
+    const x = Math.random() * W
+    const w = 5 + Math.random() * 35
+    ctx.fillStyle = `rgba(255,255,255,${0.08 * intensity})`
+    ctx.fillRect(x, y, w, 1)
+  }
+
+  // 7. Head-Switching-Noise ganz unten am Bildschirmrand
   const noiseH = 14
   const noiseY = H - noiseH
   const blockCount = 60
@@ -265,7 +325,7 @@ function drawTrackingBarGlitch(
     ctx.fillRect(b * blockW, noiseY + (noiseH - jitterH), blockW, jitterH)
   }
 
-  // 5. VCR OSD-Text während des Tracking-Glitches
+  // 8. VCR OSD-Text
   ctx.save()
   const osdJitter = (Math.random() - 0.5) * 8.0 * intensity
   ctx.translate(osdJitter, 0)
