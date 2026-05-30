@@ -196,98 +196,88 @@ const RETRO_WAVE_SHADER = `
                mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), f.x), f.y);
   }
 
-  // Complex Voxel Terrain Height function
-  float getVoxelHeight(vec2 p) {
-    // Voxelized coordinate resolution: 10.0 cells per unit
-    vec2 cell = floor(p * 10.0) / 10.0;
-    
-    // Flat central valley for the synthwave grid highway
-    float valley = smoothstep(0.15, 0.75, abs(cell.x));
-    
-    // Complex mountain ridges on both sides
-    float h1 = sin(cell.x * 1.8) * cos(cell.y * 0.9) * 0.38;
-    float h2 = noise(cell * 3.8) * 0.15;
-    float h3 = noise(cell * 8.0) * 0.06; // high-frequency peaks
-    
-    return valley * (0.52 + h1 + h2 + h3);
+  // Smooth continuous terrain — NO floor() quantization
+  float getTerrainHeight(vec2 p) {
+    // Flat central valley for the synthwave highway
+    float valley = smoothstep(0.12, 0.80, abs(p.x));
+
+    // Layered smooth noise ridges
+    float h1 = sin(p.x * 1.8) * cos(p.y * 0.9) * 0.38;
+    float h2 = noise(p * 3.8) * 0.15;
+    float h3 = noise(p * 8.0) * 0.06;
+    float h4 = noise(p * 16.0) * 0.025; // fine detail
+
+    return valley * (0.50 + h1 + h2 + h3 + h4);
   }
 
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;
     float time = iTime * 0.85;
     float horizon = -0.05;
-    
-    // 1. Premium Retro Sky: Dark purple space to glowing pink horizon
+
+    // Sky gradient
     vec3 skyCol = mix(vec3(0.02, 0.005, 0.08), vec3(0.82, 0.02, 0.45), uv.y + 0.42);
     vec3 col = skyCol;
-    
-    // 2. High-Fidelity Sub-Pixel Twinkling Stars (No Chunky Blobs)
+
+    // Stars
     if (uv.y > horizon + 0.015) {
       vec2 starGrid = fract(uv * 28.0) - 0.5;
       vec2 cellId = floor(uv * 28.0);
       float sHash = hash(cellId);
       if (sHash > 0.986) {
         float twinkle = sin(time * 2.8 + sHash * 6.28) * 0.45 + 0.55;
-        float starSize = 0.02 * sHash;
-        float starVal = smoothstep(starSize, 0.0, length(starGrid));
+        float starVal = smoothstep(0.02 * sHash, 0.0, length(starGrid));
         col += vec3(0.96, 0.92, 1.0) * starVal * twinkle * 0.95;
       }
     }
-    
-    // 3. Iconic Retro Synthwave Sun with Smooth Anti-Aliased Cuts
+
+    // Synthwave Sun with fwidth-based anti-aliased cuts
     vec2 sunPos = vec2(0.0, 0.16);
     float r = 0.28;
     float dist = length(uv - sunPos);
     if (dist < r && uv.y > horizon + 0.002) {
       float grad = (uv.y - sunPos.y + r) / (2.0 * r);
       vec3 sunCol = mix(vec3(0.96, 0.02, 0.52), vec3(0.96, 0.88, 0.08), grad);
-      
-      // Horizontal slices moving downward
+
+      // Horizontal cuts with fwidth-based AA
       float barWidth = 15.0;
       float barPhase = uv.y * barWidth - time * 0.38;
       float barFract = fract(barPhase);
-      
-      // Width of horizontal cuts thickens towards bottom
       float cutoff = 0.06 + 0.65 * (1.0 - (uv.y - horizon) / (2.0 * r));
-      float sunLine = smoothstep(cutoff - 0.015, cutoff + 0.015, barFract);
-      
-      // Anti-aliased boundary cut
+      float fw = fwidth(barPhase) * 1.5;
+      float sunLine = smoothstep(cutoff - fw, cutoff + fw, barFract);
+
       float sunMask = 1.0 - smoothstep(r - 0.008, r, dist);
       col = mix(col, sunCol, sunLine * sunMask);
     }
-    
-    // Sun outer glow
+
+    // Sun glow
     float sunGlow = exp(-dist * 5.5) * 0.38;
     col += vec3(0.96, 0.02, 0.52) * sunGlow;
-    
-    // 4. Raymarching Voxel Terrain Ground
+
+    // Raymarching smooth terrain
     float t_dist = -1.0;
     vec3 hitPos = vec3(0.0);
     bool hit = false;
-    
-    // Camera moves forward at constant speed
     float speed = 1.6;
     vec3 ro = vec3(0.0, 0.48, time * speed);
-    
-    // Ray direction (perserving aspect ratio)
     vec3 rd = normalize(vec3(uv.x, uv.y - horizon, 0.72));
 
     if (uv.y <= horizon) {
       t_dist = 0.0;
       float t_prev = 0.0;
-      
+
       for (int i = 0; i < 90; i++) {
         vec3 p = ro + rd * t_dist;
-        float h = getVoxelHeight(p.xz);
-        
+        float h = getTerrainHeight(p.xz);
+
         if (p.y < h) {
-          // Precise step refinement via binary search
           float t_min = t_prev;
           float t_max = t_dist;
-          for (int j = 0; j < 5; j++) {
+          for (int j = 0; j < 6; j++) {
             float t_mid = (t_min + t_max) * 0.5;
             vec3 midPos = ro + rd * t_mid;
-            if (midPos.y < getVoxelHeight(midPos.xz)) {
+            if (midPos.y < getTerrainHeight(midPos.xz)) {
               t_max = t_mid;
             } else {
               t_min = t_mid;
@@ -298,50 +288,39 @@ const RETRO_WAVE_SHADER = `
           break;
         }
         t_prev = t_dist;
-        // Step size accelerates to cover deep distance to the horizon
         t_dist += 0.038 + t_dist * 0.012;
       }
-      
+
       if (hit) {
-        // 5. Infinite Thin Sharp Grid Lines tapering into horizon
-        // Draw grid lines on voxel cell boundaries (spaced 0.1 units apart)
+        // Grid lines with fwidth() for perfect screen-space AA
         vec2 gridPos = hitPos.xz * 10.0;
         vec2 distToEdge = abs(fract(gridPos - 0.5) - 0.5);
-        
-        // Dynamic screen-space line thickness based on distance to prevent aliasing
-        float thickness = 0.018 + t_dist * 0.0028;
-        float lineX = smoothstep(thickness, thickness - 0.002, distToEdge.x);
-        float lineZ = smoothstep(thickness, thickness - 0.002, distToEdge.y);
+        vec2 fw2 = fwidth(gridPos) * 1.2;
+        float lineX = smoothstep(fw2.x, 0.0, distToEdge.x);
+        float lineZ = smoothstep(fw2.y, 0.0, distToEdge.y);
         float grid = max(lineX, lineZ);
-        
-        // Premium desaturated/neon color shading
+
         float heightVal = smoothstep(0.05, 0.48, hitPos.y);
-        
-        // Deep indigo/magenta ground base
         vec3 baseCol = mix(vec3(0.02, 0.005, 0.06), vec3(0.85, 0.02, 0.48), heightVal * 0.45);
-        
-        // Bright neon cyan wireframe grid
         vec3 gridCol = vec3(0.0, 0.88, 1.0);
-        
-        // Merge grid and base
         vec3 terrainCol = mix(baseCol, gridCol, grid * 0.9);
-        
-        // Horizon Fog: Fades ground completely into glowing purple at horizon
-        float fog = clamp(t_dist / 6.5, 0.0, 1.0);
+
+        float fog = clamp(t_dist / 7.0, 0.0, 1.0);
+        fog = fog * fog; // quadratic falloff for smoother horizon blend
         col = mix(terrainCol, vec3(0.18, 0.01, 0.22), fog);
       } else {
         col = vec3(0.18, 0.01, 0.22);
       }
     }
-    
-    // 6. Horizon Neon Glow
+
+    // Horizon glow
     float horizGlow = exp(-abs(uv.y - horizon) * 18.0);
     col += vec3(0.92, 0.02, 0.52) * horizGlow * 0.52;
-    
-    // Scanlines & Vignette overlay for retro CRT/VHS feel
+
+    // CRT scanlines + vignette
     col *= 0.94 + 0.06 * sin(fragCoord.y * 1.8);
     col *= 1.0 - length(uv) * 0.42;
-    
+
     fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
   }
 `
