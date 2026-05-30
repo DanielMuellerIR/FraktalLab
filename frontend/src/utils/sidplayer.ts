@@ -58,6 +58,10 @@ export class SidPlayer {
   private pendingData: Uint8Array | null = null;
   private pendingSubtune: number = 0;
 
+  // Promise resolved when worklet confirms load
+  private workletLoadReady: Promise<void> | null = null;
+  private workletLoadResolve: (() => void) | null = null;
+
   constructor() {}
 
   /**
@@ -107,9 +111,13 @@ export class SidPlayer {
       if (data.type === 'visualizer') {
         if (this.visualCallback) this.visualCallback(data.data);
       } else if (data.type === 'loaded') {
-        // Worklet confirmed load — update metadata from worklet (authoritative)
         this.loaded = true;
         if (this.loadedCallback) this.loadedCallback(data.metadata);
+        // Resolve pending play() promise if waiting
+        if (this.workletLoadResolve) {
+          this.workletLoadResolve();
+          this.workletLoadResolve = null;
+        }
       }
     };
 
@@ -177,15 +185,26 @@ export class SidPlayer {
     await this.setupAudio();
     if (!this.workletNode) return;
 
-    // If we have pending data that hasn't been sent to the worklet yet, send it
+    // If pending data hasn't been sent to worklet yet, send and wait for confirmation
     if (this.pendingData) {
+      const dataToSend = this.pendingData;
+      const subtuneToSend = this.pendingSubtune;
+      this.pendingData = null;
+
+      // Create promise that setupAudio's onmessage handler will resolve
+      this.workletLoadReady = new Promise<void>(r => { this.workletLoadResolve = r; });
+
       this.workletNode.port.postMessage({
         type: 'load',
-        data: this.pendingData,
-        subtune: this.pendingSubtune,
+        data: dataToSend,
+        subtune: subtuneToSend,
       });
-      // Wait a tick for the worklet to process the load
-      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Wait for worklet 'loaded' or 2s safety timeout
+      await Promise.race([
+        this.workletLoadReady,
+        new Promise<void>(r => setTimeout(r, 2000)),
+      ]);
     }
 
     this.resumeContext();
