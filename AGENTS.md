@@ -3,9 +3,11 @@
 Universelle Referenz für alle Coding-Agents und KI-Modelle.
 Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 
-> **Neuer Agent — Branch-Check zuerst:** Audit läuft auf Branch `audit/2026-05-29`. Bist du schon dort? `git status` prüfen. Wenn nein: `git checkout audit/2026-05-29`. **NICHT** einen neuen Branch anlegen (auch wenn `blueprint_audit.md` §"Erste Schritte" das anweist — das galt nur für den ersten Audit-Aufschlag).
+> **Status (Stand 2026-05-30): Audit abgeschlossen und in `main` gemergt.** Der gesamte Code-Audit (`blueprint_audit.md`, Phasen 1–3 + 5) ist erledigt und als `--no-ff`-Merge in `main` (App-Version **v1.7.6**). Der Branch `audit/2026-05-29` ist History. **Du arbeitest jetzt auf `main`** (`git status` prüfen) — für neue, in sich geschlossene Arbeit jeweils einen eigenen **Feature-Branch** von `main` anlegen (z.B. `feat/panel-rework`). Die Anweisung in `blueprint_audit.md` §"Erste Schritte" (Audit-Branch anlegen) ist **obsolet**.
 >
-> **Hinweis für die nächste Session:** Die Datei wurde am 2026-05-28 nach einem ersten Code-Audit und am 2026-05-29 nach einem zweiten Audit (Branch `audit/2026-05-29`) überarbeitet, am 2026-05-30 um die Phase-3-Messungen ergänzt. Phase 1 (Inventur), Phase 2 (Hypothesen + Fixes) und **Phase 3 (Mess-Baseline)** sind abgeschlossen. Sämtliche Quick-Wins, H-01…H-08 und H-11 sind umgesetzt. **Phase-3-Verdikt (zwei getrennte Ergebnisse):** (1) H-07 (Regression durch `5264baf`) **nicht bestätigt** — WASM byte-identisch, kein Frame-Time-Regress, B-3-Heap kein Leak. (2) **B-4 — die App ist Main-Thread-/CPU-bound, NICHT GPU-bound:** Headed-Messung auf echter M5-Max-GPU (`ANGLE Metal Renderer: Apple Apple-Silicon-Hardware`) ≈ Software-Rasterizer; der geforderte 60-FPS-Akzeptanzfall (Review-Modus 4-Panel-Fraktal, M-07) erreicht nur **9 FPS**. Optimierungshebel ist Main-Thread-Entlastung, nicht GPU-Migration. Details + Tabellen in `PERF_NOTES.md`, Harness `frontend/tests/perf-measure.spec.ts` (Profil `chrome-gpu` für GPU-Läufe). **B-4 adressiert:** Review-Freeze (nur aktives Panel animiert) + komplette WASM→GPU-Fraktal-Migration (alle 11 Panels via `FractalGL`, double-single-Shader, WASM-Pfad entfernt) → M-01/M-03/M-07 jetzt 120 FPS. **Phase 5 (Demoscene-Tiefenaudit) erledigt** — Bewertungen + Wegfall-Kandidaten + Vorschläge in `AUDIT_FINDINGS.md` (Sektion „Demoscene-Audit"). **Offen:** nur optionale Folge-Punkte (nach Freigabe). Status-Tabellen pro Sektion sind ebenfalls aktualisiert.
+> **Audit-Kernergebnisse** (Details: `AUDIT_FINDINGS.md`, `PERF_NOTES.md`): H-07-Regressionsverdacht **widerlegt**; eigentlicher Befund **B-4** — App war Main-Thread-/CPU-bound, nicht GPU-bound. **Adressiert:** Review-Freeze (nur aktives Panel animiert) + komplette WASM→GPU-Fraktal-Migration (alle Fraktale via `FractalGL`, double-single-Shader; **kein WASM/Rust mehr**) → Grid/Review von 8–18 auf **120 FPS**. Tief-Zoom auf Apple/Metal bei `SAFE_ZOOM_CEIL=5e5` gedeckelt (ds-Präzision; tiefer bräuchte Perturbations-Rendering). **Phase 5** (Demoscene-Tiefenaudit) liefert pro-Panel-Bewertungen + Wegfall-Kandidaten (`AUDIT_FINDINGS.md` → „Demoscene-Audit").
+>
+> **Nächste geplante Session — Panel-Inhalts-Rework:** Kritik kommt per JSON aus dem **Review-Modus** (COPY-Button → Zwischenablage). Format: Array von `{ panel: string, rating: 'up'|'down', comment: string, ts: number }`, wobei `panel` der **Komponenten-Name** ist (stabile ID, identisch mit den Namen in `ALL_PANELS` und der Demoscene-Audit-Tabelle). Panel-Name → Datei in `frontend/src/panels/` bzw. `components/` mappen, Kritik umsetzen. Erledigte Action-Pläne (QW/PERF/GL/DEMO) → `ARCHIVE.md`; langfristige Roadmap (LR-*) unten.
 
 ---
 
@@ -18,7 +20,7 @@ Thematischer Rahmen: Ein fiktives „Neural Intrusion Dashboard", das Hacker-Kli
 
 **Speed-first-Regel:** Jedes Feature muss in einer einzigen Session vollständig lauffähig implementiert werden können. Features, die das nicht schaffen, werden auf kleineres Scope reduziert oder verschoben. Keine halbfertigen Implementierungen.
 
-Aktueller Stand: **v1.7.5** (auf Audit-Branch `audit/2026-05-29`; `main` ist auf v1.2.7). Deployment auf Netcup-Webspace (Apache).
+Aktueller Stand: **v1.7.6** auf `main` (Audit gemergt). Deployment auf Netcup-Webspace (Apache).
 
 ---
 
