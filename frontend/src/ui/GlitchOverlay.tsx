@@ -333,7 +333,7 @@ export default function GlitchOverlay() {
         
         let next = 8_000 + Math.random() * 10_000
         if (loopActive) {
-          next = 300 // Schnellere Wiederholung fuer Screen-Capture
+          next = 2000 // 2 Sekunden Pause fuer Inspektion / Review
         }
         nextTimeout = setTimeout(startEpisode, next)
         return
@@ -372,6 +372,7 @@ export default function GlitchOverlay() {
       const params = new URLSearchParams(window.location.search)
       const forceType = params.get('glitch_type')
       const forceVariant = params.get('glitch_variant')
+      const loopActive = params.has('glitch_loop')
 
       // Typ-Entscheidung
       if (forceType === 'tracking_bar') {
@@ -390,9 +391,10 @@ export default function GlitchOverlay() {
       }
 
       if (glitchType === 'tracking_bar') {
-        // 4-6 Sekunden Dauer wie gefordert
-        episodeDuration = 4000 + Math.random() * 2000
+        // 10s bei Loop-Aktivierung (Review), sonst 4-6s
+        episodeDuration = loopActive ? 10000 : (4000 + Math.random() * 2000)
         trackingBarH = Math.floor(window.innerHeight * 0.10)
+
         
         // y-Position: meist oben/unten (45% oben, 45% unten, 10% mitte)
         const rand = Math.random()

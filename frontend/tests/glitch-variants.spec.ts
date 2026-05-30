@@ -25,8 +25,8 @@ test.describe('Capture VHS Glitch Variants', () => {
       // Load the app with special query parameters to force the variant
       await page.goto(`${BASE_URL}/?glitch_type=tracking_bar&glitch_variant=${v}&glitch_loop=true`, { waitUntil: 'load' })
       
-      // Wait for the glitch to trigger and show (since delay is 200ms when forced)
-      await page.waitForTimeout(600)
+      // Wait for the glitch to trigger, drift and show fully
+      await page.waitForTimeout(3500)
       
       const screenshotPath = path.join(ARTIFACTS_DIR, `glitch_variant_${v}.png`)
       await page.screenshot({ path: screenshotPath })
