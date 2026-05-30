@@ -44,12 +44,14 @@ const VOXEL_COLOR_SHADER = `
     float skyY = rotScreen.y;
     float slope = skyY / scale;
 
-    vec3 horizonSkyCol = vec3(0.9, 0.15, 0.45);
-    vec3 spaceCol = vec3(0.05, 0.01, 0.12);
+    vec3 horizonSkyCol = vec3(1.0, 0.4, 0.15); // Vibrant orange sunset horizon
+    vec3 spaceCol = vec3(0.12, 0.0, 0.28);     // Synthwave deep purple
+
+    // Compute a clean sky gradient based on vertical coordinate
+    float skyFactor = clamp((rotScreen.y / (iResolution.y * 0.5)) * 0.5 + 0.5, 0.0, 1.0);
+    vec3 skyCol = mix(horizonSkyCol, spaceCol, skyFactor);
 
     if (slope > 0.0 && uCamH > 255.0) {
-        float skyGlow = exp(-skyY * 0.025);
-        vec3 skyCol = mix(spaceCol, horizonSkyCol, skyGlow);
         fragColor = vec4(skyCol, 1.0);
         return;
     }
@@ -92,14 +94,15 @@ const VOXEL_COLOR_SHADER = `
         z += 1.0 + z * 0.015;
     }
 
-    vec3 skyCol = mix(spaceCol, horizonSkyCol, exp(-max(0.0, skyY) * 0.02));
-
     if (hitZ < 0.0) {
         fragColor = vec4(skyCol, 1.0);
         return;
     }
 
-    float fog = clamp(hitZ / far, 0.0, 1.0);
+    // Smooth atmospheric fog fade (exponential)
+    float fog = 1.0 - exp(-pow(hitZ * 0.012, 1.6));
+    fog = clamp(fog, 0.0, 1.0);
+    
     float hue = mod(hitHeight * 0.8 + iTime * 4.0, 360.0) / 360.0;
     vec3 landCol = hsl2rgb(vec3(hue, 0.85, 0.55));
     
@@ -109,7 +112,8 @@ const VOXEL_COLOR_SHADER = `
     bool isTop = (wz_above >= hitHeight);
     float fade = 1.0 - fog;
     if (isTop) {
-        col = mix(col, vec3(0.9, 0.9, 1.0) * fade + 0.1, 0.5);
+        // Soft white ridge caps
+        col = mix(col, vec3(0.95, 0.95, 1.0) * fade + 0.05, 0.45);
     }
 
     if (mod(floor(fragCoord.y), 2.0) == 0.0) {
@@ -225,6 +229,7 @@ const VOXEL_BW_SHADER = `
 function VoxelDemoColorImpl() {
   const cam = useRef({
     x: 200, y: 300,
+    h: 120,
     vx: 1.5, vy: 0.8,
     angle: 0.8,
     lastT: 0,
@@ -233,7 +238,7 @@ function VoxelDemoColorImpl() {
   const uniformsRef = useRef({
     uCamPos: [200.0, 300.0],
     uAngle: 0.8,
-    uCamH: 100.0,
+    uCamH: 120.0,
     uRoll: 0.0,
   })
 
@@ -259,14 +264,15 @@ function VoxelDemoColorImpl() {
       const tx = Math.floor(c.x) & (HMAP - 1)
       const ty = Math.floor(c.y) & (HMAP - 1)
       const terrainAtCam = heightmap[ty * HMAP + tx]
-      const camH = Math.max(terrainAtCam + 68, 108 + 25 * Math.sin(t * 0.0003))
+      const targetH = Math.max(terrainAtCam + 68, 108 + 25 * Math.sin(t * 0.0003))
+      c.h += (targetH - c.h) * 0.08
       const roll = 0.22 * Math.sin(t * 0.0005)
 
       const u = uniformsRef.current
       u.uCamPos[0] = c.x
       u.uCamPos[1] = c.y
       u.uAngle = c.angle
-      u.uCamH = camH
+      u.uCamH = c.h
       u.uRoll = roll
     }
 

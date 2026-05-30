@@ -26,7 +26,7 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 > - [x] **RW-12 `ElitePanel`** — Wireframe weiß statt grün, kohärenter Dogfight-Ablauf
 > - [x] **RW-13 `DNAHelix`** — Split-Layout: Helix links, Spezies-Info rechts (6 Spezies)
 > - [x] **RW-14 `RetroErrorPanel`** — macOS Kernel Panic + Linux Oops/Panic ergänzen
-> - [ ] **RW-15 `VoxelDemoColor`** — Smooth-Camera-Interpolation, Sky-Gradient statt Schwarz, Soft-Fade
+> - [x] **RW-15 `VoxelDemoColor`** — Smooth-Camera-Interpolation, Sky-Gradient statt Schwarz, Soft-Fade
 > - [ ] **RW-16 `VoxelThermal`** — Rendering-Artefakte fixen, Soft-Vertical-Fade oben
 > - [ ] **RW-17 `VoxelLava`** — Anderer Flugpfad (Overhead/Spiral), eigenständiger Terrain-Charakter
 > - [ ] **RW-18 `VectorHudPanel` (VoxelNeon)** — Shape-Morphing zwischen Hypercube-Varianten, Zoom-Pulsing
