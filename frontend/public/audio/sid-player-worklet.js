@@ -1,5 +1,9 @@
 // C64 SID Player AudioWorkletProcessor
-// Emulation based on jsSID by Hermit (Mihaly Horvath)
+//
+// SID emulation + 6502 CPU core adapted from jsSID 0.9.1 by Hermit
+// (Mihaly Horvath), 2016 — http://hermit.sidrip.com
+// jsSID is released under the WTFPL ("do what the fuck you want"); the author
+// asks only that the credit be kept, which this header does.
 
 // Pure emulation engine — NOT an AudioWorkletProcessor.
 // It used to "extends AudioWorkletProcessor", but the browser only allows the
@@ -639,19 +643,56 @@ class SidPlayerProcessor {
       volume = vol;
     };
 
-    // Seek to a position in seconds. A SID tune has NO random access — it is
-    // produced by running the player routine frame by frame, so the only way to
-    // reach a position is to restart the current subtune and fast-forward the
-    // emulation up to the target time (running play() without emitting audio).
-    // We cap the work so a huge value can't freeze the audio thread for too long.
+    // Run the player routine for exactly one frame WITHOUT rendering audio.
+    // This is the cheap core of seeking: it advances the CPU + SID registers
+    // (i.e. the song position) but skips the per-sample waveform/filter math,
+    // which is the bulk of playSample()'s cost. Mirrors play()'s inner CPU loop.
+    function runFrameCPU() {
+      finished = 0;
+      PC = playaddr;
+      SP = 0xFF;
+      const budget = clk_ratio * frame_sampleperiod; // C64 cycles in one frame
+      let t = 0;
+      while (t <= budget) {
+        pPC = PC;
+        const r = CPU();
+        if (r >= 0xFE) { finished = 1; break; }
+        t += cycles;
+        if ((memory[1] & 3) > 1 && pPC < 0xE000 && (PC == 0xEA31 || PC == 0xEA81)) { finished = 1; break; }
+        if ((addr == 0xDC05 || addr == 0xDC04) && (memory[1] & 3) && timermode[subtune]) {
+          frame_sampleperiod = (memory[0xDC04] + memory[0xDC05] * 256) / clk_ratio;
+        }
+        if (storadd >= 0xD420 && storadd < 0xD800 && (memory[1] & 3)) {
+          if (!(SID_address[1] <= storadd && storadd < SID_address[1] + 0x1F) &&
+              !(SID_address[2] <= storadd && storadd < SID_address[2] + 0x1F)) {
+            memory[storadd & 0xD41F] = memory[storadd];
+          }
+        }
+        if (addr == 0xD404 && !(memory[0xD404] & 1)) ADSRstate[0] &= 0x3E;
+        if (addr == 0xD40B && !(memory[0xD40B] & 1)) ADSRstate[1] &= 0x3E;
+        if (addr == 0xD412 && !(memory[0xD412] & 1)) ADSRstate[2] &= 0x3E;
+      }
+    }
+
+    // Seek to a position in seconds. A SID tune has NO random access — the only
+    // way to reach a position is to restart the current subtune and fast-forward.
+    // We advance whole FRAMES via runFrameCPU() (CPU + registers only, no audio
+    // rendering), which is far faster than running play() for every sample. The
+    // envelope phase isn't reproduced exactly, but the player re-gates within a
+    // frame or two, so it's inaudible in practice.
     this.seek = function(seconds) {
       if (!loaded) return;
       let target = seconds > 0 ? seconds : 0;
       const MAX_SEEK = 1200; // 20 min hard cap on fast-forward work
       if (target > MAX_SEEK) target = MAX_SEEK;
-      init(subtune);                          // restart tune (resets playtime to 0)
-      const n = Math.floor(target * samplerate);
-      for (let i = 0; i < n; i++) play();      // advance state silently
+      init(subtune); // restart tune (resets playtime to 0, re-runs init routine)
+      const frames = Math.floor(target * samplerate / frame_sampleperiod);
+      for (let f = 0; f < frames; f++) runFrameCPU();
+      // Resume cleanly: the next play() sample starts a fresh frame and renders.
+      framecnt = 1;
+      CPUtime = 0;
+      finished = 0;
+      playtime = target;
     };
 
     this.getChannelsData = function() {

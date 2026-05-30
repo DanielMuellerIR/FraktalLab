@@ -135,7 +135,21 @@ Dev-Server:   Vite (setzt COOP/COEP-Header via vite.config.ts)
 Testing:      Playwright (@playwright/test) — visueller Panel-Check + Perf-Suite
 Audio:        Eigene ProTracker-MOD-Implementierung in frontend/src/utils/modplayer/
               (AudioWorklet, kein libopenmpt nötig)
+              SID-Player (OscilloscopePanel): SID+6502-Emulation portiert aus
+              jsSID 0.9.1 von Hermit (Mihaly Horvath) → frontend/public/audio/
+              sid-player-worklet.js
 ```
+
+### Externe Werke & Lizenzen (bereits integriert)
+
+> Bis `licenses.json` (LR-12) existiert, hier festgehalten:
+
+- **jsSID 0.9.1** — Hermit (Mihaly Horvath), 2016, http://hermit.sidrip.com.
+  Lizenz: **WTFPL** ("do what the fuck you want"). Keine Pflichten; der Autor
+  bittet lediglich, das Credit zu behalten. Attribution steht im Header von
+  `frontend/public/audio/sid-player-worklet.js`. SID-Emulation + 6502-CPU-Core
+  wurden adaptiert (Bugfixes: 6502-Opcode-Maske, Engine als Plain-Class für den
+  Worklet, Noise-Waveform-Term, ENV3-Readback) und um Seek/Playtime erweitert.
 
 ---
 

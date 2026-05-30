@@ -124,6 +124,10 @@ function OscilloscopePanel() {
   // Animation phases for wave trace
   const phases = useRef<[number, number, number]>([0, 0, 0])
 
+  // Mirror of `playing` readable inside the RAF loop (whose closure captures
+  // stale state). When false the oscilloscope draws a flat null-line.
+  const playingRef = useRef(false)
+
   // Add a batch of files (drag&drop, file picker or folder) to the user track
   // list, and optionally start playing the first SID of the batch. Reads all
   // files, deduplicates by id, appends them, then auto-plays the first one.
@@ -262,6 +266,9 @@ function OscilloscopePanel() {
     }
   }, [player])
 
+  // Keep playingRef readable by the RAF loop (which captures stale state).
+  useEffect(() => { playingRef.current = playing }, [playing])
+
   // The folder picker needs the non-standard `webkitdirectory` attribute, which
   // JSX/TS won't accept directly — set it on the DOM node after mount.
   useEffect(() => {
@@ -342,7 +349,7 @@ function OscilloscopePanel() {
       lastVisuals.current.playtime = v // keep display steady until the next frame
       seekingRef.current = false
       seekTimerRef.current = null
-    }, 160)
+    }, 120)
   }
 
   // Change Subtune
@@ -447,19 +454,26 @@ function OscilloscopePanel() {
       // Calculate baselines for 3 split channel views
       const channelH = H / 3
 
+      // When paused, every voice collapses to a flat null-line: no signal, no
+      // motion, labels zeroed — instead of freezing on the last drawn waveform.
+      const live = playingRef.current
+
       for (let c = 0; c < 3; c++) {
         const baselineY = channelH * c + channelH / 2
-        const rawFreq = frequencies[c]
-        const env = envelopes[c]
-        const gate = gates[c]
+        const rawFreq = live ? frequencies[c] : 0
+        const env = live ? envelopes[c] : 0
+        const gate = live ? gates[c] : 0
 
         // Map SID pitch register value to approximate Hz (PAL frequency formula)
         const freqHz = rawFreq * 0.0587
-        
-        // Update animated trace phase based on frequency (higher freq moves faster)
-        phases.current[c] += (freqHz * 0.005) + 0.02
-        if (phases.current[c] > Math.PI * 2) {
-          phases.current[c] -= Math.PI * 2
+
+        // Update animated trace phase based on frequency (higher freq moves
+        // faster). Frozen while paused so the null-line stays perfectly still.
+        if (live) {
+          phases.current[c] += (freqHz * 0.005) + 0.02
+          if (phases.current[c] > Math.PI * 2) {
+            phases.current[c] -= Math.PI * 2
+          }
         }
 
         // Draw horizontal baseline trace for the channel
@@ -478,10 +492,13 @@ function OscilloscopePanel() {
         ctx.shadowColor = traceColors[c]
         ctx.shadowBlur = gate ? Math.max(3, env * 10) : 0
 
-        // If envelope is very low and gate is off, draw minor noise/static
-        const amplitude = env > 0.01 
-          ? env * (channelH * 0.38)
-          : (Math.random() * 1.5 - 0.75) // minor signal static
+        // Paused → flat null-line (0). Playing → envelope-scaled amplitude, or a
+        // tiny static wobble when the gate is closed but the tune is running.
+        const amplitude = !live
+          ? 0
+          : (env > 0.01
+              ? env * (channelH * 0.38)
+              : (Math.random() * 1.5 - 0.75))
 
         const wavelength = freqHz > 10
           ? Math.max(10, Math.min(300, 3000 / freqHz))
