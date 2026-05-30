@@ -234,7 +234,7 @@ Alle in Phase 1 + Phase 2 identifizierten Befunde wurden in derselben Session um
 | H-04 | `7833455` | `ThreeBodyScene` 30-FPS-Cap via `makeScene(..., fpsCap)` |
 | H-05 | `743d12b` | 20 Panels auf zentralen `raf-coordinator` migriert |
 | H-06 | erledigt vor Audit | `handleSkipSlot`/`handleSkipMobileSlot` schon mit `useCallback` |
-| H-07 | ✅ widerlegt | Phase 3 gemessen (`PERF_NOTES.md`): WASM byte-identisch zur Baseline, kein eindeutiger Frame-Time-Regress. H-07 **nicht bestätigt**. Einziges Negativ-Signal: Heap-Wachstum +9 MB/25 s auf HEAD (B-3). |
+| H-07 | ✅ widerlegt | Phase 3 gemessen (`PERF_NOTES.md`): WASM byte-identisch zur Baseline, kein eindeutiger Frame-Time-Regress. H-07 **nicht bestätigt**. B-3 (Heap +9 MB) per Forced-GC-Diagnose M-06b als GC-Sägezahn entlarvt — kein Leak. Kein nachweisbarer Regress übrig. |
 | H-11 (neu) | `c780297` | Aspect-preserving Coord-Mapping in Tunnel/Rotozoom/Metaballs/Plasma |
 | ProTracker-Reintegration | `034811e`, `c18cb4d`, `0d6e2bd` | Standalone-Hybrid: kein ScriptProcessor-Fallback, echte VU-Pegel, EMA, Race-Fix |
 | ProTracker-Features | `553347a`, `614d5b5`, `164a7ca`, `569bd90`, `c42659f`, `c931285` | Drop/Picker, Scrubber, 13-Track-Set + Attribution |
@@ -244,7 +244,7 @@ Alle in Phase 1 + Phase 2 identifizierten Befunde wurden in derselben Session um
 
 ### Offen für die nächste Session
 
-1. ~~**Phase 3 — Mess-Baseline** (H-07)~~ ✅ erledigt 2026-05-30. Harness `frontend/tests/perf-measure.spec.ts`, Ergebnisse + Verdikt in `PERF_NOTES.md`. **H-07 nicht bestätigt.** Offene Follow-ups daraus: (a) Headed-GPU-Messung auf Apple-Silicon-Hardware für valide 60-FPS-Aussage; (b) Panel-Pool für saubere Frame-Time-Vergleiche fixieren; (c) B-3 Heap-Wachstum mit 60–120-s-Lauf nachgehen.
+1. ~~**Phase 3 — Mess-Baseline** (H-07)~~ ✅ erledigt 2026-05-30. Harness `frontend/tests/perf-measure.spec.ts`, Ergebnisse + Verdikt in `PERF_NOTES.md`. **H-07 nicht bestätigt.** B-3-Heap per M-06b (Forced GC) entwarnt — kein Leak. Verbleibende Follow-ups: (a) Headed-GPU-Messung auf Apple-Silicon-Hardware für valide 60-FPS-Aussage; (b) Panel-Pool für saubere Frame-Time-Vergleiche fixieren.
 2. **Phase 5 — Demoscene-Tiefenaudit**: Treffsicherheit, Tiefe, Variation der DEMO-01..04-Panels und der neuen demoscene-inspirierten Panels prüfen. Wegfall-Kandidaten markieren.
 3. **AGENTS.md-Auslagerungs-Vorschlag** (siehe Sektion Q-A oben): mechanische Umsetzung erst nach Freigabe.
 4. **Optional H-09** (DPI/`devicePixelRatio`-Handling): kontextabhängig, nur falls Schärfe-Feedback kommt.

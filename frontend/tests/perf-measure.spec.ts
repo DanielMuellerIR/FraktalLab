@@ -211,6 +211,56 @@ test.describe(`Perf-Messung [${PERF_TAG}]`, () => {
     expect(after).toBeGreaterThan(0)
   })
 
+  // --- M-06b: Leak-Diagnose — langer Lauf, Heap nach FORCED GC sampeln ---
+  // Vor jedem Sample wird via CDP der GC erzwungen. Steigt der Heap NACH GC
+  // monoton weiter = echter Leak (retained, nicht nur transienter Churn).
+  // Plateaut er nach den ersten Samples = einmaliger Lazy-Init zusätzlicher
+  // Panels, kein Leak. Trennt die beiden Erklärungen für B-3 aus PERF_NOTES.
+  test('M-06b leak-diagnose @1920', async ({ page }) => {
+    test.setTimeout(150_000)
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send('Performance.enable')
+    await cdp.send('HeapProfiler.enable')
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    await page.goto(BASE_URL, { waitUntil: 'load' })
+    await page.waitForTimeout(WARMUP_MS)
+
+    const SAMPLES = 10          // Anzahl Messpunkte
+    const INTERVAL_MS = 10_000  // Abstand zwischen den Samples
+    const series: { t: number; afterGcMB: number }[] = []
+    for (let i = 0; i < SAMPLES; i++) {
+      await page.waitForTimeout(INTERVAL_MS)
+      // GC erzwingen, kurz warten bis Collection durch ist, dann messen
+      await cdp.send('HeapProfiler.collectGarbage')
+      await page.waitForTimeout(300)
+      const used = await heapUsed(cdp)
+      series.push({ t: (i + 1) * (INTERVAL_MS / 1000), afterGcMB: +(used / 1048576).toFixed(2) })
+    }
+
+    // Lineare Regression über die Nach-GC-Serie → Steigung in MB/s.
+    // Steigung nahe 0 = stabil (kein Leak), klar positiv = retained growth.
+    const n = series.length
+    const sumX = series.reduce((a, s) => a + s.t, 0)
+    const sumY = series.reduce((a, s) => a + s.afterGcMB, 0)
+    const sumXY = series.reduce((a, s) => a + s.t * s.afterGcMB, 0)
+    const sumXX = series.reduce((a, s) => a + s.t * s.t, 0)
+    const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX)
+    const firstHalf = series.slice(0, Math.floor(n / 2))
+    const secondHalf = series.slice(Math.floor(n / 2))
+    const avg = (arr: typeof series) => arr.reduce((a, s) => a + s.afterGcMB, 0) / arr.length
+    const diag = {
+      series,
+      slopeMBperSec: +slope.toFixed(4),
+      firstHalfAvgMB: +avg(firstHalf).toFixed(2),
+      secondHalfAvgMB: +avg(secondHalf).toFixed(2),
+      verdict: slope > 0.02 ? 'LEAK-VERDACHT (retained growth)' : 'STABIL (Plateau → Einmal-Init)',
+    }
+    console.log('[M-06b]', JSON.stringify(diag))
+    mkdirSync('tests/perf-results', { recursive: true })
+    writeFileSync(`tests/perf-results/heap-profile-${PERF_TAG}.json`, JSON.stringify(diag, null, 2))
+    expect(series.length).toBe(SAMPLES)
+  })
+
   test.afterAll(async () => {
     mkdirSync('tests/perf-results', { recursive: true })
     const path = `tests/perf-results/${PERF_TAG}.json`

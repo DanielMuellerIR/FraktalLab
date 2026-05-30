@@ -4,11 +4,12 @@
 > Verifikationsziel: Hypothese **H-07** — „Commit `5264baf` (v1.2.6) hat eine
 > Performance-Regression eingeführt" (Auftraggeber: „vor einigen Tagen lief es flüssig").
 >
-> **Kurzfassung des Verdikts:** H-07 ist in dieser Form **nicht bestätigt**. Der
-> WASM-Fraktal-Hotpath ist seit der Baseline byte-identisch; die gemessenen
-> Frame-Time-Unterschiede sind durch Panel-Komposition und Software-Rendering
-> verfälscht und zeigen keine eindeutige Regression. Ein klares, isolierbares
-> Signal liefert nur das Memory-Profil (HEAD wächst, Baseline nicht). Details unten.
+> **Kurzfassung des Verdikts:** H-07 ist **nicht bestätigt**. Der WASM-Fraktal-Hotpath
+> ist seit der Baseline byte-identisch; die gemessenen Frame-Time-Unterschiede sind
+> durch Panel-Komposition und Software-Rendering verfälscht und zeigen keine eindeutige
+> Regression. Das anfängliche Memory-Signal (HEAP +9 MB) wurde per Forced-GC-Diagnose
+> (M-06b) als GC-Sägezahn entlarvt — **kein Leak**. Es bleibt kein nachweisbarer
+> Performance- oder Memory-Regress gegenüber der Baseline. Details unten.
 
 ---
 
@@ -70,6 +71,11 @@ Frame-Time in Millisekunden (kleiner = besser). `over16` = Anteil Frames > 16.7 
 | Heap nach 25 s | 14.2 MB | 4.4 MB |
 | **Δ Wachstum** | **+9.0 MB** | −0.2 MB |
 
+> **Achtung:** M-06 misst **ohne** GC-Zwang → der +9-MB-Wert ist eine Sägezahn-Spitze
+> zwischen GC-Zyklen, kein retained growth. Die Leak-Diagnose **M-06b** (Forced GC vor
+> jedem Sample, 100 s) zeigt nach GC einen stabilen Heap um ~6.8 MB, Steigung
+> −0.0054 MB/s → **kein Leak** (siehe B-3 unten, Daten in `heap-profile-HEAD.json`).
+
 ---
 
 ## 3. Einordnung & Einschränkungen (wichtig)
@@ -112,13 +118,16 @@ Trotz der Einschränkungen drei Aussagen, die robust sind:
   Beleg für eine durch `5264baf` eingeführte Regression. H-07 wird **nicht gestützt**;
   die Iter.-1/2-Optimierungen (H-01..H-08) wirken im @1920-Fall sichtbar positiv.
 
-- **B-3 — Heap-Wachstum auf HEAD, nicht auf Baseline.** Gleiche Messmethode, gleicher
-  Viewport: HEAD wächst in 25 s um ~9 MB, Baseline bleibt flach. Das ist ein
-  vergleichbares Signal und der einzige klare Negativ-Trend zugunsten der Baseline.
-  Kandidaten: Pro-Frame-Allokationen oder akkumulierende Buffer in einem der nach
-  `5264baf` hinzugekommenen Panels. **Follow-up wert** (siehe unten). Hinweis: Ein
-  Teil kann einmaliger Lazy-Init zusätzlicher Panels sein — ein längerer Lauf
-  (60–120 s) würde Leak von Einmal-Init trennen.
+- **B-3 — Heap-Wachstum auf HEAD: ENTWARNT, kein Leak.** Erstmessung M-06 zeigte
+  +9 MB/25 s auf HEAD (Baseline flach). Follow-up M-06b (Leak-Diagnose, 100 s Lauf,
+  **forced GC** via CDP `HeapProfiler.collectGarbage` vor jedem Sample) widerlegt den
+  Leak-Verdacht: der Nach-GC-Heap pendelt stabil um ~6.8 MB, Regressions-Steigung
+  **−0.0054 MB/s** (negativ → kein retained growth). Erste vs. zweite Hälfte:
+  6.96 MB ↔ 6.83 MB. → Das +9 MB aus M-06 war **GC-Sägezahn** (transienter
+  Pro-Frame-Allocation-Churn zwischen GC-Zyklen) plus einmaliger Lazy-Init der
+  Panels, **nicht** ein Leak. Daten: `frontend/tests/perf-results/heap-profile-HEAD.json`.
+  Damit fällt das letzte Negativ-Signal — es bleibt kein nachweisbarer Memory- oder
+  Frame-Time-Regress gegenüber der Baseline übrig.
 
 ---
 
@@ -130,8 +139,8 @@ Trotz der Einschränkungen drei Aussagen, die robust sind:
 2. **Panel-Pool fixieren** für saubere Frame-Time-Vergleiche: identischen Panel-Satz
    in beiden Ständen erzwingen (z. B. URL-Param oder Test-Hook), statt geseedeter
    Pool-Auswahl. Dann ist M-01/M-03 apples-to-apples.
-3. **B-3 nachgehen:** M-06 mit 60–120 s Laufzeit + Heap-Snapshot-Diff, um die
-   wachstumstreibenden Panels zu identifizieren.
+3. ~~**B-3 nachgehen:** M-06 mit 60–120 s Laufzeit + Heap-Snapshot-Diff~~ ✅ erledigt
+   (M-06b, Forced-GC-Diagnose) — kein Leak, B-3 entwarnt.
 
 ---
 
