@@ -3,29 +3,6 @@ import { subscribe } from '../utils/raf-coordinator'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GlitchOverlay — Vollbild-Stoereffekt im Stil eines analogen VHS-Bandes.
-//
-// Hintergrund (Audit-Befund + Designentscheidung):
-//   Die vorherige Variante zeichnete pro Frame ~40 fillRect-Operationen,
-//   setzte canvas.width/height in jedem rAF-Tick neu (= forced repaint des
-//   gesamten Vollbild-Canvas) und nutzte zudem eine harte Hacker-Gruen-
-//   Palette. Resultat: Wenn der Glitch aktiv war, ruckelte die gesamte
-//   Seite spuerbar, und das Aussehen passte nicht zur gewollten "analoge
-//   VHS-Stoerung"-Optik.
-//
-// Aenderungen:
-//   1. rAF wird nur waehrend eines aktiven Glitches abonniert. In den
-//      Ruhephasen (5-15 s zwischen Glitches) keine Frame-Last.
-//   2. canvas.width/height wird ausschliesslich bei Mount und Window-Resize
-//      gesetzt — kein impliziter Vollbild-Repaint pro Frame mehr.
-//   3. Die Scanlines wurden aus der per-Frame fillRect-Schleife geholt und
-//      ueber eine CSS-Hintergrund-Gradient-Schicht permanent gezeigt. Das
-//      spart ~360 fillRect-Calls pro Frame bei 1080p.
-//   4. rAF ueber den zentralen raf-coordinator statt eigenem
-//      requestAnimationFrame-Loop. So pausiert der Glitch automatisch
-//      waehrend Layout-Slides.
-//   5. Farbpalette: weniger gesaettigt, mehr VHS-typische Stoerungen
-//      (Chroma-Bleed in Magenta/Cyan, Dropouts als schwarze Lines,
-//      Tracking-Banding mit hellem Rauschen).
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Zeichnet einen einzelnen Glitch-Frame auf den Canvas.
@@ -37,71 +14,143 @@ function drawGlitchFrame(
 ) {
   ctx.clearRect(0, 0, W, H)
 
-  // ── VHS-Tracking-Fehler: helle Banding-Streifen, bevorzugt am oberen ──────
-  // oder unteren Bildrand (echtes VHS verliert das Tracking dort zuerst).
-  const bandCount = 2 + Math.floor(Math.random() * 4)
+  // 1. VCR Head Switching Noise (at bottom 14px)
+  if (intensity > 0.05) {
+    const noiseH = 14
+    const noiseY = H - noiseH
+    const blockCount = 60
+    const blockW = W / blockCount
+    for (let b = 0; b < blockCount; b++) {
+      const val = Math.random() > 0.5 ? 240 : 15
+      ctx.fillStyle = `rgba(${val},${val},${val},${(0.20 + 0.35 * Math.random()) * intensity})`
+      const jitterH = Math.random() * noiseH
+      ctx.fillRect(b * blockW, noiseY + (noiseH - jitterH), blockW, jitterH)
+    }
+  }
+
+  // 2. Tracking snow bands / analog static
+  if (intensity > 0.2) {
+    const snowBands = 1 + Math.floor(Math.random() * 2)
+    for (let s = 0; s < snowBands; s++) {
+      const snowHeight = 12 + Math.random() * 24
+      const snowY = Math.random() * (H - snowHeight - 20)
+      const blockCount = 50
+      const blockW = W / blockCount
+      for (let b = 0; b < blockCount; b++) {
+        const val = Math.floor(Math.random() * 255)
+        ctx.fillStyle = `rgba(${val},${val},${val},${0.18 * intensity})`
+        ctx.fillRect(b * blockW, snowY + (Math.random() - 0.5) * 4, blockW, snowHeight)
+      }
+    }
+  }
+
+  // 3. VHS Tracking bands (warm gray)
+  const bandCount = 2 + Math.floor(Math.random() * 3)
   for (let i = 0; i < bandCount; i++) {
-    // 50/50: oben oder unten. In der Bildmitte selten.
     const y = (Math.random() < 0.5)
-      ? Math.random() * (H * 0.18)
-      : H * 0.82 + Math.random() * (H * 0.18)
-    const h = 2 + Math.random() * 10
-    // Helles, leicht warmes Grau (statt hartes Gruen).
-    ctx.fillStyle = `rgba(230,225,215,${0.10 * intensity})`
+      ? Math.random() * (H * 0.22)
+      : H * 0.78 + Math.random() * (H * 0.22)
+    const h = 3 + Math.random() * 12
+    ctx.fillStyle = `rgba(230,225,215,${0.12 * intensity})`
     ctx.fillRect(0, y, W, h)
-    // In den Tracking-Bands sitzt oft "noise crawl" — kurze schwarze
-    // Dropout-Schlieren.
-    const dropouts = 2 + Math.floor(Math.random() * 5)
+    
+    const dropouts = 2 + Math.floor(Math.random() * 4)
     for (let k = 0; k < dropouts; k++) {
       const dx = Math.random() * W
-      const dw = 20 + Math.random() * 80
-      ctx.fillStyle = `rgba(0,0,0,${0.32 * intensity})`
+      const dw = 30 + Math.random() * 110
+      ctx.fillStyle = `rgba(0,0,0,${0.35 * intensity})`
       ctx.fillRect(dx, y, dw, h)
     }
   }
 
-  // ── Horizontale Slice-Versaetze mit Chroma-Bleed (Y/C-Crosstalk) ──────────
-  // Hellrot + Cyan-Doppellinien — sieht aus wie ein verrutschter
-  // Farbtraeger bei analogem Composite-Video.
-  const sliceCount = 2 + Math.floor(Math.random() * 3)
-  for (let i = 0; i < sliceCount; i++) {
-    const y = Math.random() * H
-    const h = 4 + Math.random() * 28
-    const shift = (Math.random() - 0.5) * 60
-    ctx.fillStyle = `rgba(220,50,90,${0.10 * intensity})`
-    ctx.fillRect(shift - 5, y, W, h)
-    ctx.fillStyle = `rgba(60,200,220,${0.10 * intensity})`
-    ctx.fillRect(shift + 5, y, W, h)
+  // 4. Sync Drift / Horizontal Wave Bend
+  if (intensity > 0.25) {
+    const bendCount = 1 + Math.floor(Math.random() * 2)
+    for (let b = 0; b < bendCount; b++) {
+      const y = Math.random() * (H * 0.7)
+      const h = 35 + Math.random() * 95
+      const shift = (Math.random() - 0.5) * 80 * intensity
+      
+      ctx.fillStyle = `rgba(240,40,90,${0.08 * intensity})`
+      ctx.fillRect(shift - 4, y, W, h)
+      ctx.fillStyle = `rgba(40,220,240,${0.08 * intensity})`
+      ctx.fillRect(shift + 4, y + 2, W, h)
+    }
   }
 
-  // ── Dropouts (Signalverlust): schmale schwarze Querstriche, irgendwo ──────
-  // im Bild verteilt. Klassische VHS-Bandschaeden.
-  const dropoutCount = 2 + Math.floor(Math.random() * 5)
+  // 5. Horizontale Slice-Versaetze mit Chroma-Bleed (composite color artifacts)
+  const sliceCount = 3 + Math.floor(Math.random() * 4)
+  for (let i = 0; i < sliceCount; i++) {
+    const y = Math.random() * H
+    const h = 3 + Math.random() * 20
+    const shift = (Math.random() - 0.5) * 70 * intensity
+    ctx.fillStyle = `rgba(225,45,110,${0.12 * intensity})`
+    ctx.fillRect(shift - 6, y, W, h)
+    ctx.fillStyle = `rgba(50,210,230,${0.12 * intensity})`
+    ctx.fillRect(shift + 6, y, W, h)
+  }
+
+  // 6. Signal Dropouts (black horizontal scanline slices)
+  const dropoutCount = 3 + Math.floor(Math.random() * 6)
   for (let i = 0; i < dropoutCount; i++) {
     const x = Math.random() * W
     const y = Math.random() * H
-    const w = 40 + Math.random() * 220
+    const w = 50 + Math.random() * 250
     const h = 1 + Math.random() * 3
-    ctx.fillStyle = `rgba(0,0,0,${0.48 * intensity})`
+    ctx.fillStyle = `rgba(0,0,0,${0.55 * intensity})`
     ctx.fillRect(x, y, w, h)
   }
 
-  // ── Capstan-Wobble: kurze duenne Querlinien, leicht cyan ──────────────────
-  // Nur bei starker Intensitaet — sonst zu viel Detail bei kleinen Peaks.
-  if (intensity > 0.4 && Math.random() > 0.5) {
-    const wobble = 3 + Math.floor(Math.random() * 4)
+  // 7. Capstan-Wobble / thin static lines
+  if (intensity > 0.35 && Math.random() > 0.4) {
+    const wobble = 4 + Math.floor(Math.random() * 5)
     for (let i = 0; i < wobble; i++) {
       const y = Math.random() * H
-      ctx.fillStyle = `rgba(200,240,240,${0.06 * intensity})`
+      ctx.fillStyle = `rgba(180,250,250,${0.08 * intensity})`
       ctx.fillRect(0, y, W, 1)
     }
   }
 
-  // ── Vollbild-Helligkeits-Pulse (selten, kurze Blende) ─────────────────────
-  // Macht den Eindruck "Spannungseinbruch im Geraet".
-  if (Math.random() > 0.85) {
-    ctx.fillStyle = `rgba(200,180,140,${0.05 * intensity})`
+  // 8. Full screen brightness pulse / voltage drops
+  if (Math.random() > 0.82) {
+    ctx.fillStyle = `rgba(210,185,130,${0.07 * intensity})`
     ctx.fillRect(0, 0, W, H)
+  }
+
+  // 9. VHS OSD overlay
+  if (intensity > 0.05) {
+    ctx.save()
+    // Tracking jitter offsets the text slightly at high intensities
+    const osdJitter = intensity > 0.6 ? (Math.random() - 0.5) * 12.0 : 0.0
+    ctx.translate(osdJitter, 0)
+    
+    ctx.font = 'bold 18px "Courier New", Courier, monospace'
+    // VHS green phosphors color
+    ctx.fillStyle = `rgba(0, 245, 95, ${0.85 * intensity})`
+    ctx.shadowBlur = 5
+    ctx.shadowColor = 'rgba(0, 245, 95, 0.4)'
+    
+    // Glitch-sensitive labeling
+    let actionText = 'PLAY  ▶'
+    if (intensity > 0.75) {
+      const choice = Math.random()
+      actionText = choice > 0.66 ? 'AUTO TRACKING' : choice > 0.33 ? 'TAPE SLIP' : 'NO SIGNAL'
+    }
+    
+    ctx.fillText(actionText, 35, H - 65)
+    
+    // VCR elapsed time logic
+    const elapsedSecs = Math.floor(performance.now() / 1000)
+    const hours = Math.floor(elapsedSecs / 3600)
+    const mins = Math.floor((elapsedSecs % 3600) / 60)
+    const secs = elapsedSecs % 60
+    const timeStr = `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+    ctx.fillText(timeStr, 35, H - 35)
+    
+    // Tape format label on the right
+    ctx.font = '14px "Courier New", Courier, monospace'
+    ctx.fillText('SP', W - 65, H - 35)
+    ctx.restore()
   }
 }
 
@@ -145,8 +194,8 @@ export default function GlitchOverlay() {
       const elapsed = t - episodeStart
       if (elapsed >= episodeDuration) {
         stopEpisode()
-        // Naechsten Glitch einplanen — 5-15 s zwischen Episoden.
-        const next = 5_000 + Math.random() * 10_000
+        // Naechsten Glitch einplanen — 7-15 s zwischen Episoden.
+        const next = 7_000 + Math.random() * 8_000
         nextTimeout = setTimeout(startEpisode, next)
         return
       }
@@ -155,14 +204,13 @@ export default function GlitchOverlay() {
       let intensity = 0
       for (const p of episodePeaks) {
         const d = Math.abs(u - p)
-        // Breiter Peak (d*6) → laenger sichtbar als ein scharfer Spike.
-        intensity += Math.max(0, 1 - d * 6)
+        // Breiter Peak (d*3.5) → laenger sichtbar als ein scharfer Spike.
+        intensity += Math.max(0, 1 - d * 3.5)
       }
       if (intensity > 1) intensity = 1
 
-      // Schwelle hoeher als vorher (0.06 statt 0.03), damit das Overlay
-      // nicht fuer jeden Mini-Tail-Wert noch ein Vollbild-Zeichnen ausloest.
-      if (intensity > 0.06) {
+      // Schwelle hoeher als vorher (0.05 statt 0.03)
+      if (intensity > 0.05) {
         drawGlitchFrame(ctx!, canvas!.width, canvas!.height, intensity)
       } else {
         ctx!.clearRect(0, 0, canvas!.width, canvas!.height)
@@ -170,11 +218,11 @@ export default function GlitchOverlay() {
     }
 
     function startEpisode() {
-      // Dauer einer Glitch-Episode: 300-1300 ms.
-      episodeDuration = 300 + Math.random() * 1000
+      // Dauer einer Glitch-Episode: 1000-2500 ms (laenger fuer echten Stoereffekt)
+      episodeDuration = 1000 + Math.random() * 1500
       episodeStart = performance.now()
-      // 1-4 Peaks innerhalb der Episode (Verteilung sortiert).
-      const peakCount = 1 + Math.floor(Math.random() * 4)
+      // 2-5 Peaks innerhalb der Episode.
+      const peakCount = 2 + Math.floor(Math.random() * 4)
       episodePeaks = []
       for (let i = 0; i < peakCount; i++) episodePeaks.push(Math.random())
       episodePeaks.sort((a, b) => a - b)
@@ -207,7 +255,7 @@ export default function GlitchOverlay() {
         zIndex:        9999,
         // Scanlines konstant via CSS-Hintergrund statt pro Frame mit
         // fillRect malen — ~360 Calls pro Frame bei 1080p gespart. Der
-        // Effekt ist permanent sichtbar (CRT/VHS-Look), genauso wie
+        // EFFEKT ist permanent sichtbar (CRT/VHS-Look), genauso wie
         // vorher gewollt.
         backgroundImage:
           'repeating-linear-gradient(0deg, rgba(0,0,0,0.06) 0px, rgba(0,0,0,0.06) 1px, transparent 1px, transparent 3px)',
