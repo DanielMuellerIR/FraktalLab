@@ -1,5 +1,8 @@
 import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
+import { subscribe } from '../utils/raf-coordinator'
+
+// Frame-Loop laeuft ueber den zentralen raf-coordinator (siehe AUDIT_FINDINGS.md H-05).
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ParallaxPanel: Horizontales Parallax-Scrolling durch 4 verschiedene Szenen.
@@ -712,12 +715,27 @@ function ParallaxPanel() {
     const canvas: HTMLCanvasElement        = _canvas
     const ctx:    CanvasRenderingContext2D = _ctx
 
-    let rafId:    number
+    // Cleanup-Funktion vom raf-coordinator. Wird beim Sichtbar-Werden gesetzt
+    // und beim Verbergen wieder genullt, damit das Panel im Hintergrund keinen
+    // Frame-Slot belegt.
+    let unsubscribe: (() => void) | null = null
     let alive   = true
-    let isVisible = true
+    // Beim ersten Frame muss lastT/sceneStartMs initialisiert werden
+    let firstFrame = true
 
     const io = new IntersectionObserver(
-      ([entry]) => { isVisible = entry.isIntersecting },
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          // Wieder sichtbar → Subscription auffrischen (falls vorher abgemeldet)
+          if (!unsubscribe) {
+            firstFrame = true
+            unsubscribe = subscribe(loop)
+          }
+        } else {
+          // Nicht mehr sichtbar → vom raf-coordinator abmelden
+          if (unsubscribe) { unsubscribe(); unsubscribe = null }
+        }
+      },
       { threshold: 0.1 },
     )
     io.observe(container)
@@ -744,7 +762,11 @@ function ParallaxPanel() {
 
     function loop(t: number) {
       if (!alive) return
-      if (!isVisible) { rafId = requestAnimationFrame(loop); return }
+      // Sichtbarkeit wird jetzt ueber sub/unsub im IntersectionObserver geregelt.
+
+      // Erster Frame nach Subscribe: lastT/sceneStartMs frisch setzen,
+      // damit dt nicht riesig wird und die Szene nicht sofort umspringt.
+      if (firstFrame) { lastT = t; sceneStartMs = t; firstFrame = false }
 
       const dt = Math.min((t - lastT) / 1000, 0.1)
       lastT = t
@@ -796,15 +818,14 @@ function ParallaxPanel() {
         ctx.fillStyle  = `rgba(0,0,0,${alpha.toFixed(3)})`
         ctx.fillRect(0, 0, W, H)
       }
-
-      rafId = requestAnimationFrame(loop)
     }
 
-    rafId = requestAnimationFrame((t) => { lastT = t; sceneStartMs = t; loop(t) })
+    // Initiale Anmeldung beim raf-coordinator (Panel ist initial sichtbar).
+    unsubscribe = subscribe(loop)
 
     return () => {
       alive = false
-      cancelAnimationFrame(rafId)
+      if (unsubscribe) unsubscribe()
       ro.disconnect()
       io.disconnect()
     }

@@ -1,5 +1,7 @@
 import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
+// rAF-Loop laeuft ueber den zentralen raf-coordinator. Siehe AUDIT_FINDINGS.md H-05.
+import { subscribe } from '../utils/raf-coordinator'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ElitePanel: Simuliert das Original-Elite (1984) — Wireframe-3D-Raumschiff.
@@ -155,7 +157,8 @@ function ElitePanel() {
     const canvas: HTMLCanvasElement        = _canvas
     const ctx:    CanvasRenderingContext2D = _ctx
 
-    let rafId: number
+    // unsubscribe-Funktion aus subscribe(); null wenn nicht angemeldet.
+    let unsubscribe: (() => void) | null = null
     let alive = true
 
     // ── Canvas-Größe dynamisch anpassen ─────────────────────────────────────
@@ -304,10 +307,14 @@ function ElitePanel() {
 
     // ── Haupt-Loop ────────────────────────────────────────────────────────────
     let lastT = 0
+    let firstFrame = true
 
     function loop(t: number) {
       if (!alive) return
 
+      // Beim ersten Frame lastT setzen, damit dt im ersten Tick 0 ist
+      // (entspricht dem alten Verhalten vor dem subscribe-Wrapper).
+      if (firstFrame) { lastT = t; firstFrame = false }
       const dt = Math.min((t - lastT) / 1000, 0.08)
       lastT = t
 
@@ -458,15 +465,15 @@ function ElitePanel() {
       ctx.textBaseline = 'top'
       ctx.fillText('COBRA MK III  //  CMDR JAMESON', W * 0.02, 4)
 
-      rafId = requestAnimationFrame(loop)
+      // Rekursiver rAF-Aufruf entfaellt: subscribe ruft loop() bei jedem Tick.
     }
 
-    // Starten
-    rafId = requestAnimationFrame((t) => { lastT = t; loop(t) })
+    // Starten — Anmeldung am zentralen raf-coordinator.
+    unsubscribe = subscribe(loop)
 
     return () => {
       alive = false
-      cancelAnimationFrame(rafId)
+      if (unsubscribe) unsubscribe()
       ro.disconnect()
     }
   }, [])

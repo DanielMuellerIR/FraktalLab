@@ -1,6 +1,9 @@
 import { memo,  useEffect, useRef, useState } from 'react'
 import Panel from '../ui/Panel'
 import ScrollingLog from '../ui/ScrollingLog'
+// Zentraler rAF-Coordinator: bündelt alle Panel-Animationen in einer einzigen
+// requestAnimationFrame-Schleife. Siehe AUDIT_FINDINGS.md H-05.
+import { subscribe } from '../utils/raf-coordinator'
 
 
 const LOG_TEMPLATES = [
@@ -88,7 +91,8 @@ function TrafficMonitor() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    let rafId: number
+    // Unsubscribe-Handle vom zentralen raf-coordinator; null = nicht abonniert.
+    let unsubscribe: (() => void) | null = null
     const dataPoints: number[] = Array.from({ length: 60 }, () => 20 + Math.random() * 30)
 
     const resizeCanvas = () => {
@@ -102,7 +106,8 @@ function TrafficMonitor() {
     const ro = new ResizeObserver(resizeCanvas)
     ro.observe(canvas.parentElement!)
 
-    function draw() {
+    // Loop-Parameter t wird vom raf-coordinator als Timestamp übergeben (hier nicht benötigt).
+    function draw(_t: number) {
       if (!ctx || !canvas) return
 
       // Shift data points and add a new one with random spikes
@@ -171,14 +176,13 @@ function TrafficMonitor() {
       ctx.moveTo(scanX, 0)
       ctx.lineTo(scanX, canvas.height)
       ctx.stroke()
-
-      rafId = requestAnimationFrame(draw)
     }
 
-    draw()
+    // Beim zentralen rAF-Coordinator abonnieren — draw wird bei jedem Tick automatisch aufgerufen.
+    unsubscribe = subscribe(draw)
 
     return () => {
-      cancelAnimationFrame(rafId)
+      if (unsubscribe) unsubscribe()
       ro.disconnect()
     }
   }, [])

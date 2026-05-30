@@ -445,6 +445,32 @@ ALL_PANELS.forEach(p => {
   p.Component = memo(p.Component) as any
 })
 
+// ── Eingefrorener Review-Slot ────────────────────────────────────────────────
+//
+// Performance-Hintergrund (Audit-Befund B-4, siehe PERF_NOTES.md): die App ist
+// Main-Thread-/CPU-gebunden, nicht GPU-gebunden. Im Review-Modus rendert die
+// 2x2-Seite vier Panels gleichzeitig — wenn alle vier live animieren, summiert
+// sich ihre Canvas-2D-/JS-Last auf dem Haupt-Thread. Gemessen: der geforderte
+// 60-FPS-Akzeptanzfall (M-07) lieferte so nur ~9 FPS auf einer Apple Apple-Silicon-Hardware.
+//
+// Lösung: nur das AKTIVE Panel wird live gemountet (animiert); die drei inaktiven
+// Slots zeigen statt der laufenden Komponente diesen leichten Platzhalter. Sobald
+// der Nutzer einen Slot anklickt, wird er aktiv und mountet live. So animiert zu
+// jedem Zeitpunkt nur ein Panel — der Haupt-Thread wird drastisch entlastet.
+function FrozenReviewSlot({ name }: { name: string }) {
+  return (
+    <div className="h-full w-full bg-black flex flex-col items-center justify-center gap-2 select-none">
+      {/* Pausen-Symbol als ruhiger visueller Anker */}
+      <div className="text-green-800 text-2xl leading-none">❚❚</div>
+      {/* Panel-Name, damit die Seite weiterhin navigierbar/orientierbar bleibt */}
+      <div className="font-mono text-xs tracking-wider text-green-700">{name}</div>
+      <div className="font-mono text-[10px] tracking-wider text-green-900">
+        [ KLICKEN ZUM AKTIVIEREN ]
+      </div>
+    </div>
+  )
+}
+
 // ── localStorage-Helfer für Reviews ──────────────────────────────────────────
 
 /** Ein einzelner Review-Eintrag */
@@ -947,13 +973,25 @@ export default function App() {
                         <div
                           key={panel.name}
                           className={`flex-1 min-h-0 h-full min-w-0 relative flex flex-col transition-all duration-200 cursor-pointer ${
-                            isActive ? 'ring-2 ring-green-500 border border-green-500 z-10' : 'opacity-65 hover:opacity-95'
+                            isActive ? 'ring-2 ring-green-500 border border-green-500 z-10' : ''
                           }`}
                           onClick={() => goToPanel(idx)}
                         >
-                          <Comp />
-                          <div className="absolute bottom-1 right-2 pointer-events-none select-none text-[8px] font-mono text-green-700/60 uppercase bg-black/60 px-1.5 py-0.5 border border-green-950/20">
-                            #{idx + 1}
+                          {/* Nur das aktive Panel animiert live (B-4: Main-Thread
+                              entlasten). Inaktive Slots zeigen einen statischen
+                              Platzhalter und mounten erst beim Anklicken. */}
+                          {isActive ? <Comp /> : <FrozenReviewSlot name={panel.name} />}
+                          {/* Review-Mode-Marker: Index + Kurzname des Panels.
+                              Sitzt oben rechts ueber der Title-Bar des Panels
+                              (rechte Seite dort ist leer, ausser dem Pulse-
+                              Dot). Hoher Kontrast, gut lesbar — frueher unten
+                              rechts mit zu wenig Kontrast und ohne Kurzname.
+                              Kurzname hilft beim Verweisen auf Panels in
+                              Konversationen. */}
+                          <div className="absolute top-0.5 right-7 z-20 pointer-events-none select-none flex items-center gap-1 font-mono text-xs tracking-wider bg-black/80 border border-green-700/40 px-1.5 py-[1px] rounded-sm">
+                            <span className="text-green-500 font-bold">#{idx + 1}</span>
+                            <span className="text-green-700">·</span>
+                            <span className="text-green-300">{panel.name}</span>
                           </div>
                         </div>
                       )

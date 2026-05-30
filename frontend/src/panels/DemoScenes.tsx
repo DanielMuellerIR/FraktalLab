@@ -29,6 +29,12 @@ function makeScene(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   postDraw?: (ctx: CanvasRenderingContext2D, W: number, H: number, t: number, s: any) => void,
   pixelated: boolean = false,
+  // Optionaler FPS-Cap fuer teure CPU-Szenen. Default = ungetaktet (60 Hz
+  // via rAF). Beispiel: 30 halbiert die Frame-Last fuer Szenen, die bei
+  // 30 fps visuell nicht wahrnehmbar schlechter aussehen (z. B.
+  // ThreeBodyScene mit 480 000 RGBA-Bytes pro Frame). Siehe
+  // AUDIT_FINDINGS.md H-04.
+  fpsCap?: number,
 ): React.NamedExoticComponent<any> {
   return React.memo(function Scene() {
     const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -95,6 +101,10 @@ function makeScene(
       stateRef.current = mkState(initW, initH)
 
       let img: ImageData | null = null
+      // FPS-Cap: minimaler Abstand zwischen zwei Draw-Calls in Millisekunden.
+      // 0 = kein Cap (jeder rAF-Tick rendert).
+      const minDt = fpsCap && fpsCap > 0 ? 1000 / fpsCap : 0
+      let lastDrawT = 0
 
       function loop(t: number) {
         if (!alive) return
@@ -103,6 +113,10 @@ function makeScene(
         if (canvas.width === 0 || canvas.height === 0) {
           return
         }
+
+        // FPS-Cap respektieren — frueh raus, ohne draw/putImageData/drawImage.
+        if (minDt > 0 && (t - lastDrawT) < minDt) return
+        lastDrawT = t
 
         const { W, H } = getInternalSize()
 
@@ -536,12 +550,18 @@ const TUNNEL_SHADER = `
 
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float ts = iTime;
-    
-    // Skalierung passend zur originalen CPU-Auflösung für identische Wellenformen
+
+    // Skalierung passend zur originalen CPU-Aufloesung fuer identische Wellenformen.
+    // ASPECT-PRESERVING: einheitlicher Skalenfaktor in beiden Achsen, sonst werden
+    // radiale Muster (Ringe, Kreise) bei nicht-4:3-Panels zu Ellipsen verzerrt.
+    // p ist im virtuellen 320x240-Raum, zentriert auf der Canvas-Mitte; auf
+    // breiteren/hoeheren Panels zeigt der Tunnel ueber den 320/240-Rand hinaus
+    // mehr Inhalt statt zu strecken.
     float originalW = min(iResolution.x, 320.0);
     float originalH = min(iResolution.y, 240.0);
-    vec2 p = fragCoord.xy * vec2(originalW, originalH) / iResolution.xy;
-    
+    float scale = min(iResolution.x / originalW, iResolution.y / originalH);
+    vec2 p = (fragCoord.xy - iResolution.xy * 0.5) / scale + vec2(originalW, originalH) * 0.5;
+
     float cx = p.x - originalW / 2.0;
     float cy = p.y - originalH / 2.0;
     float r = length(vec2(cx, cy)) + 0.001;
@@ -587,15 +607,16 @@ const ROTOZOOM_SHADER = `
 
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float ts = iTime;
-    
-    // Skalierung passend zur originalen CPU-Auflösung für identische Wellenformen
+
+    // Aspect-preserving virtual coords (siehe TUNNEL_SHADER).
     float originalW = min(iResolution.x, 320.0);
     float originalH = min(iResolution.y, 240.0);
-    vec2 p = fragCoord.xy * vec2(originalW, originalH) / iResolution.xy;
-    
+    float scale = min(iResolution.x / originalW, iResolution.y / originalH);
+    vec2 p = (fragCoord.xy - iResolution.xy * 0.5) / scale + vec2(originalW, originalH) * 0.5;
+
     float cx = p.x - originalW / 2.0;
     float cy = p.y - originalH / 2.0;
-    
+
     float z = 0.04 + 0.03 * sin(ts * 0.5);
     float cVal = cos(ts * 0.6) * z;
     float sVal = sin(ts * 0.6) * z;
@@ -652,9 +673,13 @@ const METABALLS_SHADER = `
 
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float ts = iTime;
+    // Aspect-preserving virtual coords (siehe TUNNEL_SHADER): einheitlicher
+    // Skalenfaktor in beiden Achsen, damit Metaball-Kreise nicht zu Ellipsen
+    // werden, wenn das Panel nicht 4:3 ist.
     float originalW = 200.0;
     float originalH = 150.0;
-    vec2 p = fragCoord.xy * vec2(originalW, originalH) / iResolution.xy;
+    float scale = min(iResolution.x / originalW, iResolution.y / originalH);
+    vec2 p = (fragCoord.xy - iResolution.xy * 0.5) / scale + vec2(originalW, originalH) * 0.5;
     
     float sum = 0.0;
     vec3 colorSum = vec3(0.0);
@@ -728,8 +753,8 @@ export const DotCloudScene = React.memo(function DotCloudScene() {
     if (!_ctx) return
     const ctx: CanvasRenderingContext2D = _ctx
 
-    let rafId = 0
-    let isVisible = true
+    // Migration auf zentralen raf-coordinator (AUDIT_FINDINGS.md H-05).
+    let unsubscribe: (() => void) | null = null
     let nodes: NeuralNode2D[] = []   // lazy-init beim ersten Frame
     let nextPulseAt = 0
     let pulseEndAt  = -1
@@ -742,14 +767,17 @@ export const DotCloudScene = React.memo(function DotCloudScene() {
     })
     ro.observe(canvas)
 
-    // IntersectionObserver: rAF-Loop pausieren wenn unsichtbar
-    const io = new IntersectionObserver(([e]) => { isVisible = e.isIntersecting })
+    // IntersectionObserver: rAF-Subscription pausieren wenn unsichtbar
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) {
+        if (!unsubscribe) unsubscribe = subscribe(loop)
+      } else {
+        if (unsubscribe) { unsubscribe(); unsubscribe = null }
+      }
+    })
     io.observe(canvas)
 
     const loop = (t: number) => {
-      rafId = requestAnimationFrame(loop)
-      if (!isVisible) return
-
       const W = canvas.width
       const H = canvas.height
       if (W === 0 || H === 0) return
@@ -834,9 +862,9 @@ export const DotCloudScene = React.memo(function DotCloudScene() {
       }
     }
 
-    rafId = requestAnimationFrame(loop)
+    unsubscribe = subscribe(loop)
     return () => {
-      cancelAnimationFrame(rafId)
+      if (unsubscribe) unsubscribe()
       ro.disconnect()
       io.disconnect()
     }
@@ -1094,7 +1122,11 @@ export const ThreeBodyScene = makeScene(
       const b = balls[i]
       offCtx.fillText(`M-${i+1}`, b.bx + fontSize * 1.2, b.by - fontSize * 1.2)
     }
-  }
+  },
+  false, // pixelated default
+  30,    // FPS-Cap: ThreeBodyScene rendert CPU-seitig 480 000 RGBA-Bytes
+         // pro Frame. 30 fps reichen visuell (langsame Bahn-Drift), halbieren
+         // die Frame-Last. AUDIT_FINDINGS.md H-04.
 )
 
 // ── Effekt 8: Lissajous — animierte Kurve mit Nachleucht-Spur ────────────────
@@ -1105,12 +1137,16 @@ export const LissajousScene = () => {
   useEffect(() => {
     const canvas = canvasRef.current!
     const ctx = canvas.getContext('2d')!
-    let raf: number
+    // Migration auf zentralen raf-coordinator (AUDIT_FINDINGS.md H-05).
+    let unsubscribe: (() => void) | null = null
     let alive = true
 
-    let isVisible = true
     const io = new IntersectionObserver(([e]) => {
-      isVisible = e.isIntersecting
+      if (e.isIntersecting) {
+        if (!unsubscribe && alive) unsubscribe = subscribe(loop)
+      } else {
+        if (unsubscribe) { unsubscribe(); unsubscribe = null }
+      }
     })
     io.observe(canvas)
 
@@ -1127,8 +1163,6 @@ export const LissajousScene = () => {
 
     function loop(t: number) {
       if (!alive) return
-      raf = requestAnimationFrame(loop)
-      if (!isVisible) return
 
       const W = canvas.width
       const H = canvas.height
@@ -1189,10 +1223,10 @@ export const LissajousScene = () => {
       ctx.fillText(`SIGNAL TRACE // LISSAJOUS Ω // FREQ_X: ${freqX.toFixed(2)} // FREQ_Y: ${freqY.toFixed(2)}`, 10, H - 10)
     }
 
-    raf = requestAnimationFrame(loop)
+    unsubscribe = subscribe(loop)
     return () => {
       alive = false
-      cancelAnimationFrame(raf)
+      if (unsubscribe) unsubscribe()
       ro.disconnect()
       io.disconnect()
     }

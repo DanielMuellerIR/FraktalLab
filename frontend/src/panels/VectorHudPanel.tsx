@@ -1,5 +1,8 @@
 import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
+// Zentraler rAF-Coordinator: bündelt alle Panel-Animationen in einer einzigen
+// requestAnimationFrame-Schleife. Siehe AUDIT_FINDINGS.md H-05.
+import { subscribe } from '../utils/raf-coordinator'
 
 interface Point3D { x: number; y: number; z: number }
 
@@ -9,12 +12,18 @@ function VectorHudPanel() {
   useEffect(() => {
     const canvas = canvasRef.current!
     const ctx = canvas.getContext('2d')!
-    let raf: number
+    // Unsubscribe-Handle vom zentralen raf-coordinator; null = nicht abonniert.
+    let unsubscribe: (() => void) | null = null
     let alive = true
 
-    let isVisible = true
+    // IntersectionObserver: bei Unsichtbarkeit komplett vom rAF-Coordinator abmelden,
+    // statt nur Frames ohne Zeichnen zu verbrauchen.
     const io = new IntersectionObserver(([e]) => {
-      isVisible = e.isIntersecting
+      if (e.isIntersecting) {
+        if (!unsubscribe) unsubscribe = subscribe(loop)
+      } else {
+        if (unsubscribe) { unsubscribe(); unsubscribe = null }
+      }
     })
     io.observe(canvas)
 
@@ -80,8 +89,6 @@ function VectorHudPanel() {
 
     function loop(t: number) {
       if (!alive) return
-      raf = requestAnimationFrame(loop)
-      if (!isVisible) return
 
       const W = canvas.width
       const H = canvas.height
@@ -171,10 +178,11 @@ function VectorHudPanel() {
       ctx.fillText(`SIGNAL_STRENGTH: 99.8%`, W - 145, 42)
     }
 
-    raf = requestAnimationFrame(loop)
+    // Beim zentralen rAF-Coordinator abonnieren — loop wird bei jedem Tick automatisch aufgerufen.
+    unsubscribe = subscribe(loop)
     return () => {
       alive = false
-      cancelAnimationFrame(raf)
+      if (unsubscribe) { unsubscribe(); unsubscribe = null }
       ro.disconnect()
       io.disconnect()
     }

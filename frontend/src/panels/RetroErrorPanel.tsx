@@ -1,7 +1,10 @@
 import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
+import { subscribe } from '../utils/raf-coordinator'
 
 // Slideshow klassischer Betriebssystem-Fehlermeldungen — alles prozedural auf Canvas 2D.
+// Frame-Loop laeuft ueber den zentralen raf-coordinator (siehe AUDIT_FINDINGS.md H-05),
+// damit alle Panels denselben requestAnimationFrame-Tick teilen.
 
 type Screen = {
   duration: number
@@ -651,7 +654,8 @@ function RetroErrorPanel() {
     const ctx: CanvasRenderingContext2D    = _ctx
 
     let active   = true
-    let rafId    = 0
+    // Cleanup-Funktion vom raf-coordinator; null solange wir noch nicht subscribed sind
+    let unsubscribe: (() => void) | null = null
     let screenIdx = Math.floor(Math.random() * SCREENS.length)
     let screenStart = 0
     let transitioning = false
@@ -668,7 +672,7 @@ function RetroErrorPanel() {
 
       const W = canvas.width
       const H = canvas.height
-      if (W === 0 || H === 0) { rafId = requestAnimationFrame(draw); return }
+      if (W === 0 || H === 0) { return }
 
       if (screenStart === 0) screenStart = now
 
@@ -693,18 +697,17 @@ function RetroErrorPanel() {
       } else {
         screen.render(ctx, W, H, now, age)
       }
-
-      rafId = requestAnimationFrame(draw)
     }
 
-    rafId = requestAnimationFrame(draw)
+    // Beim zentralen raf-coordinator anmelden — der ruft draw() bei jedem Frame.
+    unsubscribe = subscribe(draw)
 
     const ro = new ResizeObserver(resize)
     ro.observe(cont)
 
     return () => {
       active = false
-      cancelAnimationFrame(rafId)
+      if (unsubscribe) unsubscribe()
       ro.disconnect()
     }
   }, [])

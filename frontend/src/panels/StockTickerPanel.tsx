@@ -1,5 +1,7 @@
 import { memo,  useState, useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
+// rAF-Loop laeuft ueber den zentralen raf-coordinator. Siehe AUDIT_FINDINGS.md H-05.
+import { subscribe } from '../utils/raf-coordinator'
 
 // ── Ticker-Definitionen ──────────────────────────────────────────────────────
 // mix aus echten Symbolen und fiktiven Hacker-Themen-Tickern
@@ -91,10 +93,11 @@ function StockTickerPanel() {
 
   // ── Marquee rAF-Loop ─────────────────────────────────────────────────────
   useEffect(() => {
-    let rafId: number
+    // unsubscribe-Funktion aus subscribe(); null wenn nicht angemeldet.
+    let unsubscribe: (() => void) | null = null
     let alive = true
 
-    function loop() {
+    function loop(_t: number) {
       if (!alive) return
 
       const tape = tapeRef.current
@@ -111,13 +114,13 @@ function StockTickerPanel() {
         }
         setMarqueeOffset(offsetRef.current)
       }
-      rafId = requestAnimationFrame(loop)
+      // Rekursiver rAF-Aufruf entfaellt: subscribe ruft loop() bei jedem Tick.
     }
 
-    rafId = requestAnimationFrame(loop)
+    unsubscribe = subscribe(loop)
     return () => {
       alive = false
-      cancelAnimationFrame(rafId)
+      if (unsubscribe) unsubscribe()
     }
   }, [])
 

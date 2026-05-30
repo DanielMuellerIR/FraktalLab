@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
 import ShaderPanel from '../ui/ShaderPanel'
+// rAF-Loops laufen ueber den zentralen raf-coordinator. Siehe AUDIT_FINDINGS.md H-05.
+import { subscribe } from '../utils/raf-coordinator'
 
 // ── Neon-Grid-Renderer (eigenständige Komponente, kein Voxel-Engine) ───────────
 interface Tower {
@@ -23,11 +25,20 @@ export function VoxelNeonGrid() {
     const ctx = canvas.getContext('2d')!
     if (!ctx) return
 
-    let rafId: number
+    // unsubscribe-Funktion aus subscribe(); null wenn nicht angemeldet
+    // (z.B. waehrend das Panel ausserhalb des Viewports ist).
+    let unsubscribe: (() => void) | null = null
     let running = true
-    let isVisible = true
     const io = new IntersectionObserver(
-      ([entry]) => { isVisible = entry.isIntersecting },
+      ([entry]) => {
+        // Beim Verlassen des Viewports vom raf-coordinator abmelden,
+        // beim Wiedereintritt erneut anmelden.
+        if (entry.isIntersecting) {
+          if (running && !unsubscribe) unsubscribe = subscribe(loop)
+        } else {
+          if (unsubscribe) { unsubscribe(); unsubscribe = null }
+        }
+      },
       { threshold: 0.1 },
     )
     io.observe(canvas)
@@ -75,13 +86,16 @@ export function VoxelNeonGrid() {
       return { sx, sy, scale }
     }
 
-    function loop() {
+    function loop(_t: number) {
       if (!running) return
-      if (!isVisible) { rafId = requestAnimationFrame(loop); return }
+      // Sichtbarkeit wird vom IntersectionObserver an subscribe/unsubscribe
+      // gekoppelt — kein zusaetzliches Polling im Loop noetig.
 
       const W = canvas!.width
       const H = canvas!.height
-      if (W === 0 || H === 0) { rafId = requestAnimationFrame(loop); return }
+      // Bei Null-Groesse einfach diesen Tick ueberspringen; subscribe ruft loop()
+      // automatisch beim naechsten Frame erneut auf.
+      if (W === 0 || H === 0) return
 
       cameraZ += 0.25
 
@@ -247,13 +261,14 @@ export function VoxelNeonGrid() {
         }
       }
 
-      rafId = requestAnimationFrame(loop)
+      // Rekursiver rAF-Aufruf entfaellt: subscribe ruft loop() bei jedem Tick.
     }
 
-    rafId = requestAnimationFrame(loop)
+    // Erste Anmeldung am raf-coordinator.
+    unsubscribe = subscribe(loop)
     return () => {
       running = false
-      cancelAnimationFrame(rafId)
+      if (unsubscribe) { unsubscribe(); unsubscribe = null }
       ro.disconnect()
       io.disconnect()
     }
@@ -339,7 +354,8 @@ function makeVoxelScene(
     })
 
     useEffect(() => {
-      let rafId: number
+      // unsubscribe-Funktion aus subscribe(); null wenn nicht angemeldet.
+      let unsubscribe: (() => void) | null = null
       let running = true
       const speedMin     = camCfg.speedMin     ?? 0.8
       const speedMax     = camCfg.speedMax     ?? 5
@@ -398,13 +414,13 @@ function makeVoxelScene(
         u.uAngle = c.angle
         u.uCamH = camH
 
-        rafId = requestAnimationFrame(loop)
+        // Rekursiver rAF-Aufruf entfaellt: subscribe ruft loop() jeden Tick.
       }
 
-      rafId = requestAnimationFrame(loop)
+      unsubscribe = subscribe(loop)
       return () => {
         running = false
-        cancelAnimationFrame(rafId)
+        if (unsubscribe) unsubscribe()
       }
     }, [])
 

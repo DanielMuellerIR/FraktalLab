@@ -1,5 +1,5 @@
 [build]
-  # Netlify hat kein Rust — wasm/pkg/ wird committed und landet im Repo
+  # Reiner JS/Vite-Build (kein Rust/WASM mehr — Fraktale laufen auf der GPU)
   base    = "frontend"
   command = "npm install && npm run build"
   publish = "frontend/dist"
@@ -7,6 +7,6 @@
 [[headers]]
   for = "/*"
   [headers.values]
-    # Pflicht für WASM
+    # credentialless: erlaubt Cross-Origin-Medien (archive.org-Video)
     Cross-Origin-Opener-Policy   = "same-origin"
     Cross-Origin-Embedder-Policy = "credentialless"

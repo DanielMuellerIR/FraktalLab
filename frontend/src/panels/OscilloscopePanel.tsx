@@ -1,5 +1,8 @@
 import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
+import { subscribe } from '../utils/raf-coordinator'
+
+// Frame-Loop laeuft ueber den zentralen raf-coordinator (siehe AUDIT_FINDINGS.md H-05).
 
 function OscilloscopePanel() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -7,12 +10,17 @@ function OscilloscopePanel() {
   useEffect(() => {
     const canvas = canvasRef.current!
     const ctx = canvas.getContext('2d')!
-    let raf: number
+    // Cleanup-Funktion vom raf-coordinator. Wird beim Sichtbar-Werden gesetzt
+    // und beim Verbergen wieder genullt.
+    let unsubscribe: (() => void) | null = null
     let alive = true
 
-    let isVisible = true
     const io = new IntersectionObserver(([e]) => {
-      isVisible = e.isIntersecting
+      if (e.isIntersecting) {
+        if (!unsubscribe) unsubscribe = subscribe(loop)
+      } else {
+        if (unsubscribe) { unsubscribe(); unsubscribe = null }
+      }
     })
     io.observe(canvas)
 
@@ -36,8 +44,7 @@ function OscilloscopePanel() {
 
     function loop(t: number) {
       if (!alive) return
-      raf = requestAnimationFrame(loop)
-      if (!isVisible) return
+      // Sichtbarkeit wird jetzt ueber sub/unsub im IntersectionObserver geregelt.
 
       const W = canvas.width
       const H = canvas.height
@@ -149,10 +156,11 @@ function OscilloscopePanel() {
       ctx.textAlign = 'left'
     }
 
-    raf = requestAnimationFrame(loop)
+    // Initiale Anmeldung beim raf-coordinator (Panel ist initial sichtbar).
+    unsubscribe = subscribe(loop)
     return () => {
       alive = false
-      cancelAnimationFrame(raf)
+      if (unsubscribe) unsubscribe()
       ro.disconnect()
       io.disconnect()
     }

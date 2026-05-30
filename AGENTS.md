@@ -3,7 +3,9 @@
 Universelle Referenz für alle Coding-Agents und KI-Modelle.
 Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 
-> **Hinweis für die nächste Session:** Diese Datei wurde nach einem vollständigen Code-Audit (2026-05-28) überarbeitet. Die Sektion **„Action Plan — Quick-Wins (sofort, Code-Audit-basiert)"** weiter unten enthält die priorisierten, evidenzbasierten Aufgaben. Diese sind der Startpunkt für die nächste Coding-Session.
+> **Neuer Agent — Branch-Check zuerst:** Audit läuft auf Branch `audit/2026-05-29`. Bist du schon dort? `git status` prüfen. Wenn nein: `git checkout audit/2026-05-29`. **NICHT** einen neuen Branch anlegen (auch wenn `blueprint_audit.md` §"Erste Schritte" das anweist — das galt nur für den ersten Audit-Aufschlag).
+>
+> **Hinweis für die nächste Session:** Die Datei wurde am 2026-05-28 nach einem ersten Code-Audit und am 2026-05-29 nach einem zweiten Audit (Branch `audit/2026-05-29`) überarbeitet, am 2026-05-30 um die Phase-3-Messungen ergänzt. Phase 1 (Inventur), Phase 2 (Hypothesen + Fixes) und **Phase 3 (Mess-Baseline)** sind abgeschlossen. Sämtliche Quick-Wins, H-01…H-08 und H-11 sind umgesetzt. **Phase-3-Verdikt (zwei getrennte Ergebnisse):** (1) H-07 (Regression durch `5264baf`) **nicht bestätigt** — WASM byte-identisch, kein Frame-Time-Regress, B-3-Heap kein Leak. (2) **B-4 — die App ist Main-Thread-/CPU-bound, NICHT GPU-bound:** Headed-Messung auf echter M5-Max-GPU (`ANGLE Metal Renderer: Apple Apple-Silicon-Hardware`) ≈ Software-Rasterizer; der geforderte 60-FPS-Akzeptanzfall (Review-Modus 4-Panel-Fraktal, M-07) erreicht nur **9 FPS**. Optimierungshebel ist Main-Thread-Entlastung, nicht GPU-Migration. Details + Tabellen in `PERF_NOTES.md`, Harness `frontend/tests/perf-measure.spec.ts` (Profil `chrome-gpu` für GPU-Läufe). **B-4 adressiert:** Review-Freeze (nur aktives Panel animiert) + komplette WASM→GPU-Fraktal-Migration (alle 11 Panels via `FractalGL`, double-single-Shader, WASM-Pfad entfernt) → M-01/M-03/M-07 jetzt 120 FPS. **Phase 5 (Demoscene-Tiefenaudit) erledigt** — Bewertungen + Wegfall-Kandidaten + Vorschläge in `AUDIT_FINDINGS.md` (Sektion „Demoscene-Audit"). **Offen:** nur optionale Folge-Punkte (nach Freigabe). Status-Tabellen pro Sektion sind ebenfalls aktualisiert.
 
 ---
 
@@ -16,7 +18,7 @@ Thematischer Rahmen: Ein fiktives „Neural Intrusion Dashboard", das Hacker-Kli
 
 **Speed-first-Regel:** Jedes Feature muss in einer einzigen Session vollständig lauffähig implementiert werden können. Features, die das nicht schaffen, werden auf kleineres Scope reduziert oder verschoben. Keine halbfertigen Implementierungen.
 
-Aktueller Stand: **v1.2.7**. Deployment auf Netcup-Webspace (Apache).
+Aktueller Stand: **v1.7.5** (auf Audit-Branch `audit/2026-05-29`; `main` ist auf v1.2.7). Deployment auf Netcup-Webspace (Apache).
 
 ---
 
@@ -40,10 +42,11 @@ Diese Panels gehören in die Pixel-Ära und sollen so aussehen:
 
 Hier soll am Endgerät nichts „pixelig" sein:
 
-**Fraktale (immer glatt — math. Berechnung erlaubt beliebige Präzision):**
-- `FractalCanvas` / `FractalView` (Hero-Panel)
+**Fraktale (immer glatt — GPU-Shader via `FractalGL`):**
+- `FractalView` (Hero-Panel)
 - `FractalJulia`
 - Alle Panels aus `FractalScenes.tsx`
+- Hinweis: Tief-Zoom auf Apple/Metal ist bei ~5e5 gedeckelt (Präzision, siehe `PERF_NOTES.md`).
 
 **Shader-Style-Effekte (sollen aussehen, als wären sie GPU-Shader):**
 - `PlasmaDemo`
@@ -59,7 +62,12 @@ Hier soll am Endgerät nichts „pixelig" sein:
 - `StarfieldScene`, `BoingScene`, `LissajousScene`, `DotCloudScene`
 - `NeuralNetPanel`, `VectorHudPanel`, `SpectrogramPanel`
 
-### Kategorie C — Voxel-Terrain (Sonderfall, GPU-Migration angestrebt)
+### Kategorie C — Voxel-Terrain (Sonderfall)
+
+> **Update:** `VoxelThermal`/`VoxelLava` (`VoxelScenes.tsx`) sind bereits auf GPU-
+> Raymarching migriert (GL-04 erledigt, scharf). `VoxelDemoColor`/`VoxelDemoBW`
+> (`VoxelDemo.tsx`) ggf. noch CPU — bei Bedarf prüfen.
+
 
 Voxel-Terrain à la Comanche ist *historisch* aus Hardware-Gründen pixelig, aber nicht *authentisch* pixelig — moderne Implementierungen können das scharf darstellen. Aktuell CPU-Rendering bei 480×300 mit `imageRendering: pixelated`:
 
@@ -82,14 +90,14 @@ Voxel-Terrain à la Comanche ist *historisch* aus Hardware-Gründen pixelig, abe
 
 ```
 Frontend:     React 19, Vite 8, TypeScript 6, Tailwind CSS v4
-WASM-Modul:   Rust + wasm-pack  (wasm32-unknown-unknown)  →  wasm/pkg/
-              Cargo Release-Profil: opt-level = 3, lto = true
-Build-Plugins: vite-plugin-wasm, vite-plugin-top-level-await
+Fraktale:     GPU-Fragment-Shader (WebGL) mit double-single-Präzision
+              → frontend/src/components/FractalGL.tsx + utils/fractal-gl-shader.ts
+              (KEIN WASM/Rust mehr — seit der B-4-GPU-Migration entfernt)
 Prod-Server:  Apache (Netcup) via frontend/public/.htaccess
 Dev-Server:   Vite (setzt COOP/COEP-Header via vite.config.ts)
-Testing:      Playwright (@playwright/test) — visueller Panel-Check
+Testing:      Playwright (@playwright/test) — visueller Panel-Check + Perf-Suite
 Audio:        Eigene ProTracker-MOD-Implementierung in frontend/src/utils/modplayer/
-              (AudioWorklet + ScriptProcessor-Fallback, kein libopenmpt nötig)
+              (AudioWorklet, kein libopenmpt nötig)
 ```
 
 ---
@@ -97,14 +105,13 @@ Audio:        Eigene ProTracker-MOD-Implementierung in frontend/src/utils/modpla
 ## Repo-Struktur
 
 ```
-wasm/                       Rust-Crate (cdylib). Build-Output: wasm/pkg/
-  src/lib.rs                RenderParams, render() (Mandelbrot), render_julia()
 frontend/
   src/
     App.tsx                 Grid-Layout-System, Pool-Definitionen, Layout-Wechsel-Logik,
                             Review-Modus (localStorage), Mobile-Layout (md:-Breakpoint)
     components/
-      FractalCanvas.tsx     WASM-Mandelbrot, animierter Zoom durch 8 Koordinaten
+      FractalGL.tsx         GPU-Fraktal-Renderer (Mandelbrot/Julia, WebGL-Shader,
+                            double-single-Präzision, Auto-Zoom-Navigation, Crossfade)
       EnhancePhoto.tsx      Enhance-Slideshow (12 Stufen, 4s Zyklus, nur urbane Fotos)
     panels/                 Alle Panel-Komponenten (je eine Datei, siehe Inventar unten)
     ui/
@@ -114,7 +121,7 @@ frontend/
       Panel.tsx             Rahmen mit grünem Border + Titelzeile
       Clock.tsx, StatBar.tsx, ScrollingLog.tsx
     utils/
-      wasm-loader.ts        Singleton-Loader für das WASM-Modul (geteilt zwischen Panels)
+      fractal-gl-shader.ts  GLSL für FractalGL (Mandelbrot/Julia, double-single, Färbung)
       shared-audio.ts       Singleton AudioContext mit iOS-Session-Konfiguration
       modplayer/            Selbstgeschriebener ProTracker-MOD-Player (TypeScript)
         player.ts, fallback-processor.ts, loader.ts, mod.ts
@@ -129,9 +136,9 @@ server/                     Express Prod-Server (wird auf Netcup nicht genutzt)
 
 ## Architektur-Kernpunkte
 
-**WASM ↔ React-Grenze:** `wasm/src/lib.rs` exportiert `render()` (Mandelbrot) und `render_julia()` (Julia-Menge). Die beiden Funktionen verwenden **derzeit inkonsistente Speicher-Patterns** — siehe Action Plan QW-01. Das WASM-Modul wird via `frontend/src/utils/wasm-loader.ts` als Singleton geladen; alle Fraktal-Panels teilen sich dieselbe Modul-Instanz.
+**Fraktal-Rendering (GPU):** Alle Mandelbrot-/Julia-Panels rendern über `FractalGL` (`frontend/src/components/FractalGL.tsx`) mit einem WebGL-Fragment-Shader (`utils/fractal-gl-shader.ts`). Der Shader nutzt **double-single-Arithmetik** (vec2 hi/lo) für Tief-Zoom bis ~1e13. Auto-Zoom-Navigation (Detail statt Schwarzraum) läuft über ein kleines Offscreen-Readback; Crossfade zwischen Locations/Julia-Parametern im selben Shader-Pass. WebGL-Contexts werden über `utils/webgl-pool.ts` budgetiert (`MAX_GL_CONTEXTS=8`, LRU-Eviction). **Kein WASM/Rust mehr** (seit Befund B-4 entfernt; alte Variante in der Git-History).
 
-**HTTP-Header (kritisch):** Vite-Dev-Server und `.htaccess` setzen `Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Embedder-Policy: credentialless`. Ohne diese Header verweigern Chrome und Safari den WASM-Load. `credentialless` (nicht `require-corp`) erlaubt Cross-Origin-Medien wie das archive.org-Video, ohne SharedArrayBuffer aufzugeben.
+**HTTP-Header:** Vite-Dev-Server und `.htaccess` setzen `Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Embedder-Policy: credentialless`. `credentialless` erlaubt Cross-Origin-Medien wie das archive.org-Video. (Früher zusätzlich für WASM-SharedArrayBuffer nötig — das ist entfallen, die Header bleiben aber gesetzt und schaden nicht.)
 
 **Tailwind v4:** Via `@tailwindcss/vite`-Plugin, kein `tailwind.config.js`. CSS-Einstiegspunkt: `frontend/src/index.css` mit `@import "tailwindcss"`.
 
@@ -158,30 +165,45 @@ server/                     Express Prod-Server (wird auf Netcup nicht genutzt)
 
 Diese Sektion dokumentiert die Ergebnisse einer vollständigen Inspektion der Hauptdateien. Hypothesen aus früheren Versionen dieser Datei sind hier verifiziert oder verworfen.
 
-### Verifizierte Antipatterns (zu fixen — siehe Action Plan)
+> **Status (Iter. 2, 2026-05-29):** Sämtliche unten gelisteten Antipatterns AUDIT-01..10 sind in der Audit-Iteration 2 behoben. Die Tabelle bleibt als historischer Nachweis bestehen — alle Punkte haben jetzt das Häkchen.
 
-| ID | Datei : Zeile | Problem |
+### Verifizierte Antipatterns (Status 2026-05-29: alle behoben)
+
+| ID | Datei : Zeile | Problem | Status |
+|---|---|---|---|
+| AUDIT-01 | `wasm/src/lib.rs` : 32–61 | `render()` (Mandelbrot) allokiert pro Aufruf `vec![0u8; ...]`, gibt Vec zurück. Pro-Frame-Allokation + Memcopy über WASM-Grenze. | ✅ behoben (Buffer-Sharing wie `render_julia`, alle Aufrufer migriert) |
+| AUDIT-02 | `wasm/src/lib.rs` : 86–135 | `render_julia()` ist korrekt: nimmt `&mut [u8]`, schreibt in vom Caller bereitgestelltem Buffer. Diese Variante ist Referenz für AUDIT-01. | ✅ Referenz |
+| AUDIT-03 | `components/FractalCanvas.tsx` : 149 | `new Uint8ClampedArray(render(...))` pro Frame — Kopie der WASM-Ausgabe. Behebung gekoppelt an AUDIT-01. | ✅ behoben |
+| AUDIT-04 | `components/FractalCanvas.tsx` : 103, 173, 191 | `new ImageData(...)` pro Frame mehrfach. Sollte einmalig beim Mount erfolgen, danach Buffer wiederverwenden. | ✅ behoben (Crossfade-Buffer persistent) |
+| AUDIT-05 | `components/FractalCanvas.tsx` (gesamt) | **Kein IntersectionObserver.** Panel rendert auch unsichtbar — größter Einzel-Hotspot bei Layout-Übergängen. | ✅ behoben (IO + raf-coordinator) |
+| AUDIT-06 | `panels/DemoScenes.tsx` : 799–800 | `ThreeBodyScene` läuft auf 640×480 = 307k Pixel internal — 4× teurer als alle anderen DemoScenes. | ✅ Auflösung auf 400×300 + zusätzlich 30-FPS-Cap (Commit `7833455`) |
+| AUDIT-07 | `App.tsx` : 1066–1083 | Während Slide-Animation (520 ms) sind `prevLayout` UND `layout` parallel im DOM. Alle Panels beider Layouts rendern gleichzeitig — doppelte Last für 520 ms pro Switch. | ✅ `contain: paint` plus globaler `raf-coordinator`-Pause-Switch fuer alle Panels (Iter. 2) |
+| AUDIT-08 | gesamt | Kein zentraler `rAF`-Coordinator. Jedes Panel registriert eigenen Loop. Bei 24+ Panels = 24+ separate Callbacks. Browser bündelt sie zwar, aber globale Throttling-Steuerung fehlt. | ✅ vollständig migriert (Commit `743d12b`) |
+| AUDIT-09 | AGENTS.md (vorher) | Doku-Fehler: COEP wurde als `require-corp` dokumentiert, tatsächlich ist es `credentialless` in `.htaccess` und `vite.config.ts`. **In dieser Version korrigiert.** | ✅ behoben |
+| AUDIT-10 | `components/FractalCanvas.tsx` : 52 | `MAX_PIXELS = 480000` (ca. 800×600). Korrekt im Sinne der Pixel-Quality-Policy (Kategorie B = scharf). Nicht senken — stattdessen WASM-Buffer-Sharing fixen, dann sind 480k Pixel günstig. | ✅ Bewertung bestätigt, kein Senken nötig |
+
+### Neue Befunde aus Iter. 2 (2026-05-29)
+
+| ID | Beschreibung | Status |
 |---|---|---|
-| AUDIT-01 | `wasm/src/lib.rs` : 32–61 | `render()` (Mandelbrot) allokiert pro Aufruf `vec![0u8; ...]`, gibt Vec zurück. Pro-Frame-Allokation + Memcopy über WASM-Grenze. |
-| AUDIT-02 | `wasm/src/lib.rs` : 86–135 | `render_julia()` ist korrekt: nimmt `&mut [u8]`, schreibt in vom Caller bereitgestelltem Buffer. Diese Variante ist Referenz für AUDIT-01. |
-| AUDIT-03 | `components/FractalCanvas.tsx` : 149 | `new Uint8ClampedArray(render(...))` pro Frame — Kopie der WASM-Ausgabe. Behebung gekoppelt an AUDIT-01. |
-| AUDIT-04 | `components/FractalCanvas.tsx` : 103, 173, 191 | `new ImageData(...)` pro Frame mehrfach. Sollte einmalig beim Mount erfolgen, danach Buffer wiederverwenden. |
-| AUDIT-05 | `components/FractalCanvas.tsx` (gesamt) | **Kein IntersectionObserver.** Panel rendert auch unsichtbar — größter Einzel-Hotspot bei Layout-Übergängen. |
-| AUDIT-06 | `panels/DemoScenes.tsx` : 799–800 | `ThreeBodyScene` läuft auf 640×480 = 307k Pixel internal — 4× teurer als alle anderen DemoScenes. |
-| AUDIT-07 | `App.tsx` : 1066–1083 | Während Slide-Animation (520 ms) sind `prevLayout` UND `layout` parallel im DOM. Alle Panels beider Layouts rendern gleichzeitig — doppelte Last für 520 ms pro Switch. |
-| AUDIT-08 | gesamt | Kein zentraler `rAF`-Coordinator. Jedes Panel registriert eigenen Loop. Bei 24+ Panels = 24+ separate Callbacks. Browser bündelt sie zwar, aber globale Throttling-Steuerung fehlt. |
-| AUDIT-09 | AGENTS.md (vorher) | Doku-Fehler: COEP wurde als `require-corp` dokumentiert, tatsächlich ist es `credentialless` in `.htaccess` und `vite.config.ts`. **In dieser Version korrigiert.** |
-| AUDIT-10 | `components/FractalCanvas.tsx` : 52 | `MAX_PIXELS = 480000` (ca. 800×600). Korrekt im Sinne der Pixel-Quality-Policy (Kategorie B = scharf). Nicht senken — stattdessen WASM-Buffer-Sharing fixen, dann sind 480k Pixel günstig. |
+| F-001 / F-002 | `isLowDetail()` allokierte `Map<number,number>` pro Frame in `FractalScenes` + `FractalJulia` — bei 800×600 ~30 000 `Map.set`/Frame, GC-Druck mit mehreren Fraktal-Panels. | ✅ Modul-Konstante + `clear()` (`3961b99`) |
+| H-01 | `findBoundaryNonBlack` in `FractalScenes` lief jedes Frame, in `FractalCanvas` war es bereits gedrosselt. | ✅ `% 4` Throttle (`de74281`) |
+| H-02 | `isLowDetail` lief jedes Frame, Ergebnis wird nur alle paar Sekunden ausgewertet. | ✅ `% 8` Throttle + Cache (`de74281`) |
+| H-03 | `VoxelDemoColor` / `VoxelDemoBW` ohne `React.memo`. | ✅ Memo (`c65ec3b`) |
+| H-04 | `ThreeBodyScene` 60-fps CPU-Render (480 000 RGBA-Bytes/Frame). | ✅ 30-FPS-Cap via neuer `makeScene(..., fpsCap)` (`7833455`) |
+| H-05 | 18 Panels weiterhin mit eigenem `requestAnimationFrame` statt zentraler raf-coordinator. | ✅ alle migriert (`743d12b`) |
+| H-08 | `canvas.setAttribute('data-zoom*')` pro Frame in den drei Fraktal-Pfaden — Playwright-Tests pollen ohnehin. | ✅ alle 8 Frames (`c65ec3b`) |
+| H-11 | Tunnel/Rotozoom/Metaballs/Plasma-Shader nutzten anisotropisches Coord-Mapping → Verzerrung bei nicht-4:3-Panels. | ✅ aspect-preserving Mapping (`c780297`) |
+| ProTracker | ScriptProcessorNode-Fallback lief auf Main-Thread und konnte die ganze Seite bremsen; VU-Bars zeigten nur Note-Trigger statt echte Pegel. | ✅ Hybrid-Reintegration aus Standalone (`034811e`, `c18cb4d`) |
+| Track-Mismatch | Concurrent `ModPlayer.load()`-Calls fuehrten zu Track-/UI-/Audio-Mismatch beim schnellen Wechsel. | ✅ Generation-Guards + atomare `play(modOverride)` (`0d6e2bd`) |
 
 ### Bestätigte Stärken (NICHT anrühren)
 
 Folgende Implementierungen sind solide und sollen erhalten bleiben:
 
-- **`panels/FractalJulia.tsx`** — Referenz-Implementierung. Gemeinsamer Buffer (Z. 134–136), IntersectionObserver, Auflösungs-Management, bidirektionaler Zoom mit `isLowDetail()`-Detection. Pattern für andere Fraktal-Panels.
-- **`utils/modplayer/`** — Vollständiger ProTracker-MOD-Player in TypeScript. Header-Validierung (Z. 17–28 in `loader.ts`), AudioWorklet auf modernen Browsern, ScriptProcessorNode-Fallback für Kompatibilität. Alle Standardeffekte implementiert (Arpeggio, Vibrato, Slides, Portamento). **Macht libopenmpt-WASM überflüssig — Roadmap-Punkt erledigt.**
-- **`utils/wasm-loader.ts`** — Korrekter Singleton. WASM wird einmal geladen, alle Panels teilen sich das Modul.
+- **`components/FractalGL.tsx`** — GPU-Fraktal-Renderer für ALLE Fraktal-Panels. WebGL-Shader (double-single), webgl-pool-Slot, zeitbasierte Animation, Offscreen-Nav-Readback, Crossfade. `FractalView`, `FractalJulia` und die `FractalScenes`-Familie sind dünne Wrapper darum.
+- **`utils/modplayer/`** — Vollständiger ProTracker-MOD-Player in TypeScript. Header-Validierung in `loader.ts`, AudioWorklet jetzt Pflicht (ScriptProcessorNode-Fallback wurde in Iter. 2 entfernt, da Main-Thread-blockierend). Alle Standardeffekte implementiert (Arpeggio, Vibrato, Slides, Portamento). **Macht libopenmpt-WASM überflüssig.** Standalone-Variante in `p_modplayer_singlehtml/` — Verbesserungen werden zwischen den Projekten hybridisiert.
 - **`utils/shared-audio.ts`** — Singleton AudioContext mit iOS-Audio-Session-Konfiguration. Genau richtig.
-- **`Cargo.toml`** — `opt-level = 3` und `lto = true` ergeben ein 23 KB WASM-Binary. Saubere Release-Konfiguration.
 - **`panels/DemoScenes.tsx` `makeScene`-Factory** — elegante DRY-Lösung. Gemeinsame Infrastruktur (Resize, IntersectionObserver, OffscreenCanvas, Cached ImageData), Variation nur im `draw`-Callback. **Hat bereits einen `pixelated`-Parameter (Z. 156) — nur Default umstellen, siehe Pixel-Quality-Policy.**
 - **`ui/PanelSlot.tsx`** — Kompakt und korrekt. Lokaler `localIdx`, Fade-Übergang via opacity, kein State-Lift zum Parent.
 - **`isAudioPlaying()` in `App.tsx`** Z. 434 — pragmatisches Audio-Detection, blockiert Auto-Switch bei laufendem Sound.
@@ -196,13 +218,14 @@ Folgende Implementierungen sind solide und sollen erhalten bleiben:
 
 ## Panel-Inventar
 
-### Fraktal-Panels (WASM-basiert) — Kategorie B (glatt)
+### Fraktal-Panels (GPU-Shader via FractalGL) — Kategorie B (glatt)
 
 | Datei | Inhalt |
 |---|---|
-| `components/FractalCanvas.tsx` | Mandelbrot, animierter Zoom durch 8 Koordinaten — als großes Hero-Panel über `FractalView` |
-| `panels/FractalJulia.tsx` | Julia-Menge, 6 Parameter-Paare, 12s-Zyklus, WASM `render_julia()` |
-| `panels/FractalScenes.tsx` | Aktive Mini-Panels: `FractalSeahorse`, `FractalSpiral`, `FractalLightning`, `FractalElephant`, `FractalMini`, `FractalSatellite`, `FractalTendril`, `FractalDragon`, `FractalDendrite`, `FractalSwirl` |
+| `components/FractalGL.tsx` | Gemeinsamer GPU-Renderer (Mandelbrot/Julia, double-single, Crossfade, HUD) |
+| `panels/FractalView.tsx` | Hero-Panel: Mandelbrot, animierter Zoom durch 8 Koordinaten |
+| `panels/FractalJulia.tsx` | Julia-Menge, 6 Parameter-Paare (Crossfade-Cycling, HUD) |
+| `panels/FractalScenes.tsx` | Mini-Panels: `FractalSeahorse`, `FractalSpiral`, `FractalLightning`, `FractalElephant`, `FractalMini`, `FractalSatellite`, `FractalTendril`, `FractalDragon`, `FractalDendrite`, `FractalSwirl` |
 
 ### Text-Panels (Hacker-Themen)
 
@@ -259,7 +282,7 @@ POOL_GFX        VoxelDemoColor, VoxelDemoBW, VoxelThermal, VoxelLava, VoxelNeon,
                 FractalDendrite, FractalSwirl, FractalJulia
 ```
 
-Auskommentierte/temporär entfernte Einträge: `GlobePanel`, `VoxelMatrix`, `LissajousScene`, `OscilloscopePanel`. Siehe `App.tsx` Z. 68–79 für aktuellen Stand.
+Aktueller Stand siehe `App.tsx` Z. 68–79. (Hinweis: `GlobePanel`, `VoxelMatrix` via `NeuralNetPanel`-Re-Export, `LissajousScene` in `DemoScenes.tsx` und `OscilloscopePanel` als `SpectrogramPanel` sind aktiv — frühere „temporär entfernt"-Notiz hier war veraltet.)
 
 ---
 
@@ -284,7 +307,7 @@ Auto-Switch alle 1–3 Minuten mit Slide-Animation (OS-Desktop-Stil, 520ms). Des
 | ID | Problem | Priorität |
 |---|---|---|
 | ~~BUG-01~~ | ~~AllYourBase CORS~~ | ~~Hoch~~ — **behoben** |
-| ~~BUG-02~~ | ~~Panels pausieren nicht wenn unsichtbar~~ | ~~Mittel~~ — **behoben** (IntersectionObserver, außer `FractalCanvas` — siehe QW-02) |
+| ~~BUG-02~~ | ~~Panels pausieren nicht wenn unsichtbar~~ | ~~Mittel~~ — **behoben** (IntersectionObserver in allen Canvas-Panels inkl. `FractalCanvas`) |
 | BUG-03 | Mehrere Canvas-Animationen können auf schwächerer Hardware frame-droppen | Mittel — wird durch Action Plan adressiert |
 
 ---
@@ -352,368 +375,13 @@ Historischer Block aus Review-Modus-JSON.
 
 ---
 
-# Action Plan — Quick-Wins (sofort, Code-Audit-basiert)
-
-> **Dies ist der Startpunkt für die nächste Coding-Session.** Alle Befunde sind verifiziert (siehe „Code-Audit-Befunde"). Die Reihenfolge ist optimiert für Einzel-Session-Implementation. Speed-first-Regel gilt.
-
-## QW-01 — WASM `render()` auf Buffer-Sharing umstellen
-
-**Datei:** `wasm/src/lib.rs`
-**Ziel:** Mandelbrot-Render verwendet das gleiche Pattern wie `render_julia()` (Z. 86–135).
-
-**Änderung:**
-1. Signatur von `render()` ändern: statt `fn render(width, height, params) -> Vec<u8>`, neu: `fn render(buf: &mut [u8], width: u32, height: u32, params: &RenderParams)`.
-2. `let mut buffer = vec![0u8; ...]` entfernen, direkt in `buf` schreiben.
-3. Am Ende kein `return buffer`, kein Rückgabewert.
-4. `RenderParams` bleibt unverändert.
-
-**Anschluss-Änderungen (im selben Commit):** alle JS-Aufrufer von `render()` müssen umgestellt werden:
-- `frontend/src/components/FractalCanvas.tsx` Z. 149 und Z. 190.
-- `frontend/src/panels/FractalScenes.tsx` — alle Fraktal-Mini-Panels, dort wo `render()` aufgerufen wird.
-
-**Pattern (siehe `FractalJulia.tsx` Z. 134–136 als Referenz):**
-```typescript
-const buf = new Uint8Array(W * H * 4)
-const pixels = new Uint8ClampedArray(buf.buffer, buf.byteOffset, buf.byteLength)
-const imgData = new ImageData(pixels, W, H)
-// pro Frame:
-render(buf, W, H, params)
-ctx.putImageData(imgData, 0, 0)
-```
-
-**Build-Schritt nicht vergessen:** Nach Rust-Änderung `wasm-pack build --release --target web` (siehe `DEV_GUIDE.md`).
-
-## QW-02 — `FractalCanvas.tsx` auf Referenz-Pattern bringen
-
-**Datei:** `frontend/src/components/FractalCanvas.tsx`
-
-**Änderungen (in dieser Reihenfolge):**
-
-1. **IntersectionObserver hinzufügen** (analog `FractalJulia.tsx` Z. 121–126):
-   - `let isVisible = true` vor dem `getWasmModule()`-Aufruf deklarieren.
-   - IO erzeugen, `canvas` beobachten.
-   - In der `frame()`-Funktion vor dem Render-Block: `if (!isVisible) { rafRef.current = requestAnimationFrame(frame); return }`.
-   - Cleanup-Funktion: `io.disconnect()`.
-
-2. **Buffer-Sharing umsetzen** (nach QW-01):
-   - Beim Setup (außerhalb von `frame`) Buffer + ImageData einmalig anlegen, basierend auf aktueller `canvas.width/height`.
-   - Bei Resize (im `ResizeObserver`-Callback) Buffer und ImageData neu anlegen.
-   - In `frame()`: kein `new Uint8ClampedArray(...)`, kein `new ImageData(...)`.
-
-3. **Crossfade-Allokation eliminieren** (Z. 103 `new ImageData(W, H)`):
-   - Drei persistente Buffer/ImageData-Paare: `prev`, `next`, `blend` (jeweils einmal beim Mount oder Resize).
-   - Im Crossfade-Block direkt in `blend.data` schreiben statt `new ImageData`.
-
-4. **`ctx.getImageData()` ersetzen** (Z. 180):
-   - Statt GPU-Readback: nach jedem Render einen Snapshot per `prev.data.set(pixels)` (`pixels` ist der Render-Buffer) machen — bleibt im CPU-Memory, kein Roundtrip.
-
-5. **`findBoundaryNonBlack()` drosseln** (Z. 246–282):
-   - Statt pro Frame: nur alle N Frames (z. B. 4) aufrufen. Frame-Counter im `stateRef`. Spart 75 % der Boundary-Suche.
-
-**Performance-Erwartung:** Faktor 5–8× weniger CPU-Last für dieses Panel, abhängig von Layout-Größe.
-
-**Wichtig — KEINE Auflösungs-Senkung:** `MAX_PIXELS = 480000` bleibt. Pixel-Quality-Policy Kategorie B verlangt scharfes Fraktal. Wenn nach allen anderen Fixes immer noch zu teuer auf großem Layout, dann perspektivisch GLSL-Migration — *nicht* weniger Pixel.
-
-## QW-03 — `ThreeBodyScene` Auflösung anpassen
-
-**Datei:** `frontend/src/panels/DemoScenes.tsx` Z. 799–800
-**Aktuelle Werte:** `640, 480` (= 307k Pixel internal).
-**Neue Werte:** `400, 300` (= 120k Pixel) — Pixel-Quality-Policy Kategorie B erlaubt Auflösungs-Anpassung wenn der Effekt nicht punkthaft, sondern „Field-artig" gerendert wird und das Hochskalieren mit Bilinear-Filter (nicht `pixelated`) glatt aussieht.
-
-**Anschluss-Änderung:** sicherstellen, dass das Panel **ohne** `imageRendering: pixelated` rendert (wird durch QW-04 generisch erledigt).
-
-**Performance-Erwartung:** Faktor ~2.5× günstiger.
-
-## QW-04 — `makeScene`-Default auf `pixelated: false` umstellen
-
-**Datei:** `frontend/src/panels/DemoScenes.tsx` Z. 44 und Z. 156
-**Aktueller Default:** `pixelated: boolean = true`.
-**Neuer Default:** `pixelated: boolean = false`.
-
-**Konsequenz:** Alle Scenes in dieser Datei rendern künftig mit Browser-Default-Filter (bilinear). Authentisch-pixelige Scenes müssen explizit `pixelated: true` als Argument bekommen — aktuell ist keine Scene in `DemoScenes.tsx` Kategorie A, also kein Override nötig.
-
-**Aufrufer prüfen:** Da der Parameter optional ist und alle Aufrufer aktuell den Default nutzen, ändert sich das Verhalten implizit. Visuelle Regression mit Playwright-Test prüfen (`tests/panel-check.spec.ts`).
-
-## QW-05 — `FractalCanvas` / Hero-Panel CSS-Filter umstellen
-
-**Datei:** `frontend/src/components/FractalCanvas.tsx` Z. 216
-**Aktuell:** `style={{ ..., imageRendering: 'pixelated' }}`.
-**Neu:** `style={{ ..., imageRendering: 'auto' }}` (oder einfach Property weglassen).
-
-**Pixel-Quality-Policy:** Fraktale sind Kategorie B. Bei einer dynamischen Render-Auflösung mit MAX_PIXELS-Cap rendert das Panel oft eh in Native-Nähe — wenn nicht, ist Bilinear-Filter passender als gepixelte Tiles.
-
-Gleiche Anpassung in `frontend/src/panels/FractalJulia.tsx` Z. 291 (steht aktuell auch auf `pixelated`).
-
-**Zusätzlich:** In `FractalJulia.tsx` die interne Auflösung `RENDER_W = 320, RENDER_H = 213` (Z. 101–102) erhöhen — Kategorie-B-Policy verlangt mehr. Vorschlag: dynamisch wie `FractalCanvas`, mit MAX_PIXELS-Cap (z. B. 240000 = ~600×400). Damit ist Julia auch bei großen Panel-Größen scharf.
-
-## QW-06 — `PlasmaDemo` und VoxelScenes CSS-Filter umstellen
-
-**Dateien:**
-- `frontend/src/panels/PlasmaDemo.tsx` Z. 214
-- `frontend/src/panels/VoxelScenes.tsx` Z. 772 (im `Panel`-Wrapper)
-
-**Aktuell:** `imageRendering: 'pixelated'`.
-**Neu:**
-- `PlasmaDemo` → `auto` (Kategorie B, Shader-Style). Außerdem die internen `W = Math.min(canvas.width, 200)` und `H = Math.min(canvas.height, 150)` (Z. 110–111) auf höhere Werte setzen — Vorschlag: 480 × 360 (= ~170k Pixel, immer noch günstig für CPU). Mit Bilinear-Filter sieht das Plasma auch auf großen Panels glatt aus.
-- `VoxelScenes` → `pixelated` beibehalten **vorerst** (Kategorie C — bis GPU-Migration in GL-04).
-
-**Hinweis:** Wenn ohne GPU-Migration die niedrige Voxel-Auflösung (480×300) auf großen Panels matschig aussieht, ist `pixelated` weiterhin das kleinere Übel. Erst nach GL-04 wird `auto`.
-
-## QW-07 — Layout-Slide: doppeltes Rendering reduzieren
-
-**Datei:** `frontend/src/App.tsx` Z. 1066–1083
-
-**Problem:** Während der 520ms-Slide-Animation rendern beide Layouts vollständig.
-
-**Lösung (pragmatisch):** dem `prevLayout`-Container `style={{ contain: 'paint' }}` mitgeben. `contain: paint` weist den Browser an, den Inhalt des Containers nicht in den Hauptdokument-Paint-Tree zu integrieren — die laufenden Canvases werden trotzdem gerendert, aber Layout-/Composite-Kosten der äußeren App reduzieren sich.
-
-```tsx
-{sliding && prevLayout !== null && (
-  <div
-    key={`out-${prevLayout.id}`}
-    className="absolute inset-0 p-1 layout-slide-out"
-    aria-hidden="true"
-    style={{ contain: 'paint' }}     // ← neu
-  >
-    <LayoutContent layout={prevLayout} onSkipSlot={() => {}} />
-  </div>
-)}
-```
-
-**Bessere Lösung (separate Session, siehe PERF-10):** zentraler `paused`-Flag im rAF-Coordinator, der während der Slide-Animation gesetzt wird. Verlangt aber, dass PERF-10 vorher umgesetzt ist.
-
-## QW-08 — AGENTS.md COEP-Korrektur
-
-**Status:** **Erledigt** — diese Version dokumentiert `credentialless` korrekt.
-
-## QW-09 — Verifikation per Playwright
-
-Nach allen Quick-Wins:
-```bash
-cd frontend
-npm run test:panels
-```
-
-Die Visualtests (`tests/panel-check.spec.ts`, `tests/review-all-panels.spec.ts`) sollen weiter grün sein. Screenshots in `tests/screenshots/panels/` werden ggf. neu generiert — kein Regressions-Problem, sondern erwartete visuelle Veränderung (besonders die Pixelated-Off-Umstellung).
-
----
-
-# Action Plan — Performance & Architektur (mittelfristig)
-
-Diese Punkte gehen über die Quick-Wins hinaus und sind eigenständige Sessions.
-
-## PERF-10 — Zentraler rAF-Coordinator
-
-**Ziel:** Statt 24+ separater `requestAnimationFrame`-Loops ein zentraler Ticker mit Subscription-API.
-
-**Skizze:**
-```ts
-// utils/raf-coordinator.ts
-const callbacks = new Set<(t: number) => void>()
-let running = false
-let rafId = 0
-let paused = false
-
-function tick(t: number) {
-  if (!paused) for (const cb of callbacks) cb(t)
-  if (callbacks.size > 0) rafId = requestAnimationFrame(tick)
-  else running = false
-}
-
-export function subscribe(cb: (t: number) => void): () => void {
-  callbacks.add(cb)
-  if (!running) { running = true; rafId = requestAnimationFrame(tick) }
-  return () => callbacks.delete(cb)
-}
-
-export function setPaused(p: boolean) { paused = p }
-```
-
-Panels rufen statt `requestAnimationFrame(frame)` ein `subscribe(frame)` auf und bekommen einen `unsubscribe()` zurück, der in der Cleanup-Funktion läuft.
-
-**Side-Benefit:** globale Pause (während Layout-Slide), globale 30-fps-Throttle möglich (für Mobile / weak hardware).
-
-**Migrations-Reihenfolge:** zuerst die teuersten Panels umstellen (Voxel, ThreeBody, Plasma), dann alle anderen. Kann inkrementell laufen, alte rAF-Loops koexistieren mit neuen Subscriptions.
-
-## PERF-11 — `React.memo` auf Panel-Komponenten
-
-**Verteidigung gegen versehentliche Parent-Re-Mounts.** Alle Panel-Komponenten mit `React.memo()` umhüllen. Equality-Funktion einfach: Panels akzeptieren keine Props (außer `onComplete`), also `() => true` reicht — Memo verhindert Re-Render solange der Parent es nicht durch `key`-Wechsel erzwingt.
-
-**Pattern pro Panel:**
-```ts
-export default React.memo(FractalJulia)
-```
-
-Bei Komponenten mit `onComplete`-Callback: `React.memo` mit Standard-Equality, aber sicherstellen, dass `onComplete` im Parent stabil ist (`useCallback`).
-
-## PERF-12 — Performance-Audit dokumentieren
-
-Nach QW-01 bis QW-09: Chrome DevTools Performance-Recording während eines Layout-Switches mit 6+ GFX-Panels. Ergebnis in `PERF_NOTES.md` festhalten — Vergleichswerte für künftige Refactorings.
-
----
-
-# Action Plan — WebGL-Infrastruktur (Voraussetzung für Demoszene-Shader)
-
-## GL-01 — `ShaderPanel.tsx` Basiskomponente
-
-**Datei:** `frontend/src/ui/ShaderPanel.tsx` (neu)
-
-**Funktion:** wiederverwendbare Wrapper-Komponente für Fragment-Shader-Rendering. API analog Shadertoy-Konvention:
-
-```tsx
-<ShaderPanel
-  fragmentShader={glslSource}      // String mit GLSL ES 1.00 / WebGL 1.0 Code
-  uniforms={{ iResolution, iTime, iMouse? }}
-  title="..."                       // an Panel-Wrapper durchreichen
-  maxResolution={{ w: 1280, h: 800 }} // optional, Performance-Cap
-/>
-```
-
-**Implementations-Notizen:**
-- WebGL 1.0 reicht für die meisten Demoszene-Shader und ist universell unterstützt.
-- Fullscreen-Quad-Vertex-Shader trivial (Standard-Pass-Through).
-- Uniforms automatisch aus Props ableiten; `iTime` aus `requestAnimationFrame`-Tick (zentraler Coordinator nach PERF-10).
-- `iResolution.xy` aus Canvas-Größe.
-- IntersectionObserver einbauen (Standard).
-- Adapter für Shadertoy-Konvention: wenn Shader-Source `void mainImage(out vec4 fragColor, in vec2 fragCoord)` definiert, automatisch ein Wrapper-Main einbauen, der das aufruft.
-- Native Auflösung (Pixel-Quality-Policy Kategorie B), KEIN `imageRendering: pixelated`.
-
-## GL-02 — WebGL-Kontext-Pool
-
-**Problem:** Browser limitieren WebGL-Kontexte auf 8–16 pro Tab.
-
-**Lösung:** ein `WebGLContextPool` mit fester Größe (z. B. 6 Slots). `ShaderPanel`-Komponenten fordern einen Slot an; wenn keiner frei, fallen sie auf einen statischen Frame oder CSS-Animation zurück (oder pausieren bis ein Slot frei wird).
-
-**Datei:** `frontend/src/utils/webgl-pool.ts`
-
-**Strategie:** LRU — wenn neues Panel einen Kontext braucht und alle belegt sind, wird das am längsten unsichtbare Panel ausgeworfen.
-
-## GL-03 — Migration CPU → GPU für Shader-suitable Panels
-
-In dieser Reihenfolge (jeweils eigene Session):
-
-1. `PlasmaDemo` — direktester Win, klassische 4-Wave-Sinus-Plasma in GLSL trivial
-2. `TunnelScene` — polar transform in fragment shader
-3. `MetaballsScene` — field calc per pixel, perfekt für fragment shader
-4. `RotozoomScene` — Affine-Sampling-Shader
-5. `FireScene` — etwas trickier wegen Heat-Propagation-State, aber als FBO-Ping-Pong umsetzbar
-6. `ThreeBodyScene` — N-Body-Sim auf CPU (kleines Set), Rendering auf GPU
-
-**Pro Migration:**
-- Alte CPU-Variante als Kommentar / `_legacy.tsx`-Datei aufbewahren (Storytelling-Wert für späteres Vergleichs-Demo).
-- Native Auflösung (kein `pixelated`), Performance-Cap nur für Mobile.
-- Visuell soll die GPU-Variante so nah wie möglich an der CPU-Variante sein, NICHT ein anderes Lookup-Pattern. Wer den Switch im Auto-Layout-Wechsel macht, soll keinen Style-Bruch sehen.
-
-## GL-04 — Voxel-Terrain auf GPU-Raymarching
-
-**Aktuell:** `VoxelDemo.tsx` und `VoxelScenes.tsx` (Thermal, Lava) — CPU-Raycasting bei 480×300.
-
-**Ziel:** Heightmap als WebGL-Textur, Fragment-Shader macht Raymarching durch Heightfield. Native Display-Auflösung.
-
-**Aufwand:** mittel. Heightmap-Generierung bleibt in JS (oder geht nach WASM), Upload als RG-Textur. Shader-Logik: pro Pixel `vec3 rayDir`, Steps entlang Strahl, Heightfield-Sample, Treffer-Schwellwert. Optional: Soft-Shadow, AO durch zusätzliche Schritte.
-
-**Nach Umsetzung:** `imageRendering: pixelated` aus Voxel-Panels entfernen, Pixel-Quality-Kategorie von C nach B befördern.
-
-## GL-05 — `ShaderPanel`-Hot-Reload (optional, nice-to-have)
-
-Shader-Sourcen als `.glsl`-Dateien in `frontend/public/shaders/`, geladen per `fetch()`. Erlaubt Updates ohne Vite-Rebuild. Nur sinnvoll, wenn viele externe Shader gepflegt werden.
-
----
-
-# Action Plan — Demoszene-Integration (kurz-/mittelfristig)
-
-Diese Punkte ergänzen das bestehende Inventar mit kuratierten Demoszene-Inhalten.
-
-## DEMO-01 — `ShadertoyPanel` mit kuratierten Shadern
-
-**Datei:** baut auf `ShaderPanel` (GL-01) auf.
-
-**Aufgaben:**
-1. 6–10 Shadertoy-Werke kuratieren. Auswahlkriterien:
-   - In 600×400 unter 2 ms Frame-Cost auf Apple-Silicon-Hardware
-   - Optisch beeindruckend, passt zur „Neural Intrusion Dashboard"-Ästhetik (= dunkel, technisch, optional grün-getönt)
-   - Keine kontroversen Inhalte, keine sexuellen Themen
-   - Lizenz Shadertoy-Standard CC-BY-NC-SA 3.0 (passt zu nicht-kommerzieller Webseite) oder freier (CC0, MIT)
-2. **Pflicht-Attribution:** kleines Footer-Overlay pro Shader-Panel mit Autor + Quell-Link.
-3. Suchempfehlungen auf shadertoy.com: Tags `procedural`, `2d`, `raymarching`, sortiert nach „Popular All-Time". Bevorzuge Werke von iq (Inigo Quilez), FabriceNeyret2, Shane, Mercury, nimitz.
-
-**Auswahl-Reihenfolge für Recherche:**
-- iq, Mountains (Raymarching-Klassiker, mäßig teuer)
-- iq, Mandelbox-Varianten (Fraktal — passt thematisch)
-- Shane, Tunnel- und Trip-Variationen
-- nimitz, SDF-Compositions
-- Shadertoy „Plasma"-Tags → mehrere passende, kurze Shader
-- Voronoi-Pattern-Werke (z. B. von Patapom)
-
-**Pixel-Quality-Policy:** Kategorie B, native Auflösung. KEIN `pixelated`.
-
-## DEMO-02 — `TixyPanel` (tixy.land-Stil)
-
-**Datei:** `frontend/src/panels/TixyPanel.tsx`
-
-**Konzept:** 16×16 oder 32×32 Pixel-Grid, eine mathematische Funktion pro Panel-Variante. Format wie tixy.land: `f(i, x, y, t) → [-1..1]`. **Eigene Funktionen schreiben** (keine fremden) — keine Lizenz-Frage.
-
-Beispiel-Funktionen für Variationen:
-- `sin(t - sqrt((x-7.5)**2 + (y-6)**2))`
-- `(x-y) * tan(t)`
-- `x**2 - y**2 + sin(t*3)`
-
-**Pixel-Quality-Policy-Sonderfall:** Tixy ist *per Konzept* grobpixelig (16×16!). Aber im Renderer als skaliertes Vektor-Grid mit *abgerundeten Kacheln* darstellen, nicht als `imageRendering: pixelated` Bitmap — die Kacheln werden CSS-/Canvas-gemalte Quadrate/Kreise (mit `roundRect` oder `arc`). Damit bleibt das Panel auf großen Layouts scharf.
-
-## DEMO-03 — `IQTechniquePanel` (Inigo-Quilez-Techniken, eigene Umsetzung)
-
-**Datei:** `frontend/src/panels/IQTechniquePanel.tsx`
-
-**Konzept:** 3–4 Varianten, eigenhändig in GLSL umgesetzt nach den IQ-Articles (https://iquilezles.org/articles/). Da Eigenimplementierung: keine Lizenz-Frage.
-
-Themen:
-- SDF + smoothmin (z. B. blobby spheres)
-- FBM (Fractional Brownian Motion) Noise-Wolken
-- Domain-Repetition (unendliche Säulen)
-- Cheap Soft-Shadow
-- Distance Field Combinations (union, intersection, smooth-union)
-
-**Pixel-Quality-Policy:** Kategorie B, native Auflösung.
-
-## DEMO-04 — `LovebyteShowcasePanel` (Sizecoding-Geist, eigene Effekte)
-
-**Datei:** `frontend/src/panels/LovebyteShowcasePanel.tsx`
-
-**Konzept:** Im Geist der Lovebyte-256B-Compo. Eigene minimalistische Effekte (Plasma-Varianten, Moiré-Patterns, IFS, „Mire"-artige Interferenzmuster) — in GLSL als ultra-kompakte Shader. Statt einer einzelnen 256-Byte-Demo: ein Panel, das durch 5–8 selbstgeschriebene Mini-Shader rotiert (alle 30 s eine andere Formel). Subtitel im Panel zeigt die GLSL-Quellzeile (passt zur Hacker-Dashboard-Ästhetik).
-
-**Pixel-Quality-Policy:** Kategorie B, native Auflösung.
-
-## DEMO-05 — Lizenz- und Attribution-Infrastruktur
-
-**Datei:** `frontend/src/data/licenses.json`
-
-**Format:**
-```json
-{
-  "shader_snail": {
-    "source": "https://www.shadertoy.com/view/ld3Gz2",
-    "author": "Inigo Quilez (iq)",
-    "license": "CC-BY-NC-SA-3.0",
-    "modifications": "Verkleinerter Step-Count für 60fps in 600x400",
-    "attribution": "Snail by iq"
-  }
-}
-```
-
-**Build-Schritt:** beim Build prüfen, dass jeder Shader, der nicht selbst geschrieben ist, einen Eintrag hat. Footer-Seite „Credits" rendert die Liste automatisch.
-
-## DEMO-06 — Audio-Fokus-Modell
-
-**Problem:** Wenn DEMO-Panels mit Audio dazukommen (z. B. js-dos für Heaven 7), kollidieren sie mit `AmiModPanel` und `AllYourBase`.
-
-**Lösung:** zentrale `AudioFocus`-State im App-Level. Nur **ein** Audio-Panel gleichzeitig hörbar. UI-Modell:
-- Beim Mount sind alle Audio-Panels gemutet.
-- Klick auf einen „Focus"-Button (oder das Panel selbst) gibt Audio frei. Vorheriger Focus wird automatisch entzogen.
-- Bei Layout-Wechsel automatischer Reset des Focus (außer das Panel bleibt im neuen Layout).
-
-`isAudioPlaying()` in `App.tsx` Z. 434 wird in dieses Modell integriert: Auto-Switch wartet nur, wenn ein Audio-Focus aktiv ist.
-
----
+# Erledigte Action-Plans → ARCHIVE.md
+
+Die abgeschlossenen Action-Plans (Quick-Wins QW-01..09, Performance PERF-10..12,
+WebGL-Infrastruktur GL-01..05, Demoszene-Integration kurz-/mittelfristig DEMO-01..06)
+wurden nach `ARCHIVE.md` ausgelagert, um diese Datei schlank zu halten. Der aktuelle
+Umsetzungsstand steht in `AUDIT_FINDINGS.md` und `PERF_NOTES.md`. Die langfristige
+Roadmap (LR-*) folgt unten.
 
 # Action Plan — Demoszene-Integration (langfristig)
 
@@ -877,6 +545,6 @@ Falls FraktalLab je außerhalb des privaten Showcases gezeigt wird:
 - **Speed-first-Regel weiterhin gültig:** jeder Eintrag > eine Session wird in Teilschritte zerlegt. Halbfertiges wird nicht committed.
 - **Demoszene-Etiquette:** Autoren werden namentlich genannt, Originalquellen verlinkt, Modifikationen dokumentiert. Die Szene ist klein und vernetzt — gute Attribution zahlt sich aus.
 - **Visualtests laufen lassen:** nach jedem Refactoring `npm run test:panels` und ggf. Review-Modus durchklicken. `tests/screenshots/panels/*.png` als Diff-Quelle.
-- **WASM-Builds nicht vergessen:** Änderungen in `wasm/src/lib.rs` brauchen `wasm-pack build` (siehe `DEV_GUIDE.md`).
+- **Kein WASM mehr:** Fraktale laufen auf GPU-Shadern (`FractalGL`/`fractal-gl-shader.ts`). Kein Rust/`wasm-pack`-Build. Frühere Audit-Tabellen (AUDIT-01/QW-01 etc.) und Action-Plan-Einträge, die `wasm/src/lib.rs` erwähnen, sind historisch.
 - **Bei Unsicherheit zwischen „CPU-Optimierung" und „GPU-Migration":** wenn das Panel Kategorie B ist und auf großen Layouts > 1 Vollbild-Renderpass macht, ist GPU-Migration der richtige Weg. CPU-Mikro-Optimierungen lohnen sich nur bei Panels, die ohnehin CPU bleiben (Vektor, Text, retro-authentic).
 - **Wenn ein Quick-Win unerwartete Visual-Regressions erzeugt** (anders aussehende Panels im Playwright-Diff): Pixel-Quality-Policy konsultieren, prüfen ob das Panel in Kategorie A oder B fällt, danach entscheiden ob die neue Darstellung gewünscht ist oder ob ein `pixelated: true` Override für dieses Panel die Lösung ist.

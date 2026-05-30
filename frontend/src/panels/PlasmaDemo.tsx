@@ -33,15 +33,18 @@ const PLASMA_SHADER = `
 
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float ts = iTime;
-    
-    // Skalierung passend zur originalen CPU-Auflösung für identische Wellenformen
+
+    // Aspect-preserving virtual coords (siehe TUNNEL_SHADER in DemoScenes.tsx):
+    // einheitlicher Skalenfaktor in beiden Achsen verhindert Verzerrung von
+    // radialen Plasma-Mustern bei nicht-4:3-Panels.
     float originalW = min(iResolution.x, 480.0);
     float originalH = min(iResolution.y, 360.0);
-    vec2 p = fragCoord.xy * vec2(originalW, originalH) / iResolution.xy;
-    
+    float scale = min(iResolution.x / originalW, iResolution.y / originalH);
+    vec2 p = (fragCoord.xy - iResolution.xy * 0.5) / scale + vec2(originalW, originalH) * 0.5;
+
     float x = p.x;
     float y = p.y;
-    
+
     float cx = x - originalW / 2.0;
     float cy = y - originalH / 2.0;
     float r = length(vec2(cx, cy));

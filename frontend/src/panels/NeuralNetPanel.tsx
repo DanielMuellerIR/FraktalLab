@@ -1,5 +1,8 @@
 import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
+// Zentraler rAF-Coordinator: bündelt alle Panel-Animationen in einer einzigen
+// requestAnimationFrame-Schleife. Siehe AUDIT_FINDINGS.md H-05.
+import { subscribe } from '../utils/raf-coordinator'
 
 interface Node {
   x: number
@@ -21,12 +24,18 @@ function NeuralNetPanel() {
   useEffect(() => {
     const canvas = canvasRef.current!
     const ctx = canvas.getContext('2d')!
-    let raf: number
+    // Unsubscribe-Handle vom zentralen raf-coordinator; null = nicht abonniert.
+    let unsubscribe: (() => void) | null = null
     let alive = true
 
-    let isVisible = true
+    // IntersectionObserver: bei Unsichtbarkeit komplett vom rAF-Coordinator abmelden,
+    // statt nur Frames ohne Zeichnen zu verbrauchen.
     const io = new IntersectionObserver(([e]) => {
-      isVisible = e.isIntersecting
+      if (e.isIntersecting) {
+        if (!unsubscribe && alive) unsubscribe = subscribe(loop)
+      } else {
+        if (unsubscribe) { unsubscribe(); unsubscribe = null }
+      }
     })
     io.observe(canvas)
 
@@ -50,8 +59,6 @@ function NeuralNetPanel() {
 
     function loop(t: number) {
       if (!alive) return
-      raf = requestAnimationFrame(loop)
-      if (!isVisible) return
 
       const W = canvas.width
       const H = canvas.height
@@ -145,10 +152,11 @@ function NeuralNetPanel() {
       ctx.fillText(`ACTIVE_NODES: ${nodes.length} // COMPILING_STREAM: OK`, 10, 30)
     }
 
-    raf = requestAnimationFrame(loop)
+    // Beim zentralen rAF-Coordinator abonnieren — loop wird bei jedem Tick automatisch aufgerufen.
+    unsubscribe = subscribe(loop)
     return () => {
       alive = false
-      cancelAnimationFrame(raf)
+      if (unsubscribe) { unsubscribe(); unsubscribe = null }
       ro.disconnect()
       io.disconnect()
     }

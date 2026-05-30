@@ -1,5 +1,8 @@
 import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
+import { subscribe } from '../utils/raf-coordinator'
+
+// Frame-Loop laeuft ueber den zentralen raf-coordinator (siehe AUDIT_FINDINGS.md H-05).
 
 // Farbzuordnung für die vier DNA-Basen
 // A = Adenin (grün), T = Thymin (cyan), C = Cytosin (magenta), G = Guanin (gelb)
@@ -23,12 +26,20 @@ function DNAHelix() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    let rafId: number
+    // Cleanup-Funktion vom raf-coordinator. Wird beim Sichtbar-Werden gesetzt
+    // und beim Verbergen wieder genullt, damit das Panel im Hintergrund keinen
+    // Frame-Slot belegt.
+    let unsubscribe: (() => void) | null = null
     let alive = true
     // IntersectionObserver: Animation pausieren wenn Panel nicht sichtbar ist
-    let isVisible = true
     const io = new IntersectionObserver(
-      ([entry]) => { isVisible = entry.isIntersecting },
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          if (!unsubscribe) unsubscribe = subscribe(loop)
+        } else {
+          if (unsubscribe) { unsubscribe(); unsubscribe = null }
+        }
+      },
       { threshold: 0.1 },
     )
     io.observe(canvas)
@@ -46,8 +57,7 @@ function DNAHelix() {
     // ── RAF-Loop ─────────────────────────────────────────────────────────────
     function loop(t: number) {
       if (!alive) return
-      // Panel nicht sichtbar → Frame überspringen, aber Loop fortsetzen
-      if (!isVisible) { rafId = requestAnimationFrame(loop); return }
+      // Sichtbarkeit wird jetzt ueber sub/unsub im IntersectionObserver geregelt.
 
       // Aktuelle Canvas-Dimensionen dynamisch lesen
       const W = canvas!.width
@@ -55,7 +65,6 @@ function DNAHelix() {
 
       // Sicherheitscheck: falls Canvas noch keine Größe hat, überspringen
       if (W === 0 || H === 0) {
-        rafId = requestAnimationFrame(loop)
         return
       }
 
@@ -260,16 +269,15 @@ function DNAHelix() {
         ctx!.fillText(base, 2 + labelW + i * charW, tickerY)
       }
       ctx!.globalAlpha = 1
-
-      rafId = requestAnimationFrame(loop)
     }
 
-    rafId = requestAnimationFrame(loop)
+    // Initiale Anmeldung beim raf-coordinator (Panel ist initial sichtbar).
+    unsubscribe = subscribe(loop)
 
     // Cleanup beim Unmount
     return () => {
       alive = false
-      cancelAnimationFrame(rafId)
+      if (unsubscribe) unsubscribe()
       ro.disconnect()
       io.disconnect()
     }

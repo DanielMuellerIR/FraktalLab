@@ -1,0 +1,36 @@
+{
+  "tag": "baseline-90215e6",
+  "baseURL": "http://localhost:4173",
+  "sampleMs": 10000,
+  "scenarios": [
+    {
+      "scenario": "M-01 default-grid @1920",
+      "frames": 67,
+      "median": 150,
+      "p95": 166.68,
+      "p99": 333.53,
+      "max": 333.53,
+      "over16": 100,
+      "fps": 6.8,
+      "longTasks": 68,
+      "longTaskMax": 331
+    },
+    {
+      "scenario": "M-03 dense-grid @2560",
+      "frames": 120,
+      "median": 83.34,
+      "p95": 92.57,
+      "p99": 199.1,
+      "max": 200.9,
+      "over16": 100,
+      "fps": 12,
+      "longTasks": 112,
+      "longTaskMax": 203
+    }
+  ],
+  "memory": {
+    "heapBeforeMB": 4.57,
+    "heapAfterMB": 4.38,
+    "growthMB": -0.18
+  }
+}
