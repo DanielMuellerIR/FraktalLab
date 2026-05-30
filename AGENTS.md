@@ -3,7 +3,9 @@
 Universelle Referenz für alle Coding-Agents und KI-Modelle.
 Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 
-> **Hinweis für die nächste Session:** Die Datei wurde am 2026-05-28 nach einem ersten Code-Audit und am 2026-05-29 nach einem zweiten Audit (Branch `audit/2026-05-29`, 23 Commits) überarbeitet. Phase 1 (Inventur) und Phase 2 (Hypothesen + Fixes) sind abgeschlossen. Sämtliche Quick-Wins, Performance-Hypothesen H-01…H-08 und H-11 sind umgesetzt. **Offen:** Phase 3 = Mess-Baseline gegen Pre-`5264baf`-Commit; Phase 5 = Demoscene-Panel-Inhaltliches-Audit. Details siehe `AUDIT_FINDINGS.md`. Status-Tabellen pro Sektion sind ebenfalls aktualisiert.
+> **Neuer Agent — Branch-Check zuerst:** Audit läuft auf Branch `audit/2026-05-29`. Bist du schon dort? `git status` prüfen. Wenn nein: `git checkout audit/2026-05-29`. **NICHT** einen neuen Branch anlegen (auch wenn `blueprint_audit.md` §"Erste Schritte" das anweist — das galt nur für den ersten Audit-Aufschlag).
+>
+> **Hinweis für die nächste Session:** Die Datei wurde am 2026-05-28 nach einem ersten Code-Audit und am 2026-05-29 nach einem zweiten Audit (Branch `audit/2026-05-29`, 25 Commits) überarbeitet. Phase 1 (Inventur) und Phase 2 (Hypothesen + Fixes) sind abgeschlossen. Sämtliche Quick-Wins, Performance-Hypothesen H-01…H-08 und H-11 sind umgesetzt. **Offen:** Phase 3 = Mess-Baseline gegen Pre-`5264baf`-Commit; Phase 5 = Demoscene-Panel-Inhaltliches-Audit. Details siehe `AUDIT_FINDINGS.md`. Status-Tabellen pro Sektion sind ebenfalls aktualisiert.
 
 ---
 
