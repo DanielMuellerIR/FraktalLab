@@ -36,13 +36,13 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 > - [ ] **RW-22 `LissajousScene`** — Hintergrund-Kreuz weg, aggressivere Parameter-Variation
 >
 > ### Tier 4 — Fraktal-Parameter-Tweaks
-> - [ ] **RW-23 `FractalSpiral`** — Gegen Uhrzeigersinn, kontinuierlicher Hue-Shift
-> - [ ] **RW-24 `FractalElephant`** — Tumbling raus, andere Farben (weg von grün/orange)
-> - [ ] **RW-25 `FractalMini`** — Mehr Koordinaten-Varianz, langsamerer Zoom, längerer Zyklus
-> - [ ] **RW-26 `FractalSatellite`** — Tumbling raus
-> - [ ] **RW-27 `FractalDragon`** — Kürzere Full-Red-Verweilzeit (schnellerer Crossfade)
-> - [ ] **RW-28 `FractalSwirl`** — Zoom-Tiefe reduzieren (verhindert Pixel-Blowup)
-> - [ ] **RW-29 `FractalView`** — Tumbling raus, Max-Zoom-Tiefe reduzieren
+> - [x] **RW-23 `FractalSpiral`** — Gegen Uhrzeigersinn, kontinuierlicher Hue-Shift
+> - [x] **RW-24 `FractalElephant`** — Tumbling raus, andere Farben (weg von grün/orange)
+> - [x] **RW-25 `FractalMini`** — Mehr Koordinaten-Varianz, langsamerer Zoom, längerer Zyklus
+> - [x] **RW-26 `FractalSatellite`** — Tumbling raus
+> - [x] **RW-27 `FractalDragon`** — Kürzere Full-Red-Verweilzeit (schnellerer Crossfade)
+> - [x] **RW-28 `FractalSwirl`** — Zoom-Tiefe reduzieren (verhindert Pixel-Blowup)
+> - [x] **RW-29 `FractalView`** — Tumbling raus, Max-Zoom-Tiefe reduzieren
 
 ---
 

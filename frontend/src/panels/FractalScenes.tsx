@@ -123,15 +123,17 @@ export const FractalMini = makeFractalScene(
   'MINI-MANDELBROT // DEEP FIELD',
   'mandelbrot',
   [
-    { cx: -1.7534, cy: 0.0016 },
-    { cx: -1.6256, cy: 0.0019 },
-    { cx: -1.75,   cy: 0.0 }, // Added third location for more variety
+    { cx: -1.7534,  cy: 0.0016 },
+    { cx: -1.6256,  cy: 0.0019 },
+    { cx: -1.75,    cy: 0.0 },
+    { cx: -1.7682,  cy: 0.00178 }, // extra variety
+    { cx: -1.6310,  cy: -0.0012 },
   ],
   null,
   120,
   undefined,
-  1.5e5, // Prevent over-zooming
-  { zoomRate: 0.4, rotateRate: 0.03, startZoom: 100 } // Slower and less rotational motion
+  8e4, // Lower cap to prevent pixel blowup
+  { zoomRate: 0.3, rotateRate: 0.02, startZoom: 80 } // Slower zoom, longer cycle
 )
 
 export const FractalDragon = makeFractalScene(
@@ -142,7 +144,7 @@ export const FractalDragon = makeFractalScene(
   200,
   'neon',
   1e10,
-  { startZoom: 220, rotateRate: 0.08, zoomRate: 0.6 } // Start slightly closer to avoid flat start
+  { startZoom: 220, rotateRate: 0.08, zoomRate: 0.6, hueShiftSpeed: 35.0 } // Faster hue shift = shorter red dwell
 )
 
 export const FractalSatellite = makeFractalScene(
@@ -179,8 +181,8 @@ export const FractalSwirl = makeFractalScene(
   null,
   220,
   'invert',
-  1e10,
-  { fadeZoomCeil: 1.2e5, zoomRate: 0.65 } // Earlier fade and slower zoom to avoid pixelation
+  5e4, // Much lower cap — prevents pixel-blowup at extreme zoom
+  { fadeZoomCeil: 8e4, zoomRate: 0.5 } // Slower zoom + earlier fade
 )
 
 export const FractalTendril = makeFractalScene(

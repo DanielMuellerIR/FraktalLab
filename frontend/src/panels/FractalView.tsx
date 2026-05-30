@@ -31,10 +31,10 @@ export default memo(function FractalView() {
           mode="mandelbrot"
           locations={LOCATIONS}
           maxIter={128}
-          zoomMax={1.5e6}
+          zoomMax={5e5}
           rotateRate={0}
-          fadeZoomCeil={1.5e5}
-          zoomRate={0.6}
+          fadeZoomCeil={1e5}
+          zoomRate={0.5}
         />
       </div>
     </div>
