@@ -17,7 +17,7 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 > - [x] **RW-05 `VoxelDemoBW`** — Komplett neu: z.B. Overhead-Contourmap oder Spiral-Descent
 > - [x] **RW-06 `NeuralNetPanel` (VoxelMatrix)** — Mehr Nodes, Topologie-Wechsel, farbcodierte Subnetze, Attack/Defense-Pakete
 > - [x] **RW-07 `CADRobotPanel`** — Kindische Roboter ersetzen durch Hard-Sci-Fi: Industriearm, Mech-Walker, Satellit, Drone
-> - [ ] **RW-08 `OscilloscopePanel`** — Chiptune-Player mit SID-Emulation + Visualizer
+> - [x] **RW-08 `OscilloscopePanel`** — Chiptune-Player mit SID-Emulation + Visualizer
 > - [ ] **RW-09 `ShaderHackingCore`** — Mass-Effect-Hacking-Spiel: konzentrische Ringe, rotierende Segmente, Bypass-Nodes
 > - [ ] **RW-10 `NeuralLinkDecoderPanel`** — Mehr Nodes, schärfer, kein Grün, Hard-Sci-Fi-Palette
 >
