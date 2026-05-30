@@ -1025,8 +1025,8 @@ export const DotCloudScene = React.memo(function DotCloudScene() {
 
     function initNodes() {
       nodes = []
-      // 300 actual nodes in a 3D spherical shell / nebula
-      for (let i = 0; i < 300; i++) {
+      // 450 actual nodes in a 3D spherical shell / nebula (300+ nodes)
+      for (let i = 0; i < 450; i++) {
         const u = Math.random()
         const v = Math.random()
         const theta = u * 2.0 * Math.PI
@@ -1037,7 +1037,7 @@ export const DotCloudScene = React.memo(function DotCloudScene() {
           x: radius * Math.sin(phi) * Math.cos(theta),
           y: radius * Math.sin(phi) * Math.sin(theta),
           z: radius * Math.cos(phi),
-          colorIdx: i % 3
+          colorIdx: i % 4
         })
       }
     }
@@ -1053,11 +1053,17 @@ export const DotCloudScene = React.memo(function DotCloudScene() {
       ctx.fillStyle = '#020108'
       ctx.fillRect(0, 0, W, H)
 
-      const time = t * 0.0004
-      const cosY = Math.cos(time)
-      const sinY = Math.sin(time)
-      const cosX = Math.cos(time * 0.4)
-      const sinX = Math.sin(time * 0.4)
+      // Continuous multi-axis camera orbit
+      const orbitY = t * 0.00045
+      const orbitX = t * 0.00025 + 0.3 * Math.sin(t * 0.0001)
+      const orbitZ = t * 0.00015
+      
+      const cosY = Math.cos(orbitY)
+      const sinY = Math.sin(orbitY)
+      const cosX = Math.cos(orbitX)
+      const sinX = Math.sin(orbitX)
+      const cosZ = Math.cos(orbitZ)
+      const sinZ = Math.sin(orbitZ)
 
       const focalLength = 300
       const zoom = 1.0 + 0.35 * Math.sin(t * 0.0003) // Elegant breathing zoom
@@ -1070,7 +1076,7 @@ export const DotCloudScene = React.memo(function DotCloudScene() {
       }
       const projected: ProjectedNode[] = []
 
-      // 1. Rotate and project all 300 nodes
+      // 1. Rotate and project all nodes
       for (const n of nodes) {
         // Rotate around Y axis
         let x1 = n.x * cosY - n.z * sinY
@@ -1080,16 +1086,27 @@ export const DotCloudScene = React.memo(function DotCloudScene() {
         let y2 = n.y * cosX - z1 * sinX
         let z2 = n.y * sinX + z1 * cosX
 
+        // Rotate around Z axis
+        let x3 = x1 * cosZ - y2 * sinZ
+        let y3 = x1 * sinZ + y2 * cosZ
+
         // Perspective projection
         const scale = (focalLength / (focalLength + z2)) * zoom
-        const sx = W / 2 + x1 * scale * (W / 640) * 1.6
-        const sy = H / 2 + y2 * scale * (H / 480) * 1.6
+        const sx = W / 2 + x3 * scale * (W / 640) * 1.6
+        const sy = H / 2 + y3 * scale * (H / 480) * 1.6
 
         projected.push({ sx, sy, sz: z2, node: n })
       }
 
       // Sort by depth (z) for correct painter's rendering
       projected.sort((a, b) => b.sz - a.sz)
+
+      const colors = [
+        { r: 255, g: 46,  b: 126 }, // neon fuchsia
+        { r: 0,   g: 240, b: 220 }, // bright teal
+        { r: 145, g: 60,  b: 255 }, // deep violet
+        { r: 255, g: 170, b: 40  }  // neon amber
+      ]
 
       // 2. Draw connections (only close nodes in 3D to look like a constellation)
       ctx.lineWidth = 0.5
@@ -1110,9 +1127,8 @@ export const DotCloudScene = React.memo(function DotCloudScene() {
             const depthAlpha = (1.0 - (pi.sz + pj.sz + 320) / 640)
             const alpha = Math.max(0, Math.min(1.0, distAlpha * depthAlpha * 0.42))
             
-            ctx.strokeStyle = pi.node.colorIdx === 0 
-              ? `rgba(0, 195, 255, ${alpha.toFixed(3)})` 
-              : `rgba(255, 0, 180, ${alpha.toFixed(3)})`
+            const c = colors[pi.node.colorIdx]
+            ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha.toFixed(3)})`
               
             ctx.beginPath()
             ctx.moveTo(pi.sx, pi.sy)
@@ -1130,11 +1146,8 @@ export const DotCloudScene = React.memo(function DotCloudScene() {
         // Depth-fade
         const alpha = Math.max(0.15, Math.min(1.0, 1.0 - (p.sz + 160) / 320))
         
-        ctx.fillStyle = p.node.colorIdx === 0 
-          ? `rgba(0, 230, 255, ${alpha.toFixed(3)})` 
-          : p.node.colorIdx === 1
-          ? `rgba(255, 50, 200, ${alpha.toFixed(3)})`
-          : `rgba(240, 230, 255, ${alpha.toFixed(3)})`
+        const c = colors[p.node.colorIdx]
+        ctx.fillStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha.toFixed(3)})`
 
         ctx.beginPath()
         ctx.arc(p.sx, p.sy, size, 0, Math.PI * 2)
@@ -1153,7 +1166,7 @@ export const DotCloudScene = React.memo(function DotCloudScene() {
       ctx.font = '8px monospace'
       ctx.fillStyle = 'rgba(240, 230, 255, 0.4)'
       ctx.fillText(`NEURAL POINT CLOUD // COGNITIVE NEBULA`, 15, 18)
-      ctx.fillText(`NODES: 300 // RATING: OPTIMAL // ZOOM: x${zoom.toFixed(2)}`, 15, 28)
+      ctx.fillText(`NODES: 450 // RATING: OPTIMAL // ZOOM: x${zoom.toFixed(2)}`, 15, 28)
     }
 
     unsubscribe = subscribe(loop)
