@@ -262,6 +262,12 @@ test.describe(`Perf-Messung [${PERF_TAG}]`, () => {
   })
 
   test.afterAll(async () => {
+    // Schutz: bei gefilterten Läufen (z.B. -g "M-06b") sind keine Frame-Szenarien
+    // gelaufen → NICHT die Vergleichs-JSON mit leeren Daten überschreiben.
+    if (results.scenarios.length === 0 && !results.memory) {
+      console.log('[PERF] Keine Frame-/Memory-Szenarien gelaufen — Vergleichs-JSON unangetastet.')
+      return
+    }
     mkdirSync('tests/perf-results', { recursive: true })
     const path = `tests/perf-results/${PERF_TAG}.json`
     writeFileSync(path, JSON.stringify(results, null, 2))
