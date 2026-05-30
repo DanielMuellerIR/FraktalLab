@@ -200,8 +200,34 @@ Main-Thread-Entlastung, nicht GPU:
   konsequent; `raf-coordinator` pausiert nur bei Layout-Switch, nicht pro Off-Screen-Panel).
 - **Canvas-2D-Hotpaths in Worker/OffscreenCanvas** auslagern (Fraktale, Voxel-Raycaster).
 - **Review-Modus:** nur das aktive Panel animieren, die drei inaktiven der 4er-Seite
-  einfrieren (Standbild) — würde M-07 direkt entlasten.
+  einfrieren — würde M-07 direkt entlasten. ✅ **umgesetzt** (siehe §7).
 - Erst danach lohnen weitere GPU-Migrationen.
+
+---
+
+## 7. Umgesetzte Maßnahmen (B-4)
+
+### M-1 — Review-Modus: nur aktives Panel animieren
+
+`App.tsx`: in der 2x2-Review-Seite mountet nur noch das **aktive** Panel live; die
+drei inaktiven Slots zeigen den statischen Platzhalter `FrozenReviewSlot` (Pausen-
+Symbol + Panel-Name, klickbar). Damit animiert zu jedem Zeitpunkt nur ein Panel.
+
+| Metrik (M-07, M5-Max-GPU) | vorher | nachher | Faktor |
+|---|---|---|---|
+| Median | 108.3 ms | **66.7 ms** | ~1.6× |
+| FPS | 9.1 | **17.8** | ~2× |
+
+→ Klare Verbesserung des Akzeptanzfalls, **aber 60 FPS noch nicht erreicht**. Grund:
+schon **ein einzelnes** großflächig gerendertes Fraktal-Panel kostet ~60 ms/Frame
+Main-Thread-Zeit (WASM-Render + `putImageData` + Boundary-Scan bei Review-Auflösung).
+Die 66.7 ms ≈ ~60 ms reale Arbeit, quantisiert aufs 60-Hz-rAF-Raster — **kein**
+FPS-Cap im Code (geprüft). Daten: `HEAD-gpu-fix.json`.
+
+**Restengpass = Single-Panel-Kosten, auflösungsgebunden.** Nächste Hebel für echte
+60 FPS im Fraktal-Hero: interne Render-Auflösung im Review deckeln (kleiner rendern,
+hochskalieren) oder den Fraktal-Renderer auf GPU/WebGL migrieren. Beide mit sichtbarem
+Qualitäts-/Aufwand-Tradeoff → Abstimmung mit Auftraggeber.
 
 ---
 

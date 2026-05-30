@@ -1,0 +1,19 @@
+{
+  "tag": "HEAD-gpu-fix",
+  "baseURL": "http://localhost:4173",
+  "sampleMs": 10000,
+  "scenarios": [
+    {
+      "scenario": "M-07 review 4-panel fractal @1920",
+      "frames": 177,
+      "median": 66.67,
+      "p95": 75.91,
+      "p99": 83.35,
+      "max": 109.24,
+      "over16": 76.8,
+      "fps": 17.8,
+      "longTasks": 134,
+      "longTaskMax": 112
+    }
+  ]
+}

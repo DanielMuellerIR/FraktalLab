@@ -445,6 +445,32 @@ ALL_PANELS.forEach(p => {
   p.Component = memo(p.Component) as any
 })
 
+// ── Eingefrorener Review-Slot ────────────────────────────────────────────────
+//
+// Performance-Hintergrund (Audit-Befund B-4, siehe PERF_NOTES.md): die App ist
+// Main-Thread-/CPU-gebunden, nicht GPU-gebunden. Im Review-Modus rendert die
+// 2x2-Seite vier Panels gleichzeitig — wenn alle vier live animieren, summiert
+// sich ihre Canvas-2D-/JS-Last auf dem Haupt-Thread. Gemessen: der geforderte
+// 60-FPS-Akzeptanzfall (M-07) lieferte so nur ~9 FPS auf einer Apple Apple-Silicon-Hardware.
+//
+// Lösung: nur das AKTIVE Panel wird live gemountet (animiert); die drei inaktiven
+// Slots zeigen statt der laufenden Komponente diesen leichten Platzhalter. Sobald
+// der Nutzer einen Slot anklickt, wird er aktiv und mountet live. So animiert zu
+// jedem Zeitpunkt nur ein Panel — der Haupt-Thread wird drastisch entlastet.
+function FrozenReviewSlot({ name }: { name: string }) {
+  return (
+    <div className="h-full w-full bg-black flex flex-col items-center justify-center gap-2 select-none">
+      {/* Pausen-Symbol als ruhiger visueller Anker */}
+      <div className="text-green-800 text-2xl leading-none">❚❚</div>
+      {/* Panel-Name, damit die Seite weiterhin navigierbar/orientierbar bleibt */}
+      <div className="font-mono text-xs tracking-wider text-green-700">{name}</div>
+      <div className="font-mono text-[10px] tracking-wider text-green-900">
+        [ KLICKEN ZUM AKTIVIEREN ]
+      </div>
+    </div>
+  )
+}
+
 // ── localStorage-Helfer für Reviews ──────────────────────────────────────────
 
 /** Ein einzelner Review-Eintrag */
@@ -951,7 +977,10 @@ export default function App() {
                           }`}
                           onClick={() => goToPanel(idx)}
                         >
-                          <Comp />
+                          {/* Nur das aktive Panel animiert live (B-4: Main-Thread
+                              entlasten). Inaktive Slots zeigen einen statischen
+                              Platzhalter und mounten erst beim Anklicken. */}
+                          {isActive ? <Comp /> : <FrozenReviewSlot name={panel.name} />}
                           {/* Review-Mode-Marker: Index + Kurzname des Panels.
                               Sitzt oben rechts ueber der Title-Bar des Panels
                               (rechte Seite dort ist leer, ausser dem Pulse-

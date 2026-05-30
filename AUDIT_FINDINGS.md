@@ -235,7 +235,7 @@ Alle in Phase 1 + Phase 2 identifizierten Befunde wurden in derselben Session um
 | H-05 | `743d12b` | 20 Panels auf zentralen `raf-coordinator` migriert |
 | H-06 | erledigt vor Audit | `handleSkipSlot`/`handleSkipMobileSlot` schon mit `useCallback` |
 | H-07 | ✅ widerlegt | Phase 3 gemessen (`PERF_NOTES.md`): WASM byte-identisch zur Baseline, kein eindeutiger Frame-Time-Regress. H-07 **nicht bestätigt**. B-3 (Heap +9 MB) per Forced-GC-Diagnose M-06b als GC-Sägezahn entlarvt — kein Leak. Kein nachweisbarer Regress übrig. |
-| **B-4 (neu)** | ⚠ offen | **Zentraler Perf-Befund:** App ist Main-Thread-/CPU-bound, nicht GPU-bound. Headed M5-Max-GPU-Messung ≈ Software-Rasterizer; 60-FPS-Akzeptanzfall (Review 4-Panel-Fraktal) nur **9 FPS**. Maßnahmen: Main-Thread-Entlastung statt GPU-Migration (`PERF_NOTES.md` §5). |
+| **B-4 (neu)** | ⚠ teilw. adressiert | **Zentraler Perf-Befund:** App ist Main-Thread-/CPU-bound, nicht GPU-bound. Headed M5-Max-GPU-Messung ≈ Software-Rasterizer; 60-FPS-Akzeptanzfall (Review 4-Panel-Fraktal) nur **9 FPS**. **Maßnahme M-1 umgesetzt:** Review-Modus animiert nur noch das aktive Panel (`FrozenReviewSlot`) → M-07 9→18 FPS (`PERF_NOTES.md` §7). 60 FPS noch nicht erreicht: Restengpass = Single-Fraktal-Kosten (~60 ms/Frame, auflösungsgebunden). Nächste Hebel: Review-Render-Auflösung deckeln oder Fraktal-GPU-Migration. |
 | H-11 (neu) | `c780297` | Aspect-preserving Coord-Mapping in Tunnel/Rotozoom/Metaballs/Plasma |
 | ProTracker-Reintegration | `034811e`, `c18cb4d`, `0d6e2bd` | Standalone-Hybrid: kein ScriptProcessor-Fallback, echte VU-Pegel, EMA, Race-Fix |
 | ProTracker-Features | `553347a`, `614d5b5`, `164a7ca`, `569bd90`, `c42659f`, `c931285` | Drop/Picker, Scrubber, 13-Track-Set + Attribution |
