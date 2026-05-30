@@ -30,7 +30,7 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 > - [x] **RW-16 `VoxelThermal`** — Rendering-Artefakte fixen, Soft-Vertical-Fade oben
 > - [x] **RW-17 `VoxelLava`** — Anderer Flugpfad (Overhead/Spiral), eigenständiger Terrain-Charakter
 > - [x] **RW-18 `VectorHudPanel` (VoxelNeon)** — Shape-Morphing zwischen Hypercube-Varianten, Zoom-Pulsing
-> - [ ] **RW-19 `MetaballsScene`** — Split bei Kollision, dynamische Blob-Anzahl 2–8
+> - [x] **RW-19 `MetaballsScene`** — Split bei Kollision, dynamische Blob-Anzahl 2–8
 > - [ ] **RW-20 `DotCloudScene`** — 300+ Nodes, kontinuierlicher Kamera-Orbit, modern Color
 > - [ ] **RW-21 `RotozoomScene`** — Trampolin-Effekt: ease-in-out Bounce-Physik
 > - [x] **RW-22 `LissajousScene`** — Hintergrund-Kreuz weg, aggressivere Parameter-Variation

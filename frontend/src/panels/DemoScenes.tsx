@@ -884,31 +884,61 @@ const METABALLS_SHADER = `
     vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;
     float ts = iTime * 0.85;
     
+    // Dynamic number of active balls: cycles between 2 and 8
+    float activeBalls = 5.0 + 3.0 * sin(ts * 0.25);
+    
     float sum = 0.0;
     vec3 colorSum = vec3(0.0);
     
-    for (int i = 0; i < 5; i++) {
+    // Trajectories for collision detection
+    vec2 pos0 = vec2(0.32 * sin(ts * 1.1), 0.20 * cos(ts * 0.85));
+    vec2 pos1 = vec2(-0.28 * cos(ts * 0.9), -0.18 * sin(ts * 1.05));
+    float dist01 = length(pos0 - pos1);
+    
+    // Collision detection: triggers split when parent balls collide
+    float collideVal = smoothstep(0.35, 0.15, dist01);
+    float splitAmt0 = mix(0.08, 0.38 + 0.12 * sin(ts * 8.0), collideVal);
+    
+    vec2 pos3 = vec2(0.25 * cos(ts * 0.7), -0.22 * cos(ts * 1.2));
+    vec2 pos4 = vec2(-0.32 * sin(ts * 0.95), 0.22 * sin(ts * 0.65));
+    float dist34 = length(pos3 - pos4);
+    float collideVal2 = smoothstep(0.40, 0.20, dist34);
+    float splitAmt1 = mix(0.06, 0.34 + 0.10 * cos(ts * 9.5), collideVal2);
+
+    for (int i = 0; i < 8; i++) {
+        float active = step(float(i), activeBalls - 0.5);
+        
         vec2 pos = vec2(0.0);
-        float radius = 0.07 + 0.01 * sin(ts + float(i));
-        float hue = float(i) * 72.0 + ts * 15.0;
+        float radius = 0.075 + 0.015 * sin(ts + float(i));
+        float hue = float(i) * 45.0 + ts * 15.0;
         
         if (i == 0) {
-            pos = vec2(0.35 * sin(ts * 1.2), 0.22 * cos(ts * 0.95));
+            pos = pos0;
         } else if (i == 1) {
-            pos = vec2(-0.3 * cos(ts * 0.85), -0.2 * sin(ts * 1.15));
+            pos = pos1;
         } else if (i == 2) {
-            float split = sin(ts * 2.5) * 0.5 + 0.5;
-            vec2 parent = vec2(0.35 * sin(ts * 1.2), 0.22 * cos(ts * 0.95));
-            pos = parent + vec2(0.18 * split * sin(ts * 3.0), 0.18 * split * cos(ts * 3.0));
-            radius *= 0.75;
+            // Child of Ball 0, splits on collision
+            pos = pos0 + vec2(splitAmt0 * sin(ts * 5.0), splitAmt0 * cos(ts * 5.0));
+            radius *= 0.7;
         } else if (i == 3) {
-            pos = vec2(0.28 * cos(ts * 0.75), -0.24 * cos(ts * 1.3));
-        } else {
-            pos = vec2(-0.35 * sin(ts * 1.05), 0.25 * sin(ts * 0.7));
+            pos = pos3;
+        } else if (i == 4) {
+            pos = pos4;
+        } else if (i == 5) {
+            // Child of Ball 1, splits on collision
+            pos = pos1 + vec2(-splitAmt0 * cos(ts * 4.5), splitAmt0 * sin(ts * 4.5));
+            radius *= 0.65;
+        } else if (i == 6) {
+            pos = vec2(0.20 * sin(ts * 1.4), 0.18 * cos(ts * 1.6));
+        } else if (i == 7) {
+            // Child of Ball 3, splits on collision
+            pos = pos3 + vec2(splitAmt1 * cos(ts * 6.0), -splitAmt1 * sin(ts * 6.0));
+            radius *= 0.6;
         }
         
         float d = length(uv - pos);
         float w = (radius * radius) / (d * d + 0.0001);
+        w *= active;
         sum += w;
         
         vec3 ballCol = hsl2rgb(vec3(mod(hue, 360.0) / 360.0, 0.95, 0.55));
@@ -930,7 +960,10 @@ const METABALLS_SHADER = `
     
     float glow = exp(-abs(sum - threshold) * 2.5);
     vec3 outlineCol = mix(vec3(0.0, 0.95, 0.95), vec3(0.9, 0.08, 0.85), sin(ts * 0.5) * 0.5 + 0.5);
-    col += outlineCol * glow * 0.8;
+    
+    // Extra visual burst flash during collisions
+    vec3 flashCol = vec3(1.0, 0.9, 0.7) * (collideVal + collideVal2) * 0.4;
+    col += (outlineCol + flashCol) * glow * 0.8;
     
     col += outlineCol * sum * 0.02;
 
