@@ -218,46 +218,60 @@ function drawTrackingBarGlitch(
   }
   ctx.restore()
 
-  // 2. Durchscheinender Hintergrund-Unterleger (dashboard shines through!)
-  ctx.fillStyle = `rgba(15, 15, 15, ${darkUnderlayOpacity * intensity})`
-  const wrappedY = (barY + H) % H
-  if (wrappedY + barH > H) {
-    ctx.fillRect(0, wrappedY, W, H - wrappedY)
-    ctx.fillRect(0, 0, W, barH - (H - wrappedY))
-  } else {
-    ctx.fillRect(0, wrappedY, W, barH)
+  // 2. Durchscheinender Hintergrund-Unterleger mit vertikalem Fade-Out (kein Kasten!)
+  if (darkUnderlayOpacity > 0) {
+    const grad = ctx.createLinearGradient(0, barY, 0, barY + barH)
+    grad.addColorStop(0, 'rgba(15, 15, 15, 0)')
+    grad.addColorStop(0.2, `rgba(15, 15, 15, ${darkUnderlayOpacity * intensity})`)
+    grad.addColorStop(0.8, `rgba(15, 15, 15, ${darkUnderlayOpacity * intensity})`)
+    grad.addColorStop(1, 'rgba(15, 15, 15, 0)')
+    ctx.fillStyle = grad
+    
+    const wrappedY = (barY + H) % H
+    if (wrappedY + barH > H) {
+      ctx.fillRect(0, wrappedY, W, H - wrappedY)
+      ctx.fillRect(0, 0, W, barH - (H - wrappedY))
+    } else {
+      ctx.fillRect(0, wrappedY, W, barH)
+    }
   }
 
-  // 3. Stoerstreifen (feine Linien - der Kern ist hell, der Rest schwach)
+  // 3. Stoerstreifen (feine Linien - der Kern ist hell, der Rest schwach und lückenhaft)
   ctx.save()
   if (blurRadius > 0) {
     ctx.filter = `blur(${blurRadius}px)`
   }
 
   for (let i = 0; i < streakDensity; i++) {
-    // Verteilung konzentriert um das Zentrum des Stoerstreifens
-    const angle = (Math.random() - 0.5) * Math.PI
-    const offset = Math.sin(angle) * (barH * 0.5)
+    // Generiere Streifen über einen leicht vergroesserten Bereich, um sanft auszufaden
+    const offset = (Math.random() - 0.5) * barH * 1.5
     const y = (barY + barH / 2 + offset + H) % H
+
+    const distToCenter = Math.abs(offset)
+    const normalizedDist = distToCenter / (barH * 0.75) // 0 im Zentrum, 1 an der äußeren Grenze
+    const fadeOut = Math.max(0, 1 - normalizedDist)
+
+    // Wahrscheinlichkeit fuer Luecken steigt quadratisch nach aussen (voller Luecken)
+    if (Math.random() > fadeOut * fadeOut) {
+      continue
+    }
 
     const len = 10 + Math.random() * 140
     const x = Math.random() * W
     
-    // Kern-Erkennung (die inneren 25% der Barhöhe)
-    const distToCenter = Math.abs(offset)
-    const normalizedDist = distToCenter / (barH * 0.5)
-    const isCore = normalizedDist < 0.25
+    // Kern-Erkennung (die inneren 15%)
+    const isCore = normalizedDist < 0.15
 
-    // Kern ist deutlich heller, äußere Bereiche sind sehr schwach/durchscheinend
+    // Kern ist extrem hell/deckend, äußere Bereiche sind fast unsichtbar und faden aus
     let baseAlpha = 0
     if (variant === 3) {
       baseAlpha = isCore 
-        ? (0.90 + Math.random() * 0.10) 
-        : (0.04 + Math.random() * 0.06)
+        ? (0.92 + Math.random() * 0.08) 
+        : (0.03 + Math.random() * 0.04) * fadeOut
     } else {
       baseAlpha = isCore 
         ? (0.75 + Math.random() * 0.25) 
-        : (0.10 + Math.random() * 0.20)
+        : (0.08 + Math.random() * 0.15) * fadeOut
     }
 
     let color = 'rgba(252,252,252,'
