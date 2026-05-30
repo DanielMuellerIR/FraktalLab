@@ -5,61 +5,113 @@ import ShaderPanel from '../ui/ShaderPanel'
 const HACKING_CORE_SHADER = `
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;
-    float time = iTime * 0.8;
+    float time = iTime * 0.9;
     
-    vec3 baseCol = vec3(1.0, 0.55, 0.1);
-    vec3 accentCol = vec3(1.0, 0.8, 0.3);
-    vec3 warningCol = vec3(0.9, 0.15, 0.05);
+    vec3 baseCol = vec3(1.0, 0.50, 0.08);    // Amber
+    vec3 accentCol = vec3(1.0, 0.85, 0.2);   // Light Amber
+    vec3 warningCol = vec3(1.0, 0.15, 0.05);  // Alert Red
+    vec3 passCol = vec3(0.05, 0.95, 0.45);    // Success Green
     
     vec3 col = vec3(0.0);
     
-    vec2 gridUv = uv * 35.0;
-    float grid = step(0.95, fract(gridUv.x)) * step(0.95, fract(gridUv.y));
-    col += baseCol * grid * 0.08 * exp(-length(uv) * 1.2);
+    // Background matrix/hex grid
+    vec2 gridUv = uv * 30.0;
+    float grid = step(0.96, fract(gridUv.x)) * step(0.96, fract(gridUv.y));
+    col += baseCol * grid * 0.05 * exp(-length(uv) * 1.5);
     
     float d = length(uv);
     float angle = atan(uv.y, uv.x);
     
-    float coreRadius = 0.18 + 0.008 * sin(time * 5.0);
-    float coreGlow = exp(-abs(d - coreRadius) * 28.0);
-    col += baseCol * coreGlow * 1.5;
+    // 1. Center Core (Hexagonal or Circular interface)
+    float coreRadius = 0.14 + 0.005 * sin(time * 6.0);
+    float coreGlow = exp(-abs(d - coreRadius) * 35.0);
+    col += baseCol * coreGlow * 1.2;
     
     if (d < coreRadius) {
-        float pattern = abs(sin(d * 80.0 - time * 6.0));
-        float sectors = step(0.15, fract(angle * 4.0 / 3.14159));
-        col += accentCol * pattern * sectors * (1.0 - d / coreRadius) * 0.6;
+      // Rotating data segments inside core
+      float sectors = step(0.12, fract(angle * 6.0 / 6.28318 + time * 0.5));
+      float ringInside = step(0.08, d) * (1.0 - step(coreRadius - 0.015, d));
+      col += accentCol * sectors * ringInside * 0.6;
+      
+      // Success lock blinking inside core
+      float lockPulse = step(0.5, sin(time * 5.0)) * step(d, 0.06);
+      col += passCol * lockPulse * 0.8;
     }
     
-    float ring1 = exp(-abs(d - 0.28) * 60.0);
-    float select1 = step(0.35, sin(angle * 6.0 + time * 2.2));
-    col += baseCol * ring1 * select1 * 0.9;
+    // 2. Concentric Hacking Rings with gaps
+    // Ring 1 (Inner: radius 0.22)
+    float ring1 = exp(-abs(d - 0.22) * 90.0);
+    float seg1 = step(0.35, fract(angle * 4.0 / 6.28318 + time * 0.4));
+    col += baseCol * ring1 * seg1 * 1.1;
     
-    float ring2 = exp(-abs(d - 0.35) * 80.0);
-    float nodeAngle = angle - time * 0.8;
-    float nodeSelect = step(0.85, cos(nodeAngle * 8.0));
-    col += mix(baseCol * 0.5, accentCol * 2.2, nodeSelect) * ring2;
+    // Ring 2 (Middle: radius 0.32)
+    float ring2 = exp(-abs(d - 0.32) * 90.0);
+    float seg2 = step(0.28, fract(angle * 6.0 / 6.28318 - time * 0.6));
+    col += baseCol * ring2 * seg2 * 1.1;
     
-    float ring3 = exp(-abs(d - 0.42) * 50.0);
-    float arcSelect = step(-0.2, sin(angle * 3.0 - time * 1.2));
-    col += baseCol * ring3 * arcSelect * 0.7;
+    // Ring 3 (Outer: radius 0.42)
+    float ring3 = exp(-abs(d - 0.42) * 90.0);
+    float seg3 = step(0.4, fract(angle * 8.0 / 6.28318 + time * 0.3));
+    col += baseCol * ring3 * seg3 * 1.1;
+
+    // 3. Bypass Nodes (Pair-matching nodes on the middle ring)
+    // We define 6 nodes at fixed angular steps on Ring 2
+    for (int i = 0; i < 6; i++) {
+      float nodeAng = float(i) * (6.28318 / 6.0) + sin(time * 0.2) * 0.1;
+      vec2 nodePos = vec2(cos(nodeAng), sin(nodeAng)) * 0.32;
+      float distToNode = length(uv - nodePos);
+      
+      // Draw outer circle for node
+      float nodeRing = exp(-abs(distToNode - 0.018) * 150.0);
+      col += accentCol * nodeRing * 0.8;
+      
+      // Inner glowing core
+      float nodeCore = exp(-distToNode * 160.0);
+      // Highlight matching pairs using colors or pulsing
+      vec3 nodeCol = (i == 1 || i == 4) ? passCol : ((i == 2 || i == 5) ? warningCol : baseCol);
+      float pulse = 0.6 + 0.4 * sin(time * 8.0 + float(i));
+      col += nodeCol * nodeCore * pulse * 2.0;
+      
+      // Draw connecting bypass lines between matched pairs
+      if (i < 3) {
+        float nextAng = float(i + 3) * (6.28318 / 6.0) + sin(time * 0.2) * 0.1;
+        vec2 nextNodePos = vec2(cos(nextAng), sin(nextAng)) * 0.32;
+        
+        // Distance from pixel uv to the segment line linking nodePos and nextNodePos
+        vec2 lineDir = nextNodePos - nodePos;
+        float lineLen = length(lineDir);
+        vec2 lineNorm = lineDir / lineLen;
+        vec2 relUv = uv - nodePos;
+        float proj = dot(relUv, lineNorm);
+        float distToLine = length(relUv - lineNorm * clamp(proj, 0.0, lineLen));
+        
+        if (distToLine < 0.003 && proj > 0.0 && proj < lineLen) {
+          float flow = step(0.9, fract(proj * 20.0 - time * 8.0));
+          col += nodeCol * (0.15 + 0.45 * flow) * exp(-distToLine * 40.0);
+        }
+      }
+    }
     
-    float targetLine = smoothstep(0.006, 0.0, abs(uv.x)) * step(abs(uv.y), 0.06) +
-                       smoothstep(0.006, 0.0, abs(uv.y)) * step(abs(uv.x), 0.06);
-    col += accentCol * targetLine * exp(-d * 3.0);
-    
-    float border = exp(-abs(d - 0.48) * 120.0);
-    col += baseCol * border * 0.8;
-    
-    float sweepAngle = time * 1.5;
+    // 4. Sweeping bypass scanner line
+    float sweepAngle = time * 1.6;
     vec2 sweepDir = vec2(cos(sweepAngle), sin(sweepAngle));
     float distToSweep = length(uv - sweepDir * clamp(dot(uv, sweepDir), 0.0, 0.48));
-    float sweepGlow = exp(-distToSweep * 45.0) * step(0.0, dot(uv, sweepDir));
-    col += accentCol * sweepGlow * 0.45;
+    float sweepGlow = exp(-distToSweep * 65.0) * step(0.0, dot(uv, sweepDir));
+    col += baseCol * sweepGlow * 0.55;
     
-    float warnNode = step(0.96, cos(angle - 1.2)) * step(0.92, sin(time * 4.0));
-    float ring4 = exp(-abs(d - 0.45) * 70.0);
-    col += warningCol * ring4 * warnNode * 2.0;
+    // Sweeper beam head/spark
+    vec2 beamHead = sweepDir * 0.44;
+    float headSpark = exp(-length(uv - beamHead) * 90.0);
+    col += accentCol * headSpark * 1.5;
     
+    // 5. Border overlay & Reticle
+    float border = exp(-abs(d - 0.48) * 160.0);
+    col += baseCol * border * 0.8;
+    
+    float tick = step(0.985, cos(angle * 48.0)) * step(0.46, d) * (1.0 - step(0.48, d));
+    col += accentCol * tick * 0.6;
+    
+    // CRT Scan lines
     col *= 0.9 + 0.1 * sin(fragCoord.y * 2.2);
     col *= 1.0 - d * 0.65;
     
