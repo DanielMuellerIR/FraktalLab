@@ -396,21 +396,45 @@ function makeVoxelScene(
         const targetSpeed = Math.sqrt(c.targetVx*c.targetVx + c.targetVy*c.targetVy)
         if (targetSpeed < speedMin) { c.targetVx += (Math.random()-0.5)*1.0; c.targetVy += (Math.random()-0.5)*1.0 }
         if (targetSpeed > speedMax) { c.targetVx *= speedMax/targetSpeed; c.targetVy *= speedMax/targetSpeed }
+        let camH = 100
+        let roll = 0.0
 
-        c.x = ((c.x + c.vx * dt/16) % HMAP + HMAP) % HMAP
-        c.y = ((c.y + c.vy * dt/16) % HMAP + HMAP) % HMAP
-        c.angle += c.va * dt/16
+        if (title.includes('LAVA')) {
+          // Volcanic spiral orbit trajectory around map center (256, 256)
+          const centerX = 256.0
+          const centerY = 256.0
+          const orbitRadius = 150.0 + 85.0 * Math.sin(t * 0.00015)
+          const orbitAngle = t * 0.00022
+          
+          c.x = centerX + Math.cos(orbitAngle) * orbitRadius
+          c.y = centerY + Math.sin(orbitAngle) * orbitRadius
+          // Dynamic camera orientation looking inward with lead angle
+          c.angle = orbitAngle + Math.PI + 0.38 * Math.cos(t * 0.00025)
+          
+          const tx = Math.floor(c.x) & (HMAP - 1)
+          const ty = Math.floor(c.y) & (HMAP - 1)
+          let terrainAtCam = heightmap[ty * HMAP + tx]
+          if (waveGlsl) {
+            terrainAtCam += Math.sin(tx * 0.15 + t * 0.003) * 6.0
+          }
+          // Steep 3D dive/rise cycle
+          const heightCycle = Math.sin(t * 0.00035) * 0.5 + 0.5 // 0..1
+          camH = Math.max(terrainAtCam + camHFloor, camHBase + camHAmp * (heightCycle * 3.8 - 1.2))
+          roll = 0.55 * Math.sin(t * 0.0003) // Dynamic banking roll
+        } else {
+          c.x = ((c.x + c.vx * dt/16) % HMAP + HMAP) % HMAP
+          c.y = ((c.y + c.vy * dt/16) % HMAP + HMAP) % HMAP
+          c.angle += c.va * dt/16
 
-        const tx = Math.floor(c.x) & (HMAP - 1)
-        const ty = Math.floor(c.y) & (HMAP - 1)
-        let terrainAtCam = heightmap[ty * HMAP + tx]
-        if (waveGlsl) {
-          terrainAtCam += Math.sin(tx * 0.15 + t * 0.003) * 6.0
+          const tx = Math.floor(c.x) & (HMAP - 1)
+          const ty = Math.floor(c.y) & (HMAP - 1)
+          let terrainAtCam = heightmap[ty * HMAP + tx]
+          if (waveGlsl) {
+            terrainAtCam += Math.sin(tx * 0.15 + t * 0.003) * 6.0
+          }
+          camH = Math.max(terrainAtCam + camHFloor, camHBase + camHAmp * Math.sin(t * 0.0004))
+          roll = 0.0
         }
-        const camH = Math.max(terrainAtCam + camHFloor, camHBase + camHAmp * Math.sin(t * 0.0004))
-
-        // Dynamic roll for lava flow (slow rotation)
-        const roll = title.includes('LAVA') ? (t * 0.0002) % (Math.PI * 2) : 0.0
 
         const u = uniformsRef.current
         u.uCamPos[0] = c.x
@@ -418,7 +442,6 @@ function makeVoxelScene(
         u.uAngle = c.angle
         u.uCamH = camH
         u.uRoll = roll
-
         // Rekursiver rAF-Aufruf entfaellt: subscribe ruft loop() jeden Tick.
       }
 
@@ -633,14 +656,27 @@ export const VoxelThermal = makeVoxelScene(
   },
 )
 
-// Lava: heightmap with extra high frequencies
-const hmLava = buildHeightmap([
-  { sx: 0.008, sy: 0.006, amp: 28 },
-  { sx: 0.022, sy: 0.017, amp: 52, px: 2.3, py: 1.1 },
-  { sx: 0.053, sy: 0.041, amp: 22, px: 0.9, py: 3.2 },
-  { sx: 0.11,  sy: 0.083, amp: 18, px: 1.5, py: 0.8 },
-  { sx: 0.22,  sy: 0.166, amp: 9,  px: 3.1, py: 2.4 },
-])
+// Lava: heightmap with extra high frequencies and ridged features
+const hmLava = (() => {
+  const hm = new Uint8Array(HMAP * HMAP)
+  for (let y = 0; y < HMAP; y++) {
+    for (let x = 0; x < HMAP; x++) {
+      let n1 = Math.sin(x * 0.008) * Math.cos(y * 0.006)
+      let n2 = Math.sin(x * 0.022 + 2.3) * Math.cos(y * 0.017 + 1.1)
+      let n3 = Math.sin(x * 0.053 + 0.9) * Math.cos(y * 0.041 + 3.2)
+      let n4 = Math.sin(x * 0.11 + 1.5) * Math.cos(y * 0.083 + 0.8)
+      
+      let r1 = 1.0 - Math.abs(n1)
+      let r2 = 1.0 - Math.abs(n2)
+      let r3 = 1.0 - Math.abs(n3)
+      let r4 = 1.0 - Math.abs(n4)
+      
+      let v = 45 + 115 * r1 + 65 * (r2 * r2) + 25 * r3 + 12 * r4
+      hm[y * HMAP + x] = Math.max(0, Math.min(255, Math.round(v)))
+    }
+  }
+  return hm
+})()
 
 // ── Variante: NEON GRID ───────────────────────────────────────────────────────
 const NEON_GLSL_COLOR = `
