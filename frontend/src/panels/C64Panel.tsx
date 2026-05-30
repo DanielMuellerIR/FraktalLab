@@ -20,7 +20,7 @@ const CURSOR_CLR = '#a2a2ff'   // Cursor block - matches text
 // ── C64 Text Mode: 40 Columns × 25 Rows ─────────────────────────────────────
 const COLS = 40
 const ROWS = 25
-const BORDER_FRAC = 0.10
+const BORDER_FRAC = 0.05
 
 // ── Scroller text for the demo ────────────────────────────────────────────────
 const SCROLL_TXT =

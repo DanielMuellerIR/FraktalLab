@@ -22,6 +22,36 @@ const MOON_SHADER = `
                    mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)),f.x),f.y),f.z);
   }
 
+  vec3 uvToSphere(vec2 uv) {
+    float lon = (uv.x * 2.0 - 1.0) * 3.1415926535;
+    float lat = (uv.y * 2.0 - 1.0) * 1.5707963268;
+    return vec3(cos(lat) * sin(lon), sin(lat), cos(lat) * cos(lon));
+  }
+
+  float getProceduralHeight(vec2 uv) {
+    float h = texture2D(uHeightmap, uv).r;
+    vec3 p = uvToSphere(uv);
+    
+    // Multi-scale rugged lunar highland mountains
+    float n = noise(p * 24.0) * 0.038
+            + noise(p * 50.0) * 0.016
+            + noise(p * 110.0) * 0.007;
+            
+    // High-frequency micro impact craters
+    float microCraters = sin(noise(p * 150.0) * 6.28318) * 0.0035;
+    
+    // Highlands are much more rugged than smooth dark basaltic maria
+    float roughness = smoothstep(0.35, 0.65, h);
+    h += (n + microCraters) * (0.15 + roughness * 1.35);
+    
+    // Wall slumping and terraced steps inside craters (intermediate elevations) - Branchless
+    float inRange = step(0.22, h) * step(h, 0.78);
+    float terrace = sin(h * 38.0) * 0.015 * (1.0 - abs(h - 0.5) * 2.0);
+    h += terrace * inRange;
+    
+    return h;
+  }
+
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;
 
@@ -52,13 +82,18 @@ const MOON_SHADER = `
 
       // === Bump mapping with larger epsilon and much stronger perturbation ===
       vec2 eps = vec2(0.004, 0.0);
-      float h_c = texture2D(uHeightmap, texUV).r;
-      float h_l = texture2D(uHeightmap, texUV - eps.xy).r;
-      float h_r = texture2D(uHeightmap, texUV + eps.xy).r;
-      float h_d = texture2D(uHeightmap, texUV - eps.yx).r;
-      float h_u = texture2D(uHeightmap, texUV + eps.yx).r;
 
-      float bumpStrength = 2.5;
+      // High-frequency UV distortion to make crater outlines/rims organically rugged
+      float uvNoise = noise(rotatedP * 220.0) * 0.0022;
+      vec2 perturbedUV = texUV + vec2(uvNoise, -uvNoise);
+
+      float h_c = getProceduralHeight(perturbedUV);
+      float h_l = getProceduralHeight(perturbedUV - eps.xy);
+      float h_r = getProceduralHeight(perturbedUV + eps.xy);
+      float h_d = getProceduralHeight(perturbedUV - eps.yx);
+      float h_u = getProceduralHeight(perturbedUV + eps.yx);
+
+      float bumpStrength = 3.0;
       float du = (h_r - h_l) * bumpStrength;
       float dv = (h_u - h_d) * bumpStrength;
 
@@ -142,7 +177,7 @@ const MOON_SHADER = `
 
       // Anti-aliasing
       float aa = smoothstep(r, r - 0.003, d);
-      float glowDist = r - d;
+      float glowDist = clamp(r - d, 0.0, 0.01);
       float outerGlow = exp(glowDist * 90.0) * 0.22;
       vec3 spaceCol = spaceBg + vec3(0.85, 0.65, 0.35) * outerGlow;
       col = mix(spaceCol, col, aa);
