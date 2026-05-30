@@ -90,6 +90,19 @@ console.log(`   length: ${seconds}s @ ${SAMPLE_RATE} Hz\n`);
 const src = readFileSync(workletPath, 'utf8');
 const data = new Uint8Array(readFileSync(sidPath));
 
+// ── Structural guard: the engine class must NOT be an AudioWorkletProcessor ──
+// The browser only lets the audio system construct AudioWorkletProcessor
+// subclasses; manually doing `new SidPlayerProcessor()` when it extends the base
+// throws "an error thrown from AudioWorkletProcessor constructor" at runtime,
+// killing the processor (no sound, no visualizer). Node can't reproduce that
+// (we shim the base class), so we catch it here at the source level instead.
+if (/class\s+SidPlayerProcessor\s+extends\s+AudioWorkletProcessor/.test(src)) {
+  console.error('❌ SidPlayerProcessor extends AudioWorkletProcessor — it is');
+  console.error('   instantiated manually, so the browser will throw in its');
+  console.error('   constructor and emit pure silence. Make it a plain class.');
+  process.exit(1);
+}
+
 let engine, metadata;
 try {
   const SidPlayerProcessor = loadEngineClass(src);

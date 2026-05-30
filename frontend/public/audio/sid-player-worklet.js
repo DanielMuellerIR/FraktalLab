@@ -1,10 +1,17 @@
 // C64 SID Player AudioWorkletProcessor
 // Emulation based on jsSID by Hermit (Mihaly Horvath)
 
-class SidPlayerProcessor extends AudioWorkletProcessor {
+// Pure emulation engine — NOT an AudioWorkletProcessor.
+// It used to "extends AudioWorkletProcessor", but the browser only allows the
+// audio system to construct AudioWorkletProcessor subclasses. Since this class
+// is instantiated manually (new SidPlayerProcessor() inside SidPlayerWorklet),
+// extending the base threw "an error thrown from AudioWorkletProcessor
+// constructor" at construction time — the whole processor died, so there was no
+// sound and no visualizer data. As a plain class it constructs fine. It still
+// reads the worklet-global `sampleRate`, which is available everywhere in the
+// AudioWorkletGlobalScope regardless of inheritance.
+class SidPlayerProcessor {
   constructor() {
-    super();
-    
     // Instance-isolated engine state to support multiple panels or reload cycles cleanly
     let samplerate = sampleRate;
     
