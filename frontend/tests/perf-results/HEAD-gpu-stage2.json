@@ -1,0 +1,35 @@
+{
+  "tag": "HEAD-gpu-stage2",
+  "baseURL": "http://localhost:4173",
+  "sampleMs": 10000,
+  "scenarios": [
+    {
+      "scenario": "M-01 default-grid @1920",
+      "frames": 1200,
+      "median": 8.33,
+      "p95": 9.27,
+      "p99": 9.33,
+      "max": 9.34,
+      "over16": 0,
+      "fps": 120,
+      "longTasks": 0,
+      "longTaskMax": 0
+    },
+    {
+      "scenario": "M-03 dense-grid @2560",
+      "frames": 1199,
+      "median": 8.33,
+      "p95": 9.3,
+      "p99": 9.32,
+      "max": 9.33,
+      "over16": 0,
+      "fps": 120,
+      "longTasks": 0,
+      "longTaskMax": 0
+    }
+  ],
+  "gpu": {
+    "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple Apple-Silicon-Hardware, Unspecified Version)",
+    "vendor": "Google Inc. (Apple)"
+  }
+}

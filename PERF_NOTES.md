@@ -242,10 +242,28 @@ zeitbasiert → fps-unabhängig.
 → **Akzeptanzfall erfüllt und übertroffen** (Ziel 60 → 120 FPS). Der Fraktal-Renderer
 ist auf der GPU praktisch gratis. Daten: `HEAD-gpu-glfractal.json`.
 
-**Offen:** die übrigen 10 Fraktal-Panels (FractalScenes-Familie, FractalJulia) laufen
-noch über WASM — Migration in den Stufen 2/3, WASM-Render-Pfad-Entfernung in Stufe 4.
-Zu beachten: WebGL-Context-Budget (`webgl-pool`, MAX_GL_CONTEXTS=8) bei vielen
-gleichzeitigen Fraktal-Panels.
+### M-2 Stufe 2 — FractalScenes-Familie (10 Panels) auf GPU
+
+`makeFractalScene` rendert jetzt über `FractalGL`; Color-Transforms (mono/cold/hot/
+neon/invert) exakt im Shader repliziert (inkl. „in-set bleibt schwarz"). Wirkung auf
+die ganzen Grid-Szenarien (M5-Max-GPU):
+
+| Median | WASM | **GPU (Stufe 1+2)** |
+|---|---|---|
+| M-01 default-grid @1920 | 66.7 ms | **8.33 ms (120 FPS)** |
+| M-03 dense-grid @2560 | 132.4 ms | **8.33 ms (120 FPS)** |
+
+→ Das gesamte Grid (die ursprüngliche „ruckelt"-Beschwerde) läuft jetzt am
+vsync-Limit, 0 Long-Tasks. Bei 13 Canvases keine Context-Eviction beobachtet.
+Daten: `HEAD-gpu-stage2.json`.
+
+**Hinweis ReadPixels:** FractalGL liest für die Auto-Zoom-Navigation alle 4 Frames
+ein kleines 128×96-Bild aus (GPU-Stall). Bei mehreren Fraktalen summiert sich das,
+beeinträchtigt die 120 FPS hier aber nicht.
+
+**Offen:** FractalJulia (6-Param, Stufe 3); WASM-Render-Pfad entfernen (Stufe 4).
+Zu beachten: WebGL-Context-Budget (`webgl-pool`, MAX_GL_CONTEXTS=8) bei sehr vielen
+gleichzeitigen Fraktal-/Shader-Panels (FractalGL zeigt bei Eviction kein Wake-Overlay).
 
 ---
 

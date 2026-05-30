@@ -112,29 +112,29 @@ export const FRACTAL_FRAGMENT_SHADER = `
     return vec3(1.0, 0.0, q);
   }
 
-  // Iterationszahl → Basisfarbe (wie iter_to_color: in-set → schwarz).
-  vec3 baseColor(int iter, int maxIter) {
-    if (iter >= maxIter) return vec3(0.0);
-    float t = float(iter) / float(maxIter);
-    return hueToRgb(t * 360.0);
-  }
-
-  // Farb-Transforms der FractalScenes-Panels, angewendet auf die Basisfarbe.
+  // Farb-Transforms der FractalScenes-Panels. Repliziert applyTransform() aus
+  // FractalScenes.tsx exakt (dort in 0–255, hier normiert 0–1). Wird NUR auf
+  // Nicht-Mengen-Pixel angewandt — in-set bleibt schwarz (siehe renderFractal).
   vec3 applyColorMode(vec3 c, int mode) {
-    if (mode == 1) {                       // mono: Graustufe nach Luminanz
-      float l = dot(c, vec3(0.299, 0.587, 0.114));
-      return vec3(l);
-    } else if (mode == 2) {                // cold: Blau/Cyan betonen
-      return vec3(c.r * 0.3, c.g * 0.7, c.b);
-    } else if (mode == 3) {                // hot: Rot/Orange betonen
-      return vec3(c.r, c.g * 0.6, c.b * 0.25);
-    } else if (mode == 4) {                // neon: Sättigung anheben
-      vec3 n = clamp(c * 1.4, 0.0, 1.0);
-      return n;
+    if (mode == 1) {                       // mono: nur Grün-Kanal = Luminanz
+      float lum = dot(c, vec3(0.299, 0.587, 0.114));
+      return vec3(0.0, lum, 0.0);
+    } else if (mode == 2) {                // cold: Blau/Cyan betonen + Dunkel-Boost
+      float lum = (c.r + c.g + c.b) / 3.0;
+      float boost = max(0.0, 0.156863 - lum);   // 40/255
+      return min(vec3(1.0), vec3(
+        c.r * 0.1 + boost * 0.3,
+        c.g * 0.5 + boost * 0.6,
+        c.b * 1.5 + c.r * 0.4 + boost
+      ));
+    } else if (mode == 3) {                // hot: Rot/Orange
+      return min(vec3(1.0), vec3(c.r * 1.5 + c.g * 0.25, c.g * 0.45, c.b * 0.05));
+    } else if (mode == 4) {                // neon: Magenta/Violett
+      return min(vec3(1.0), vec3(c.r * 1.3, c.g * 0.15, c.b * 1.6));
     } else if (mode == 5) {                // invert
       return vec3(1.0) - c;
     }
-    return c;                              // 0 = base
+    return c;                              // 0 = base (reine Hue-Färbung)
   }
 
   // ── Iterations-Kern (double-single) ─────────────────────────────────────────
@@ -183,7 +183,11 @@ export const FRACTAL_FRAGMENT_SHADER = `
       // Mandelbrot: Startwert = 0, c = Pixelpunkt
       iter = iterate(px, py, ds_set(0.0), ds_set(0.0), uMaxIter);
     }
-    return applyColorMode(baseColor(iter, uMaxIter), uColorMode);
+    // In der Menge → schwarz (Color-Transform wird hier NICHT angewandt, genau
+    // wie applyTransform() schwarze Pixel überspringt).
+    if (iter >= uMaxIter) return vec3(0.0);
+    vec3 col = hueToRgb((float(iter) / float(uMaxIter)) * 360.0);
+    return applyColorMode(col, uColorMode);
   }
 
   void main() {
