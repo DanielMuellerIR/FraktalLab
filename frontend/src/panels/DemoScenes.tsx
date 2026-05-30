@@ -825,11 +825,24 @@ const ROTOZOOM_SHADER = `
 
     float cx = p.x - originalW / 2.0;
     float cy = p.y - originalH / 2.0;
-
-    float z = 0.04 + 0.03 * sin(ts * 0.5);
-    float cVal = cos(ts * 0.6) * z;
-    float sVal = sin(ts * 0.6) * z;
-    
+    // Trampolin ease-in-out snap bounce physics
+    float period = 5.0;
+    float cycle = mod(ts, period);
+    float bounce = 0.0;
+    if (cycle < 1.5) {
+      float x = cycle / 1.5;
+      bounce = x * x * x;
+    } else if (cycle < 3.5) {
+      float x = (cycle - 1.5) / 2.0;
+      bounce = 1.0 + sin(x * 18.0) * exp(-x * 2.5) * 0.4;
+    } else {
+      float x = (cycle - 3.5) / 1.5;
+      bounce = mix(1.0, 0.0, smoothstep(0.0, 1.0, x));
+    }
+    float z = 0.012 + 0.068 * bounce;
+    float angle = ts * 0.15 + bounce * 2.356;
+    float cVal = cos(angle) * z;
+    float sVal = sin(angle) * z;    
     // 2x2 grid supersampling on checker function to smooth edges
     float checkerSum = 0.0;
     float offsets[2];

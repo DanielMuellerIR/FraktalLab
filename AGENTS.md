@@ -32,7 +32,7 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 > - [x] **RW-18 `VectorHudPanel` (VoxelNeon)** — Shape-Morphing zwischen Hypercube-Varianten, Zoom-Pulsing
 > - [x] **RW-19 `MetaballsScene`** — Split bei Kollision, dynamische Blob-Anzahl 2–8
 > - [x] **RW-20 `DotCloudScene`** — 300+ Nodes, kontinuierlicher Kamera-Orbit, modern Color
-> - [ ] **RW-21 `RotozoomScene`** — Trampolin-Effekt: ease-in-out Bounce-Physik
+> - [x] **RW-21 `RotozoomScene`** — Trampolin-Effekt: ease-in-out Bounce-Physik
 > - [x] **RW-22 `LissajousScene`** — Hintergrund-Kreuz weg, aggressivere Parameter-Variation
 >
 > ### Tier 4 — Fraktal-Parameter-Tweaks
