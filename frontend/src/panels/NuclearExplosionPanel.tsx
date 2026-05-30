@@ -11,154 +11,166 @@ const VOLUMETRIC_EXPLOSION_SHADER = `
     return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
   }
 
-  // 3D Value Noise
+  // 3D Value Noise with quintic interpolation for smoother gradients
   float noise(in vec3 x) {
     vec3 i = floor(x);
     vec3 f = fract(x);
-    f = f*f*(3.0-2.0*f);
+    f = f*f*f*(f*(f*6.0-15.0)+10.0); // quintic Hermite
     return mix(mix(mix(hash(i+vec3(0,0,0)), hash(i+vec3(1,0,0)),f.x),
                    mix(hash(i+vec3(0,1,0)), hash(i+vec3(1,1,0)),f.x),f.y),
                mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)),f.x),
                    mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)),f.x),f.y),f.z);
   }
 
-  // 6-octave Fractional Brownian Motion (fBm) noise for primary rays
+  // 6-octave fBm with lacunarity 2.03 for non-repeating detail cascading
   float fbm(vec3 p) {
     float v = 0.0;
     float a = 0.5;
-    vec3 shift = vec3(100.0);
+    mat3 rot = mat3(0.0, 0.8, 0.6,
+                   -0.8, 0.36,-0.48,
+                   -0.6,-0.48, 0.64); // rotation to break axis-alignment
     for (int i = 0; i < 6; i++) {
       v += a * noise(p);
-      p = p * 2.0 + shift;
-      a *= 0.5;
+      p = rot * p * 2.03 + vec3(100.0);
+      a *= 0.49;
     }
     return v;
   }
 
-  // 2-octave fast fBm for shadow rays and dust/turbulence
+  // 3-octave fBm for shadow rays (sharper than old 2-octave)
   float fbmShadow(vec3 p) {
     float v = 0.0;
     float a = 0.5;
-    vec3 shift = vec3(100.0);
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < 3; i++) {
       v += a * noise(p);
-      p = p * 2.0 + shift;
-      a *= 0.5;
+      p = p * 2.03 + vec3(100.0);
+      a *= 0.49;
     }
     return v;
   }
 
-  // Blackbody temperature to RGB color mapping
+  // Blackbody temperature to RGB — wider dynamic range
   vec3 blackbody(float temp) {
-    vec3 col = vec3(0.0);
-    col.r = 1.0 / (1.0 + exp(-(temp - 1000.0) / 240.0));
-    col.g = 1.0 / (1.0 + exp(-(temp - 1700.0) / 280.0));
-    col.b = 1.0 / (1.0 + exp(-(temp - 2600.0) / 350.0));
-    // Boost intensity for white-hot temperatures
-    float intensity = temp / 1100.0;
+    vec3 col;
+    col.r = 1.0 / (1.0 + exp(-(temp - 900.0) / 200.0));
+    col.g = 1.0 / (1.0 + exp(-(temp - 1600.0) / 250.0));
+    col.b = 1.0 / (1.0 + exp(-(temp - 2500.0) / 320.0));
+    float intensity = temp / 1000.0;
     if (temp > 3500.0) {
-      intensity *= 1.5 + (temp - 3500.0) * 0.001;
+      intensity *= 1.8 + (temp - 3500.0) * 0.0015;
     }
     return col * intensity;
   }
 
-  // Procedural Mushroom Cloud Signed Distance Function (No Noise)
+  // Mushroom Cloud SDF — sharper geometry with billowing cap folds
   float mushroomDist(vec3 p, float progress) {
-    // Rise Cap height and expand Cap radius over time
-    float capY = mix(-0.35, 0.65, smoothstep(0.0, 0.65, progress));
-    float capR = mix(0.04, 0.46, smoothstep(0.0, 0.44, progress));
-    
-    // Sinuous stem coordinates
+    float capY = mix(-0.35, 0.70, smoothstep(0.0, 0.60, progress));
+    float capR = mix(0.04, 0.48, smoothstep(0.0, 0.42, progress));
+
+    // Sinuous stem with double-frequency bend
     vec3 stemP = p;
-    float bendIntensity = (p.y + 0.55) * 0.12;
-    stemP.x += sin(p.y * 7.0 + progress * 6.28) * bendIntensity;
-    stemP.z += cos(p.y * 6.0 + progress * 6.28) * bendIntensity;
-    
-    // Stem cylinder distance (wider at bottom, narrow towards cap)
-    float baseStemRadius = mix(0.015, 0.08, smoothstep(0.0, 0.4, progress));
-    float stemThickness = baseStemRadius * (1.0 - 0.7 * smoothstep(0.4, 0.9, p.y));
-    float dStem = length(stemP.xz) - stemThickness;
-    
-    // Clamp stem vertically
+    float bendAmt = (p.y + 0.55) * 0.10;
+    stemP.x += sin(p.y * 8.0 + progress * 6.28) * bendAmt;
+    stemP.z += cos(p.y * 7.0 + progress * 5.0) * bendAmt * 0.7;
+
+    // Stem: flared base, narrow waist, wider just under cap
+    float baseStemR = mix(0.015, 0.09, smoothstep(0.0, 0.35, progress));
+    float waist = 1.0 - 0.65 * smoothstep(0.3, 0.75, p.y);
+    float flare = 1.0 + 0.4 * smoothstep(capY - 0.15, capY, p.y); // widens into cap
+    float stemR = baseStemR * waist * flare;
+    float dStem = length(stemP.xz) - stemR;
     dStem = max(dStem, p.y - capY);
     dStem = max(dStem, -p.y - 0.55);
-    
-    // Cap toroidal vortex ring distance function
+
+    // Cap: toroidal vortex ring with variable cross-section
     vec3 capP = p - vec3(0.0, capY, 0.0);
-    capP.y *= 1.8; // Vertical flattening
-    vec2 torusP = vec2(length(capP.xz) - capR, capP.y);
-    float dCap = length(torusP) - capR * 0.45;
-    
-    // Ground dust skirt: expands outward at the base (y ~ -0.55)
-    float skirtR = mix(0.02, 0.55, smoothstep(0.0, 0.7, progress));
+    capP.y *= 1.6;
+    float rXZ = length(capP.xz);
+    vec2 torusP = vec2(rXZ - capR, capP.y);
+    // Vertically asymmetric cross-section: flatter on top, bulging below
+    torusP.y *= (torusP.y > 0.0) ? 1.3 : 0.85;
+    float dCap = length(torusP) - capR * 0.48;
+
+    // Secondary pileus dome on top of the cap (cauliflower crest)
+    vec3 crownP = p - vec3(0.0, capY + capR * 0.32, 0.0);
+    float dCrown = length(crownP) - capR * 0.35;
+
+    // Ground dust skirt
+    float skirtR = mix(0.02, 0.58, smoothstep(0.0, 0.65, progress));
     vec3 skirtP = p - vec3(0.0, -0.52, 0.0);
-    skirtP.y *= 3.0; // Flat profile
+    skirtP.y *= 3.5;
     vec2 skirtTorus = vec2(length(skirtP.xz) - skirtR, skirtP.y);
-    float dSkirt = length(skirtTorus) - skirtR * 0.35;
-    
-    // Combine stem, cap, and skirt
-    return min(dStem, min(dCap, dSkirt));
+    float dSkirt = length(skirtTorus) - skirtR * 0.30;
+
+    return min(dStem, min(min(dCap, dCrown), dSkirt));
   }
 
-  // Procedural Mushroom Cloud Density Map (Primary Ray)
+  // Primary density with dual-pass domain warping for curl-noise-like billows
   float mushroomDensity(vec3 p, float progress) {
     float d = mushroomDist(p, progress);
-    
-    // We evaluate density when the ray is close to the geometry boundary
-    if (d < 0.25) {
-      float capY = mix(-0.35, 0.65, smoothstep(0.0, 0.65, progress));
-      float capR = mix(0.04, 0.46, smoothstep(0.0, 0.44, progress));
+
+    if (d < 0.30) {
+      float capY = mix(-0.35, 0.70, smoothstep(0.0, 0.60, progress));
+      float capR = mix(0.04, 0.48, smoothstep(0.0, 0.42, progress));
       vec3 capP = p - vec3(0.0, capY, 0.0);
-      
-      float noiseScale = mix(6.5, 4.0, progress);
-      vec3 noiseCoord = p * noiseScale;
-      
-      // Toroidal vortex flow for cap, upward flow for stem
-      if (p.y > capY - capR * 0.6) {
+
+      float noiseScale = mix(8.0, 5.0, progress);
+      vec3 nc = p * noiseScale;
+
+      // Toroidal vortex flow direction for cap; upward convection for stem
+      if (p.y > capY - capR * 0.7) {
         float phi = atan(capP.z, capP.x + 0.0001);
-        float theta = atan(capP.y, length(capP.xz) - capR);
+        float theta = atan(capP.y, length(capP.xz) - capR + 0.001);
+        // Rolling toroidal flow
         vec3 flowDir = vec3(cos(phi) * cos(theta), sin(theta), sin(phi) * cos(theta));
-        noiseCoord += flowDir * progress * 3.8;
+        nc += flowDir * progress * 4.5;
+        // Add angular distortion for cauliflower billows
+        nc.xz += vec2(sin(phi * 5.0), cos(phi * 5.0)) * 0.15 * progress;
       } else {
-        noiseCoord.y -= progress * 4.5;
+        nc.y -= progress * 5.0;
+        // Lateral stem turbulence
+        nc.xz += vec2(sin(p.y * 12.0), cos(p.y * 10.0)) * 0.08;
       }
-      
-      // Coordinate domain warping for extreme micro-turbulence detail
-      vec3 warp = vec3(
-        noise(noiseCoord + vec3(0.0, 0.0, 0.0)),
-        noise(noiseCoord + vec3(5.2, 1.3, 0.0)),
-        noise(noiseCoord + vec3(1.3, 5.2, 3.7))
+
+      // === Dual-pass domain warping (curl-noise approximation) ===
+      // Pass 1: coarse warp
+      vec3 warp1 = vec3(
+        noise(nc + vec3(0.0, 0.0, 0.0)),
+        noise(nc + vec3(5.2, 1.3, 0.0)),
+        noise(nc + vec3(1.3, 5.2, 3.7))
       );
-      float n = fbm(noiseCoord + warp * 0.35);
-      
-      // Calculate dense billowy smoke shell
-      // Fade density smoothly near the boundary (0.25) to avoid truncation artifact!
-      float edgeFade = smoothstep(0.25, 0.08, d);
-      float density = (-d + n * 0.28) * edgeFade;
-      
-      density = smoothstep(0.0, 0.30, density);
-      
-      // Gradual fade out at the end of cycle
+      vec3 nc2 = nc + warp1 * 0.55;
+      // Pass 2: fine warp on top of coarse
+      vec3 warp2 = vec3(
+        noise(nc2 * 1.7 + vec3(7.1, 3.3, 0.0)),
+        noise(nc2 * 1.7 + vec3(0.0, 9.1, 2.8)),
+        noise(nc2 * 1.7 + vec3(3.5, 0.0, 8.6))
+      );
+      float n = fbm(nc2 + warp2 * 0.25);
+
+      // Edge fade and density
+      float edgeFade = smoothstep(0.30, 0.05, d);
+      float density = (-d + n * 0.32) * edgeFade;
+      density = smoothstep(0.0, 0.22, density);
+
+      // Fade out end of cycle
       density *= (1.0 - smoothstep(0.72, 1.0, progress));
-      
+
       return density;
     }
     return 0.0;
   }
 
-  // Fast Procedural Mushroom Cloud Density Map for secondary shadow rays
+  // Shadow density — 3-octave, single warp pass
   float mushroomDensityShadow(vec3 p, float progress) {
     float d = mushroomDist(p, progress);
-    
-    if (d < 0.25) {
-      float edgeFade = smoothstep(0.25, 0.08, d);
-      // Fast single-octave noise mapping for soft shadow turbulence
-      float n = noise(p * 5.0 - vec3(0.0, progress * 4.0, 0.0));
-      float density = (-d + n * 0.25) * edgeFade;
-      
-      density = smoothstep(0.0, 0.30, density);
+    if (d < 0.30) {
+      float edgeFade = smoothstep(0.30, 0.05, d);
+      vec3 nc = p * 6.0 - vec3(0.0, progress * 5.0, 0.0);
+      float n = fbmShadow(nc);
+      float density = (-d + n * 0.28) * edgeFade;
+      density = smoothstep(0.0, 0.22, density);
       density *= (1.0 - smoothstep(0.72, 1.0, progress));
-      
       return density;
     }
     return 0.0;
@@ -166,216 +178,172 @@ const VOLUMETRIC_EXPLOSION_SHADER = `
 
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;
-    
+
     float time = iTime;
     float cycleTime = mod(time, 30.0);
     float progress = cycleTime / 30.0;
-    
-    // uMode: 0.0 = Oppenheimer Day (Color), 1.0 = Twin Peaks Night (B&W Mono)
+
     float mode = step(30.0, mod(time, 60.0));
-    
-    // Raymarching camera
-    vec3 ro = vec3(0.0, 0.15, -1.8);
+
+    // Camera with slight slow pull-back as cloud grows
+    float camZ = -1.8 + progress * 0.15;
+    vec3 ro = vec3(0.0, 0.12, camZ);
     vec3 rd = normalize(vec3(uv, 1.35));
-    
-    // Background gradient setup
+
+    // Background
     vec3 bgCol;
     if (mode == 0.0) {
-      // Day Sky (Gradient of light blue/sky color)
       bgCol = mix(vec3(0.55, 0.72, 0.95), vec3(0.90, 0.93, 0.98), smoothstep(0.4, -0.6, uv.y));
     } else {
-      // B&W Night Void (Subtle pulsing grey waves)
-      bgCol = vec3(0.015) + vec3(0.02) * sin(uv.y * 3.0 + time * 0.4);
+      bgCol = vec3(0.012) + vec3(0.015) * sin(uv.y * 3.0 + time * 0.4);
     }
-    
-    // Raymarching bounds and ground cutoff
+
+    // Ground intersection
     float tGround = 999.0;
     if (rd.y < 0.0) {
       tGround = (-0.55 - ro.y) / rd.y;
     }
-    float tMax = min(2.5, tGround);
-    
+    float tMax = min(2.8, tGround);
+
     float t = 0.0;
-    
-    // Jitter starting point to eliminate ray-stepping banding artifacts
-    float jitter = hash(vec3(fragCoord, time)) * 0.02;
-    t += jitter;
-    
-    // 1. Sphere Tracing to skip empty space very efficiently!
-    for (int i = 0; i < 30; i++) {
+    // Temporal jitter to eliminate banding
+    t += hash(vec3(fragCoord, fract(time))) * 0.016;
+
+    // 1. Sphere tracing to skip empty space
+    for (int i = 0; i < 35; i++) {
       vec3 p = ro + rd * t;
       float d = mushroomDist(p, progress);
-      if (d < 0.22 || t >= tMax) {
-        break;
-      }
-      t += max(0.015, d * 0.8 - 0.15); // Step forward safely
+      if (d < 0.28 || t >= tMax) break;
+      t += max(0.012, d * 0.75 - 0.12);
     }
-    
-    float stepSize = 0.022; // High-resolution steps inside the volume
+
+    // 2. Volumetric marching — 48 steps, 0.018 step size
+    float stepSize = 0.018;
     float accumOpacity = 0.0;
     vec3 accumColor = vec3(0.0);
-    
-    // 2. Volumetric Raymarching Loop (35 Steps inside volume)
-    for (int i = 0; i < 35; i++) {
-      if (t >= tMax || accumOpacity >= 0.98) {
-        break;
-      }
-      
+
+    for (int i = 0; i < 48; i++) {
+      if (t >= tMax || accumOpacity >= 0.98) break;
+
       vec3 p = ro + rd * t;
       float d = mushroomDensity(p, progress);
-      
-      if (d > 0.01) {
-        // --- Volumetric Light Marching ---
-        
-        // 1. Shadow ray towards the sun light
+
+      if (d > 0.008) {
+        // Sun shadow ray — 5 steps for sharper self-shadowing
         vec3 sunDir = normalize(vec3(1.0, 1.8, -1.0));
         float sunDensity = 0.0;
-        float lStep = 0.06;
-        for (int j = 1; j <= 4; j++) {
-          vec3 lp = p + sunDir * (float(j) * lStep);
-          sunDensity += mushroomDensityShadow(lp, progress);
+        for (int j = 1; j <= 5; j++) {
+          sunDensity += mushroomDensityShadow(p + sunDir * (float(j) * 0.055), progress);
         }
-        float sunTransmittance = exp(-sunDensity * 4.5);
-        
-        // 2. Light ray towards the internal glowing fire core
-        float capY = mix(-0.35, 0.65, smoothstep(0.0, 0.65, progress));
-        float capR = mix(0.04, 0.46, smoothstep(0.0, 0.44, progress));
-        vec3 corePos = (p.y > capY - 0.2) ? vec3(normalize(p.xz + 0.0001) * capR, capY) : vec3(0.0, p.y, 0.0);
-        
+        float sunT = exp(-sunDensity * 5.5);
+
+        // Core glow ray
+        float capY = mix(-0.35, 0.70, smoothstep(0.0, 0.60, progress));
+        float capR = mix(0.04, 0.48, smoothstep(0.0, 0.42, progress));
+        vec3 corePos = (p.y > capY - 0.2) ? vec3(normalize(p.xz + 0.001) * capR * 0.5, capY) : vec3(0.0, p.y, 0.0);
         vec3 toCore = corePos - p;
         float distToCore = length(toCore);
-        vec3 coreDir = toCore / (distToCore + 0.0001);
+        vec3 coreDir = toCore / (distToCore + 0.001);
         float coreDensity = 0.0;
-        float cStep = distToCore / 4.0;
+        float cStep = max(0.02, distToCore / 4.0);
         for (int j = 1; j <= 3; j++) {
-          vec3 cp = p + coreDir * (float(j) * cStep);
-          coreDensity += mushroomDensityShadow(cp, progress);
+          coreDensity += mushroomDensityShadow(p + coreDir * (float(j) * cStep), progress);
         }
-        float coreTransmittance = exp(-coreDensity * 5.0);
-        
-        // --- Heat & Temperature Mapping ---
-        float heat = smoothstep(0.4, 0.0, distToCore);
-        float initialBoost = 2.5 * smoothstep(0.18, 0.0, progress); // High-temp flash
-        float temperature = heat * (2400.0 + initialBoost * 3200.0) * (1.0 - smoothstep(0.0, 0.65, progress));
-        
-        vec3 smokeAlbedo;
-        vec3 fireEmit = blackbody(temperature) * 2.2;
-        
-        float stepOpacity = d * stepSize * 16.0; // Absorption scale of 16.0 for solid volumetric puffiness!
-        if (stepOpacity > 0.0) {
-          if (mode == 0.0) {
-            // Oppenheimer Day colors: Brown-grey dust, beautiful shadow depth
-            smokeAlbedo = mix(vec3(0.68, 0.64, 0.58), vec3(0.18, 0.16, 0.15), smoothstep(-0.35, 0.75, p.y + d * 0.25));
-            vec3 sunLight = vec3(1.0, 0.96, 0.90) * 1.6 * sunTransmittance;
-            vec3 ambientLight = vec3(0.55, 0.72, 0.95) * 0.55 * (0.35 + 0.65 * sunTransmittance);
-            
-            // Forward scattering silver-lining glow
-            float forwardScattering = pow(max(0.0, dot(rd, sunDir)), 4.0) * 0.4 * sunTransmittance;
-            
-            vec3 sampleCol = smokeAlbedo * (sunLight + ambientLight + forwardScattering * vec3(1.0, 0.9, 0.7)) + fireEmit * coreTransmittance * 1.5;
-            sampleCol += fireEmit * 0.9; // Internal self-glow inside fire core
-            
-            accumColor += sampleCol * stepOpacity * (1.0 - accumOpacity);
-          } else {
-            // Twin Peaks Night colors: High contrast black & white
-            float greySmoke = mix(0.65, 0.06, smoothstep(-0.35, 0.75, p.y + d * 0.3));
-            smokeAlbedo = vec3(greySmoke);
-            
-            float fireIntensity = dot(fireEmit, vec3(0.299, 0.587, 0.114));
-            vec3 fireEmitBW = vec3(fireIntensity);
-            
-            float sunLight = 0.25 * sunTransmittance;
-            float ambientLight = 0.05 * (0.3 + 0.7 * sunTransmittance);
-            
-            vec3 sampleCol = smokeAlbedo * (sunLight + ambientLight) + fireEmitBW * coreTransmittance * 2.2;
-            sampleCol += fireEmitBW * 1.0;
-            
-            accumColor += sampleCol * stepOpacity * (1.0 - accumOpacity);
-          }
-          accumOpacity += stepOpacity * (1.0 - accumOpacity);
+        float coreT = exp(-coreDensity * 6.0);
+
+        // Temperature
+        float heat = smoothstep(0.45, 0.0, distToCore);
+        float initialBoost = 3.0 * smoothstep(0.15, 0.0, progress);
+        float temperature = heat * (2800.0 + initialBoost * 3500.0) * (1.0 - smoothstep(0.0, 0.60, progress));
+
+        vec3 fireEmit = blackbody(temperature) * 2.5;
+        float stepOpacity = d * stepSize * 20.0; // Higher absorption for denser, puffier cloud
+
+        if (mode == 0.0) {
+          // Day: rich brown-grey smoke with pronounced depth
+          vec3 smokeAlbedo = mix(
+            vec3(0.72, 0.66, 0.56), // Bright sunlit cream
+            vec3(0.14, 0.12, 0.11), // Deep shadow soot
+            smoothstep(-0.35, 0.80, p.y + d * 0.3)
+          );
+          vec3 sunLight = vec3(1.0, 0.96, 0.88) * 1.8 * sunT;
+          vec3 ambient = vec3(0.50, 0.68, 0.92) * 0.50 * (0.3 + 0.7 * sunT);
+          float fwdScatter = pow(max(0.0, dot(rd, sunDir)), 5.0) * 0.5 * sunT;
+
+          vec3 col = smokeAlbedo * (sunLight + ambient + fwdScatter * vec3(1.0, 0.88, 0.65));
+          col += fireEmit * coreT * 1.8;
+          col += fireEmit * 1.0; // self-glow
+
+          accumColor += col * stepOpacity * (1.0 - accumOpacity);
+        } else {
+          // Night B&W
+          float grey = mix(0.70, 0.04, smoothstep(-0.35, 0.80, p.y + d * 0.35));
+          float fireI = dot(fireEmit, vec3(0.299, 0.587, 0.114));
+          float sunL = 0.28 * sunT;
+          float ambL = 0.04 * (0.3 + 0.7 * sunT);
+
+          vec3 col = vec3(grey) * (sunL + ambL) + vec3(fireI) * coreT * 2.5 + vec3(fireI) * 1.2;
+          accumColor += col * stepOpacity * (1.0 - accumOpacity);
         }
+        accumOpacity += stepOpacity * (1.0 - accumOpacity);
       }
       t += stepSize;
     }
-    
-    // --- Physical Ground Floor Shading ---
+
+    // Ground floor
     if (rd.y < 0.0 && accumOpacity < 1.0) {
-      vec3 pGround = ro + rd * tGround;
-      
-      // Ground soft shadow from cloud
+      vec3 pG = ro + rd * tGround;
       float groundShadow = 0.0;
-      vec3 shadowRo = pGround + vec3(0.0, 0.01, 0.0);
-      vec3 shadowRd = normalize(vec3(1.0, 1.8, -1.0));
-      float shadowT = 0.04;
-      for (int j = 0; j < 5; j++) {
-        vec3 sp = shadowRo + shadowRd * shadowT;
-        groundShadow += mushroomDensityShadow(sp, progress) * 0.25;
-        shadowT += 0.08;
+      vec3 sDir = normalize(vec3(1.0, 1.8, -1.0));
+      for (int j = 0; j < 6; j++) {
+        groundShadow += mushroomDensityShadow(pG + sDir * (0.04 + float(j) * 0.07), progress) * 0.22;
       }
-      float shadowFactor = exp(-groundShadow * 4.5);
-      
-      // Ground shockwaves
-      float r = length(pGround.xz);
+      float sf = exp(-groundShadow * 5.0);
+
+      float r = length(pG.xz);
       float waveDist = progress * 1.8;
-      float shockwaveGlow = 0.0;
+      float shockGlow = 0.0;
       if (waveDist > 0.0) {
-        float ring1 = smoothstep(0.08, 0.0, abs(r - waveDist));
-        float ring2 = smoothstep(0.05, 0.0, abs(r - waveDist * 0.75)) * 0.45;
-        float ring3 = smoothstep(0.03, 0.0, abs(r - waveDist * 0.5)) * 0.25;
-        
-        float dustTurbulence = fbmShadow(vec3(pGround.xz * 15.0, time * 2.5));
-        shockwaveGlow = (ring1 + ring2 + ring3) * (0.3 + 0.7 * dustTurbulence) * (1.0 - progress);
+        shockGlow += smoothstep(0.08, 0.0, abs(r - waveDist));
+        shockGlow += smoothstep(0.05, 0.0, abs(r - waveDist * 0.75)) * 0.45;
+        shockGlow += smoothstep(0.03, 0.0, abs(r - waveDist * 0.5)) * 0.25;
+        shockGlow *= (0.3 + 0.7 * fbmShadow(vec3(pG.xz * 15.0, time * 2.5))) * (1.0 - progress);
       }
-      
-      // Intense epicentre flash
-      float epicentreFlash = smoothstep(0.35, 0.0, r) * smoothstep(0.3, 0.0, progress) * 2.5;
-      
-      vec3 groundCol = vec3(0.0);
+      float epicFlash = smoothstep(0.35, 0.0, r) * smoothstep(0.3, 0.0, progress) * 2.8;
+
+      vec3 groundCol;
       if (mode == 0.0) {
         vec3 baseCol = mix(vec3(0.38, 0.34, 0.29), vec3(0.18, 0.16, 0.14), smoothstep(0.0, 2.0, r));
-        float groundNoise = fbmShadow(vec3(pGround.xz * 12.0, 0.0));
-        baseCol += (groundNoise - 0.5) * 0.04;
-        
-        vec3 dustColor = mix(vec3(0.85, 0.75, 0.6), vec3(0.35, 0.32, 0.28), smoothstep(0.0, 1.8, r));
-        vec3 fireGlow = vec3(1.0, 0.4, 0.1) * 3.5;
-        vec3 shockwaveColor = mix(dustColor, fireGlow, smoothstep(0.2, 0.0, progress)) * shockwaveGlow;
-        
-        groundCol = baseCol * (0.2 + 0.8 * shadowFactor) + shockwaveColor + vec3(1.0, 0.55, 0.15) * epicentreFlash;
+        baseCol += (fbmShadow(vec3(pG.xz * 12.0, 0.0)) - 0.5) * 0.04;
+        vec3 dustC = mix(vec3(0.85, 0.75, 0.6), vec3(0.35, 0.32, 0.28), smoothstep(0.0, 1.8, r));
+        vec3 fireG = vec3(1.0, 0.4, 0.1) * 3.5;
+        groundCol = baseCol * (0.2 + 0.8 * sf) + mix(dustC, fireG, smoothstep(0.2, 0.0, progress)) * shockGlow + vec3(1.0, 0.55, 0.15) * epicFlash;
       } else {
-        vec3 baseCol = vec3(0.015, 0.016, 0.018);
-        float groundNoise = fbmShadow(vec3(pGround.xz * 15.0, 0.0));
-        baseCol += (groundNoise - 0.5) * 0.005;
-        
-        vec3 dustColor = vec3(0.5);
-        vec3 fireGlow = vec3(2.5);
-        vec3 shockwaveColor = mix(dustColor, fireGlow, smoothstep(0.2, 0.0, progress)) * shockwaveGlow;
-        
-        groundCol = baseCol * (0.15 + 0.85 * shadowFactor) + shockwaveColor + vec3(2.5) * epicentreFlash;
+        vec3 baseCol = vec3(0.015);
+        baseCol += (fbmShadow(vec3(pG.xz * 15.0, 0.0)) - 0.5) * 0.005;
+        groundCol = baseCol * (0.15 + 0.85 * sf) + vec3(0.5) * shockGlow + vec3(2.5) * epicFlash;
       }
-      
       accumColor += groundCol * (1.0 - accumOpacity);
       accumOpacity = 1.0;
     }
-    
-    // Blend sky background and accumulated cloud colors
+
     vec3 finalCol = mix(bgCol, accumColor, accumOpacity);
-    
-    // --- Dynamic Blinding Ionization Camera Flash Exposure Bloom ---
-    float flash = exp(-progress * 22.0) * 3.5;
-    vec3 flashCol = mix(vec3(0.85, 0.92, 1.0), vec3(1.0, 0.65, 0.22), smoothstep(0.0, 0.08, progress));
+
+    // Blinding flash
+    float flash = exp(-progress * 24.0) * 4.0;
+    vec3 flashCol = mix(vec3(0.85, 0.92, 1.0), vec3(1.0, 0.65, 0.22), smoothstep(0.0, 0.07, progress));
     if (mode == 0.0) {
       finalCol += flashCol * flash;
     } else {
       finalCol += vec3(flash * 0.9);
     }
-    
-    // Twin Peaks vintage film grain & flickering scanlines
+
+    // Twin Peaks film grain
     if (mode == 1.0) {
-      float grain = hash(vec3(fragCoord, time)) * 0.08;
-      finalCol += vec3(grain);
+      finalCol += vec3(hash(vec3(fragCoord, time)) * 0.07);
       finalCol *= 0.86 + 0.14 * sin(fragCoord.y * 1.5 + time * 6.0);
     }
-    
+
     fragColor = vec4(finalCol, 1.0);
   }
 `;

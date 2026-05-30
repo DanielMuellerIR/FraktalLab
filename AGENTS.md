@@ -5,7 +5,44 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 
 > **Status (Stand 2026-05-30): Panel-Rework Phase 1–5 läuft auf `feat/panel-rework-2026-05-30`.** Bisherige Erfolge der Session (App-Version **v1.7.8**): 32 Panels erfolgreich überarbeitet, C64 SID Player integriert, DNAHelix split-layout fertig, alle Grafik-Panels weg vom Standard-Hackergrün auf farbige CSS-Paletten migriert. 120 FPS Rendering-Performance auf Apple GPU nachgewiesen und Playwright-Verifikation erfolgreich durchgelaufen.
 >
-> **Nächste Schritte:** Die verbleibenden 10 down-bewerteten Panels (u.a. `ParallaxPanel`, `RadarSweepPanel` (DRADIS), `DaggerfallPanel` (Netrunner), `LidarScanPanel`, `TixyPanel`, `IQTechniquePanel`, `LovebyteShowcasePanel`, `PhysicsSandboxPanel`, `NuclearExplosionPanel`) überarbeiten, um den `PANEL_REWORK_PLAN.md` komplett abzuschließen.
+> **Nächste Schritte — Panel-Rework Phase 2 (priorisiert nach Kritik-Intensität):**
+>
+> ### Tier 1 — Kritische Ausfälle
+> - [x] **RW-01 `NuclearExplosionPanel`** — Shader noch matschig: fBm auf 6 Oktaven, schärfere Turbulenz, Curl-Noise für rollende Kanten, Toroid-Billows, Self-Shadowing
+> - [ ] **RW-02 `MoonPanel`** — Krater sind flache schwarze Ellipsen statt 3D. Center-Hole-Artefakt fixen. Bump-Normal-Stärke hochdrehen. Farbvariation (warme Highlands vs dunkle Maria). Limb-Darkening + Earthshine
+> - [ ] **RW-03 `ShaderRetroWave`** — floor()-Quantisierung raus → smooth Noise-Terrain. fwidth() für Grid-AA. Sun-Cuts glätten
+>
+> ### Tier 2 — Strukturelle Neuentwürfe
+> - [ ] **RW-04 `StarfieldScene`** — Raumschiff-Verfolgungsszene: Chase → Hyperraumsprung → Countdown → Star-Stretch-Tunnel → Exit
+> - [ ] **RW-05 `VoxelDemoBW`** — Komplett neu: z.B. Overhead-Contourmap oder Spiral-Descent
+> - [ ] **RW-06 `NeuralNetPanel` (VoxelMatrix)** — Mehr Nodes, Topologie-Wechsel, farbcodierte Subnetze, Attack/Defense-Pakete
+> - [ ] **RW-07 `CADRobotPanel`** — Kindische Roboter ersetzen durch Hard-Sci-Fi: Industriearm, Mech-Walker, Satellit, Drone
+> - [ ] **RW-08 `OscilloscopePanel`** — Chiptune-Player mit SID-Emulation + Visualizer
+> - [ ] **RW-09 `ShaderHackingCore`** — Mass-Effect-Hacking-Spiel: konzentrische Ringe, rotierende Segmente, Bypass-Nodes
+> - [ ] **RW-10 `NeuralLinkDecoderPanel`** — Mehr Nodes, schärfer, kein Grün, Hard-Sci-Fi-Palette
+>
+> ### Tier 3 — Signifikante Verbesserungen
+> - [ ] **RW-11 `TunnelScene`** — Stargate-Stil: Kristallwände, Energiepulse, warpende Geometrie, Farbwechsel
+> - [ ] **RW-12 `ElitePanel`** — Wireframe weiß statt grün, kohärenter Dogfight-Ablauf
+> - [ ] **RW-13 `DNAHelix`** — Split-Layout: Helix links, Spezies-Info rechts (6 Spezies)
+> - [ ] **RW-14 `RetroErrorPanel`** — macOS Kernel Panic + Linux Oops/Panic ergänzen
+> - [ ] **RW-15 `VoxelDemoColor`** — Smooth-Camera-Interpolation, Sky-Gradient statt Schwarz, Soft-Fade
+> - [ ] **RW-16 `VoxelThermal`** — Rendering-Artefakte fixen, Soft-Vertical-Fade oben
+> - [ ] **RW-17 `VoxelLava`** — Anderer Flugpfad (Overhead/Spiral), eigenständiger Terrain-Charakter
+> - [ ] **RW-18 `VectorHudPanel` (VoxelNeon)** — Shape-Morphing zwischen Hypercube-Varianten, Zoom-Pulsing
+> - [ ] **RW-19 `MetaballsScene`** — Split bei Kollision, dynamische Blob-Anzahl 2–8
+> - [ ] **RW-20 `DotCloudScene`** — 300+ Nodes, kontinuierlicher Kamera-Orbit, modern Color
+> - [ ] **RW-21 `RotozoomScene`** — Trampolin-Effekt: ease-in-out Bounce-Physik
+> - [ ] **RW-22 `LissajousScene`** — Hintergrund-Kreuz weg, aggressivere Parameter-Variation
+>
+> ### Tier 4 — Fraktal-Parameter-Tweaks
+> - [ ] **RW-23 `FractalSpiral`** — Gegen Uhrzeigersinn, kontinuierlicher Hue-Shift
+> - [ ] **RW-24 `FractalElephant`** — Tumbling raus, andere Farben (weg von grün/orange)
+> - [ ] **RW-25 `FractalMini`** — Mehr Koordinaten-Varianz, langsamerer Zoom, längerer Zyklus
+> - [ ] **RW-26 `FractalSatellite`** — Tumbling raus
+> - [ ] **RW-27 `FractalDragon`** — Kürzere Full-Red-Verweilzeit (schnellerer Crossfade)
+> - [ ] **RW-28 `FractalSwirl`** — Zoom-Tiefe reduzieren (verhindert Pixel-Blowup)
+> - [ ] **RW-29 `FractalView`** — Tumbling raus, Max-Zoom-Tiefe reduzieren
 
 ---
 
