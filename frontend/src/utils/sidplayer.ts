@@ -14,6 +14,36 @@ export interface SidVisuals {
   gates: [number, number, number];
 }
 
+/**
+ * Parse SID file header WITHOUT needing an AudioContext.
+ * Works on the raw Uint8Array from a fetch or file upload.
+ */
+function parseSidHeader(data: Uint8Array): SidMetadata | null {
+  if (data.length < 0x7E) return null;
+
+  // Check magic: "PSID" or "RSID"
+  const magic = String.fromCharCode(data[0], data[1], data[2], data[3]);
+  if (magic !== 'PSID' && magic !== 'RSID') return null;
+
+  const readString = (offset: number, len: number): string => {
+    let s = '';
+    for (let i = 0; i < len; i++) {
+      const ch = data[offset + i];
+      if (ch === 0) break;
+      s += String.fromCharCode(ch);
+    }
+    return s.trim();
+  };
+
+  const title = readString(0x16, 32);
+  const author = readString(0x36, 32);
+  const info = readString(0x56, 32);
+  const subtunesCount = data[0xF] || 1;
+  const prefModel = (data[0x77] & 0x30) >= 0x20 ? 8580 : 6581;
+
+  return { title, author, info, subtunesCount, prefModel };
+}
+
 export class SidPlayer {
   private audioCtx: AudioContext | null = null;
   private workletNode: AudioWorkletNode | null = null;
@@ -24,9 +54,17 @@ export class SidPlayer {
   public playing: boolean = false;
   private loadGen = 0;
 
+  // Pending SID binary data (loaded without AudioContext)
+  private pendingData: Uint8Array | null = null;
+  private pendingSubtune: number = 0;
+
   constructor() {}
 
-  async setupAudio() {
+  /**
+   * Initialize AudioContext and AudioWorklet.
+   * MUST be called from a user gesture (click/touch) callback.
+   */
+  private async setupAudio() {
     if (this.workletNode) return;
 
     this.audioCtx = getSharedAudioContext();
@@ -36,11 +74,11 @@ export class SidPlayer {
       try {
         await ctx.resume();
       } catch (err) {
-        console.warn('Failed to resume AudioContext in SidPlayer:', err);
+        console.warn('SidPlayer: Failed to resume AudioContext:', err);
       }
     }
 
-    // Unlocking iOS Safari
+    // iOS Safari unlock
     try {
       const buffer = ctx.createBuffer(1, 1, 22050);
       const source = ctx.createBufferSource();
@@ -48,7 +86,7 @@ export class SidPlayer {
       source.connect(ctx.destination);
       source.start(0);
     } catch (e) {
-      console.warn('Failed to play dummy buffer for iOS unlock in SidPlayer:', e);
+      console.warn('SidPlayer: iOS unlock buffer failed:', e);
     }
 
     const audioCtxAny = ctx as any;
@@ -69,61 +107,101 @@ export class SidPlayer {
       if (data.type === 'visualizer') {
         if (this.visualCallback) this.visualCallback(data.data);
       } else if (data.type === 'loaded') {
+        // Worklet confirmed load — update metadata from worklet (authoritative)
         this.loaded = true;
         if (this.loadedCallback) this.loadedCallback(data.metadata);
       }
     };
 
-    // Apply default volume to worklet
     this.workletNode.port.postMessage({ type: 'setVolume', volume: this.volume });
   }
 
+  /**
+   * Fetch SID file from URL and parse header.
+   * Does NOT touch AudioContext — safe to call anytime.
+   */
   async load(url: string, subtune: number = 0) {
     const myGen = ++this.loadGen;
-    await this.setupAudio();
-    if (!this.workletNode || myGen !== this.loadGen) return;
 
     const res = await fetch(url);
+    if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${res.statusText}`);
     const buf = await res.arrayBuffer();
     const uint8 = new Uint8Array(buf);
 
-    if (myGen === this.loadGen) {
-      this.workletNode.port.postMessage({
-        type: 'load',
-        data: uint8,
-        subtune
-      });
+    if (myGen !== this.loadGen) return; // stale
+
+    const meta = parseSidHeader(uint8);
+    if (!meta) throw new Error('Invalid SID file (bad header)');
+
+    this.pendingData = uint8;
+    this.pendingSubtune = subtune;
+    this.loaded = true;
+
+    // If worklet already running, send data immediately
+    if (this.workletNode) {
+      this.workletNode.port.postMessage({ type: 'load', data: uint8, subtune });
     }
+
+    if (this.loadedCallback) this.loadedCallback(meta);
   }
 
+  /**
+   * Load SID from a Uint8Array buffer (user upload).
+   * Does NOT touch AudioContext — safe to call anytime.
+   */
   async loadBuffer(uint8: Uint8Array, subtune: number = 0) {
     const myGen = ++this.loadGen;
-    await this.setupAudio();
-    if (!this.workletNode || myGen !== this.loadGen) return;
 
-    this.workletNode.port.postMessage({
-      type: 'load',
-      data: uint8,
-      subtune
-    });
+    const meta = parseSidHeader(uint8);
+    if (!meta) throw new Error('Invalid SID file (bad header)');
+
+    if (myGen !== this.loadGen) return; // stale
+
+    this.pendingData = uint8;
+    this.pendingSubtune = subtune;
+    this.loaded = true;
+
+    // If worklet already running, send data immediately
+    if (this.workletNode) {
+      this.workletNode.port.postMessage({ type: 'load', data: uint8, subtune });
+    }
+
+    if (this.loadedCallback) this.loadedCallback(meta);
   }
 
-  play() {
-    if (this.workletNode) {
-      this.resumeContext();
-      this.workletNode.port.postMessage({ type: 'play' });
-      this.playing = true;
+  /**
+   * Start playback. Sets up AudioContext on first call (requires user gesture).
+   * If SID data has been loaded, sends it to the worklet before playing.
+   */
+  async play() {
+    await this.setupAudio();
+    if (!this.workletNode) return;
+
+    // If we have pending data that hasn't been sent to the worklet yet, send it
+    if (this.pendingData) {
+      this.workletNode.port.postMessage({
+        type: 'load',
+        data: this.pendingData,
+        subtune: this.pendingSubtune,
+      });
+      // Wait a tick for the worklet to process the load
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
+
+    this.resumeContext();
+    this.workletNode.port.postMessage({ type: 'play' });
+    this.playing = true;
   }
 
   stop() {
     if (this.workletNode) {
       this.workletNode.port.postMessage({ type: 'stop' });
-      this.playing = false;
     }
+    this.playing = false;
   }
 
   setSubtune(subtune: number) {
+    this.pendingSubtune = subtune;
     if (this.workletNode) {
       this.workletNode.port.postMessage({ type: 'setSubtune', subtune });
     }
@@ -154,6 +232,8 @@ export class SidPlayer {
     this.workletNode = null;
     this.loaded = false;
     this.playing = false;
+    this.pendingData = null;
+
     this.visualCallback = null;
     this.loadedCallback = null;
   }

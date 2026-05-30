@@ -250,16 +250,21 @@ const RETRO_WAVE_SHADER = `
 
   // Smooth continuous terrain — NO floor() quantization
   float getTerrainHeight(vec2 p) {
-    // Flat central valley for the synthwave highway
-    float valley = smoothstep(0.12, 0.80, abs(p.x));
-
     // Layered smooth noise ridges
-    float h1 = sin(p.x * 1.8) * cos(p.y * 0.9) * 0.38;
-    float h2 = noise(p * 3.8) * 0.15;
+    float h1 = sin(p.x * 1.2) * cos(p.y * 0.7) * 0.42;
+    float h2 = noise(p * 3.2) * 0.18;
     float h3 = noise(p * 8.0) * 0.06;
     float h4 = noise(p * 16.0) * 0.025; // fine detail
 
-    return valley * (0.50 + h1 + h2 + h3 + h4);
+    float height = h1 + h2 + h3 + h4;
+
+    // Flat plain (Ebene) at height 0, with mountains rising from it
+    float mountains = max(0.0, height - 0.02) * 0.75;
+
+    // Gentle fade directly in front of the camera path to prevent geometric clipping
+    float centerFade = smoothstep(0.02, 0.22, abs(p.x));
+
+    return mountains * centerFade;
   }
 
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {

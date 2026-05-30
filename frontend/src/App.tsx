@@ -126,17 +126,12 @@ interface GeneratedLayout {
   cells:               GridCell[]
 }
 
-function generateMobileIndices(): { textIdx: number; gfxIdx1: number; gfxIdx2: number; gfxIdx3: number } {
-  const textIdx = Math.floor(Math.random() * POOL_TEXT.length);
-  const gfxIndices: number[] = [];
-  while (gfxIndices.length < 3 && gfxIndices.length < POOL_GFX.length) {
-    const idx = Math.floor(Math.random() * POOL_GFX.length);
-    if (!gfxIndices.includes(idx)) {
-      gfxIndices.push(idx);
-    }
-  }
+function generateMobileIndices(reviews: ReviewEntry[]): { textIdx: number; gfxIdx1: number; gfxIdx2: number; gfxIdx3: number } {
+  const { textPool, gfxPool } = getFilteredPools(reviews)
+  const textIndices = getWeightedIndices(textPool, reviews)
+  const gfxIndices = getWeightedIndices(gfxPool, reviews)
   return {
-    textIdx,
+    textIdx: textIndices[0] ?? 0,
     gfxIdx1: gfxIndices[0] ?? 0,
     gfxIdx2: gfxIndices[1] ?? 0,
     gfxIdx3: gfxIndices[2] ?? 0,
@@ -212,11 +207,35 @@ const LARGE_PANELS = new Set([
   'MoonPanel'
 ]);
 
+const COMPONENT_NAMES = new Map<any, string>()
+
+function getBaseComponent(Comp: any): any {
+  if (!Comp) return null
+  let current = Comp
+  while (current && typeof current === 'object') {
+    if (current.type) {
+      current = current.type
+    } else {
+      break
+    }
+  }
+  return current
+}
+
 function getCompName(Comp: any): string {
-  if (!Comp) return '';
-  if (Comp.type && typeof Comp.type === 'function') return Comp.type.name || '';
-  if (typeof Comp === 'function') return Comp.name || '';
-  return '';
+  const base = getBaseComponent(Comp)
+  if (!base) return ''
+  
+  const name = COMPONENT_NAMES.get(base)
+  if (name) return name
+  
+  if (typeof base === 'function') {
+    return base.name || ''
+  }
+  if (typeof base === 'string') {
+    return base
+  }
+  return ''
 }
 
 function isCellLarge(cell: GridCell): boolean {
@@ -232,7 +251,7 @@ function isCellLarge(cell: GridCell): boolean {
  * Erzeugt ein vollständig zufälliges CSS-Grid-Layout.
  * @param id Eindeutiger Zähler — wird als React-Key verwendet
  */
-function generateLayout(id: number): GeneratedLayout {
+function generateLayout(id: number, reviews: ReviewEntry[]): GeneratedLayout {
   // 1. Gittergröße: cols × rows basierend auf der Bildschirmbreite
   const width = typeof window !== 'undefined' ? window.innerWidth : 1200
   let sizes: [number, number][]
@@ -371,22 +390,56 @@ function generateLayout(id: number): GeneratedLayout {
     }
   }
 
+  // ── Pool-Größen ermitteln BEVOR Zellen zugewiesen werden ─────────────────────
+  const { textPool, gfxPool } = getFilteredPools(reviews)
+  const textIndices = getWeightedIndices(textPool, reviews)
+  const gfxIndices = getWeightedIndices(gfxPool, reviews)
+
+  // GFX-Indices in large/small aufteilen
+  const largeGfxIndices: number[] = []
+  const smallGfxIndices: number[] = []
+  gfxIndices.forEach(idx => {
+    const comp = gfxPool[idx]
+    const name = getCompName(comp)
+    if (LARGE_PANELS.has(name)) {
+      largeGfxIndices.push(idx)
+    } else {
+      smallGfxIndices.push(idx)
+    }
+  })
+
+  const maxTextCells = textIndices.length
+  const maxGfxCells  = gfxIndices.length   // large + small combined
+
   // Verbleibende Zellen: abwechselnd 'text' und 'gfx'
   let altIdx = 0
-  let hasText = false
-  let hasGfx  = false
+  let textCount = 0
+  let gfxCount  = 0
 
   // Alle Positionen im Grid durchgehen
   for (let r = 1; r <= rows; r++) {
     for (let c = 1; c <= cols; c++) {
       if (occupied.has(`${c},${r}`)) continue  // bereits durch Fraktal oder große GFX belegt
 
-      // Typen abwechseln
-      const type: CellType = altIdx % 3 === 0 ? 'text' : 'gfx'
+      // Gewünschten Typ bestimmen (1 Text, 2 GFX, 1 Text, 2 GFX …)
+      let type: CellType = altIdx % 3 === 0 ? 'text' : 'gfx'
       altIdx++
 
-      if (type === 'text') hasText = true
-      if (type === 'gfx')  hasGfx  = true
+      // Pool-Overflow: wenn gewünschter Typ erschöpft, zum anderen wechseln
+      if (type === 'text' && textCount >= maxTextCells) {
+        type = 'gfx'
+      } else if (type === 'gfx' && gfxCount >= maxGfxCells) {
+        type = 'text'
+      }
+
+      // Absoluter Overflow: wenn BEIDE Pools voll → Zelle überspringen
+      if ((type === 'text' && textCount >= maxTextCells) ||
+          (type === 'gfx'  && gfxCount  >= maxGfxCells)) {
+        continue
+      }
+
+      if (type === 'text') textCount++
+      if (type === 'gfx')  gfxCount++
 
       cells.push({
         type,
@@ -397,73 +450,76 @@ function generateLayout(id: number): GeneratedLayout {
   }
 
   // Mindestens 1× 'text' und 1× 'gfx' sicherstellen
-  // (kann bei kleinen Grids mit großem Span fehlen)
-  if (!hasText) {
-    // Erste 'gfx'-Zelle zu 'text' machen
+  if (textCount === 0 && gfxCount > 1 && maxTextCells > 0) {
     const gfxCell = cells.find(cell => cell.type === 'gfx' && !isCellLarge(cell)) || cells.find(cell => cell.type === 'gfx')
-    if (gfxCell) gfxCell.type = 'text'
+    if (gfxCell) { gfxCell.type = 'text'; textCount++; gfxCount-- }
   }
-  if (!hasGfx) {
-    // Erste 'text'-Zelle (die nicht fractal ist) zu 'gfx' machen
+  if (gfxCount === 0 && textCount > 1 && maxGfxCells > 0) {
     const textCell = cells.find(cell => cell.type === 'text')
-    if (textCell) textCell.type = 'gfx'
+    if (textCell) { textCell.type = 'gfx'; gfxCount++; textCount-- }
   }
 
-  // Assign unique indices for text and gfx cells
-  const textIndices = Array.from({ length: POOL_TEXT.length }, (_, i) => i)
-  const gfxIndices = Array.from({ length: POOL_GFX.length }, (_, i) => i)
-
-  // Shuffle textIndices
-  for (let i = textIndices.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [textIndices[i], textIndices[j]] = [textIndices[j], textIndices[i]]
-  }
-
-  // Shuffle gfxIndices
-  for (let i = gfxIndices.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [gfxIndices[i], gfxIndices[j]] = [gfxIndices[j], gfxIndices[i]]
-  }
-
-  // Partition pools
-  const largeGfxIndices: number[] = [];
-  const smallGfxIndices: number[] = [];
-
-  gfxIndices.forEach(idx => {
-    const comp = POOL_GFX[idx];
-    const name = getCompName(comp);
-    if (LARGE_PANELS.has(name)) {
-      largeGfxIndices.push(idx);
-    } else {
-      smallGfxIndices.push(idx);
-    }
-  });
-
+  // Index-Zuweisung: strikt ohne Wraparound → jedes Panel nur einmal
   let textIdxPtr = 0
   let largeGfxPtr = 0
   let smallGfxPtr = 0
 
   cells.forEach(cell => {
     if (cell.type === 'text') {
-      cell.panelIdx = textIndices[textIdxPtr++ % textIndices.length]
+      if (textIdxPtr < textIndices.length) {
+        cell.panelIdx = textIndices[textIdxPtr++]
+      }
     } else if (cell.type === 'gfx') {
       if (isCellLarge(cell)) {
         if (largeGfxPtr < largeGfxIndices.length) {
-          cell.panelIdx = largeGfxIndices[largeGfxPtr++];
-        } else {
-          cell.panelIdx = smallGfxIndices[smallGfxPtr++ % smallGfxIndices.length];
+          cell.panelIdx = largeGfxIndices[largeGfxPtr++]
+        } else if (smallGfxPtr < smallGfxIndices.length) {
+          cell.panelIdx = smallGfxIndices[smallGfxPtr++]
         }
       } else {
         if (smallGfxPtr < smallGfxIndices.length) {
-          cell.panelIdx = smallGfxIndices[smallGfxPtr++];
-        } else {
-          cell.panelIdx = largeGfxIndices[largeGfxPtr++ % largeGfxIndices.length];
+          cell.panelIdx = smallGfxIndices[smallGfxPtr++]
+        } else if (largeGfxPtr < largeGfxIndices.length) {
+          cell.panelIdx = largeGfxIndices[largeGfxPtr++]
         }
       }
     }
   })
 
-  return { id, gridTemplateColumns, gridTemplateRows, cells }
+  // ── Dedup-Pass: Sicherstellen, dass kein panelIdx doppelt vergeben ist ──────
+  // Getrennt für text und gfx prüfen
+  for (const poolType of ['text', 'gfx'] as const) {
+    const usedIndices = new Set<number>()
+    const allPoolIndices = new Set(
+      poolType === 'text' ? textIndices : gfxIndices
+    )
+
+    cells.forEach(cell => {
+      if (cell.type !== poolType || cell.panelIdx == null) return
+
+      if (usedIndices.has(cell.panelIdx)) {
+        // Duplikat! Ersetze durch unbenutzten Index
+        for (const candidate of allPoolIndices) {
+          if (!usedIndices.has(candidate)) {
+            cell.panelIdx = candidate
+            usedIndices.add(candidate)
+            return
+          }
+        }
+        // Kein unbenutzter Index mehr → Zelle deaktivieren
+        cell.panelIdx = undefined
+      } else {
+        usedIndices.add(cell.panelIdx)
+      }
+    })
+  }
+
+  // Zellen ohne gültigen panelIdx entfernen (sollte nie passieren)
+  const finalCells = cells.filter(cell =>
+    cell.type === 'fractal' || cell.panelIdx != null
+  )
+
+  return { id, gridTemplateColumns, gridTemplateRows, cells: finalCells }
 }
 
 // ── Review-Modus: alle Panels als geordnete Liste ─────────────────────────────
@@ -556,6 +612,16 @@ ALL_PANELS.forEach(p => {
   p.Component = memo(p.Component) as any
 })
 
+function initComponentNamesMap() {
+  ALL_PANELS.forEach(p => {
+    const base = getBaseComponent(p.Component)
+    if (base) {
+      COMPONENT_NAMES.set(base, p.name)
+    }
+  })
+}
+initComponentNamesMap()
+
 // ── Eingefrorener Review-Slot ────────────────────────────────────────────────
 //
 // Performance-Hintergrund (Audit-Befund B-4, siehe PERF_NOTES.md): die App ist
@@ -593,14 +659,112 @@ interface ReviewEntry {
 }
 
 const LS_KEY = 'fraktallab_reviews'
+const SEED_KEY = 'fraktallab_reviews_seeded_2026_05_30'
+
+const INITIAL_REVIEWS: ReviewEntry[] = [
+  { panel: "MetaAgentPanel", rating: "down", comment: "", ts: 1780166214686 },
+  { panel: "TunnelScene", rating: "up", comment: "", ts: 1780166236483 },
+  { panel: "EnhanceView", rating: "down", comment: "", ts: 1780166240762 },
+  { panel: "VoxelMatrix", rating: "up", comment: "", ts: 1780166250443 },
+  { panel: "ParallaxPanel", rating: "down", comment: "", ts: 1780166282783 },
+  { panel: "CADRobotPanel", rating: "down", comment: "", ts: 1780166285762 },
+  { panel: "RetroErrorPanel", rating: "up", comment: "", ts: 1780166305343 },
+  { panel: "ShaderHackingCore", rating: "down", comment: "", ts: 1780166337653 },
+  { panel: "ShaderMandelbox", rating: "up", comment: "", ts: 1780166339905 },
+  { panel: "ShaderRetroWave", rating: "up", comment: "Bitte kein Tal in der Mitte, sondern eine Ebene mit Bergen", ts: 1780166363932 },
+  { panel: "DaggerfallPanel", rating: "down", comment: "", ts: 1780166367432 },
+  { panel: "LidarScanPanel", rating: "up", comment: "", ts: 1780166371257 },
+  { panel: "TixyPanel", rating: "up", comment: "", ts: 1780166376374 },
+  { panel: "IQDigitalStorm", rating: "up", comment: "", ts: 1780166381140 },
+  { panel: "NuclearExplosionPanel", rating: "up", comment: "", ts: 1780166397190 },
+  { panel: "SupervolcanoPanel", rating: "down", comment: "", ts: 1780166402282 },
+  { panel: "MandelbulbScene", rating: "up", comment: "", ts: 1780166406715 },
+  { panel: "MengerSpongeScene", rating: "up", comment: "", ts: 1780166412482 },
+  { panel: "VisitorProfilePanel", rating: "down", comment: "", ts: 1780166419907 },
+  { panel: "SatellitePanel", rating: "down", comment: "", ts: 1780166423807 },
+  { panel: "SystemLog", rating: "down", comment: "", ts: 1780166430132 },
+  { panel: "DataStream", rating: "down", comment: "", ts: 1780166432508 },
+  { panel: "Vitals", rating: "down", comment: "", ts: 1780166441532 },
+  { panel: "PortScanner", rating: "down", comment: "", ts: 1780166452899 },
+  { panel: "PseudoCode", rating: "down", comment: "", ts: 1780166455774 },
+  { panel: "AgentCodePanel", rating: "down", comment: "", ts: 1780166458923 },
+  { panel: "DiskCleanupPanel", rating: "down", comment: "", ts: 1780166461315 },
+  { panel: "StockTickerPanel", rating: "down", comment: "", ts: 1780166463098 },
+  { panel: "ClassifiedPanel", rating: "down", comment: "", ts: 1780166464590 }
+]
+
+function seedInitialReviewsIfNeeded(): void {
+  if (typeof window === 'undefined') return
+  try {
+    if (localStorage.getItem(SEED_KEY) !== 'true') {
+      let existing: ReviewEntry[] = []
+      try {
+        existing = JSON.parse(localStorage.getItem(LS_KEY) ?? '[]') as ReviewEntry[]
+        if (!Array.isArray(existing)) existing = []
+      } catch {
+        existing = []
+      }
+      
+      const existingMap = new Map(existing.map(r => [r.panel, r]))
+      INITIAL_REVIEWS.forEach(init => {
+        existingMap.set(init.panel, init)
+      })
+      
+      localStorage.setItem(LS_KEY, JSON.stringify(Array.from(existingMap.values())))
+      localStorage.setItem(SEED_KEY, 'true')
+    }
+  } catch (e) {
+    console.error('Failed to seed initial reviews:', e)
+  }
+}
 
 /** Liest alle Reviews aus localStorage. Gibt leeres Array zurück bei Fehler. */
 function loadReviews(): ReviewEntry[] {
+  seedInitialReviewsIfNeeded()
   try {
     return JSON.parse(localStorage.getItem(LS_KEY) ?? '[]') as ReviewEntry[]
   } catch {
     return []
   }
+}
+
+function getFilteredPools(reviews: ReviewEntry[]) {
+  const downPanels = new Set(reviews.filter(r => r.rating === 'down').map(r => r.panel))
+  
+  const textPool = POOL_TEXT.filter(comp => {
+    const name = getCompName(comp)
+    return !downPanels.has(name)
+  })
+  
+  const gfxPool = POOL_GFX.filter(comp => {
+    const name = getCompName(comp)
+    return !downPanels.has(name)
+  })
+  
+  return { textPool, gfxPool }
+}
+
+function getWeightedIndices(pool: React.ComponentType<any>[], reviews: ReviewEntry[]): number[] {
+  const scored = pool.map((comp, idx) => {
+    const name = getCompName(comp)
+    const review = reviews.find(r => r.panel === name)
+    
+    let weight = 1.0
+    if (review?.rating === 'up') {
+      weight = 3.0
+    } else if (review?.rating === 'down') {
+      weight = 0.0
+    }
+    
+    const u = Math.random()
+    const score = weight > 0 ? Math.pow(u, 1 / weight) : -1
+    return { idx, score }
+  })
+  
+  return scored
+    .filter(item => item.score >= 0)
+    .sort((a, b) => b.score - a.score)
+    .map(item => item.idx)
 }
 
 /** Speichert einen neuen/aktualisierten Review. Pro Panel nur ein Eintrag. */
@@ -621,9 +785,13 @@ function isAudioPlaying(): boolean {
 function LayoutContent({
   layout,
   onSkipSlot,
+  textPool,
+  gfxPool,
 }: {
   layout: GeneratedLayout
   onSkipSlot: (slotIndex: number) => void
+  textPool: React.ComponentType<any>[]
+  gfxPool: React.ComponentType<any>[]
 }) {
   return (
     <div
@@ -647,7 +815,7 @@ function LayoutContent({
           {cell.type === 'text'    && (
             <PanelSlot
               key={`${layout.id}-text-${i}`}
-              pool={POOL_TEXT}
+              pool={textPool}
               activeIdx={cell.panelIdx!}
               onSkip={() => onSkipSlot(i)}
               className="h-full"
@@ -656,7 +824,7 @@ function LayoutContent({
           {cell.type === 'gfx'     && (
             <PanelSlot
               key={`${layout.id}-gfx-${i}`}
-              pool={POOL_GFX}
+              pool={gfxPool}
               activeIdx={cell.panelIdx!}
               onSkip={() => onSkipSlot(i)}
               className="h-full"
@@ -672,13 +840,19 @@ function LayoutContent({
 export default function App() {
   // Aufsteigender ID-Zähler für React-Keys — als Ref, um Stale-Closure-Probleme zu vermeiden
   const layoutIdRef = useRef(0)
-  const [layout,     setLayout]     = useState<GeneratedLayout>(() => generateLayout(0))
+  const [layout,     setLayout]     = useState<GeneratedLayout>(() => {
+    const reviews = loadReviews()
+    return generateLayout(0, reviews)
+  })
   const [prevLayout, setPrevLayout] = useState<GeneratedLayout | null>(null)
   const [sliding,    setSliding]    = useState(false)
   // Ambient Sound: standardmäßig eingeschaltet
   const [soundEnabled, setSoundEnabled] = useState(true)
 
-  const [mobileIndices, setMobileIndices] = useState(() => generateMobileIndices())
+  const [mobileIndices, setMobileIndices] = useState(() => {
+    const reviews = loadReviews()
+    return generateMobileIndices(reviews)
+  })
 
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -695,21 +869,28 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
+  const reviews = loadReviews()
+  const { textPool, gfxPool } = getFilteredPools(reviews)
+
   const handleSkipSlot = useCallback((slotIndex: number) => {
     setLayout(curr => {
       const cell = curr.cells[slotIndex]
       if (!cell) return curr
 
-      const pool = cell.type === 'text' ? POOL_TEXT : POOL_GFX
+      const reviews = loadReviews()
+      const { textPool, gfxPool } = getFilteredPools(reviews)
+      const pool = cell.type === 'text' ? textPool : gfxPool
 
       // Get all currently active components in OTHER slots of this layout
       const otherActiveComps = new Set<React.ComponentType<any>>()
       curr.cells.forEach((c, idx) => {
         if (idx !== slotIndex) {
           if (c.type === 'text') {
-            otherActiveComps.add(POOL_TEXT[c.panelIdx!])
+            const comp = textPool[c.panelIdx!]
+            if (comp) otherActiveComps.add(comp)
           } else if (c.type === 'gfx') {
-            otherActiveComps.add(POOL_GFX[c.panelIdx!])
+            const comp = gfxPool[c.panelIdx!]
+            if (comp) otherActiveComps.add(comp)
           }
         }
       })
@@ -740,9 +921,27 @@ export default function App() {
         })
       }
 
-      const chosenIdx = candidates.length > 0
-        ? candidates[Math.floor(Math.random() * candidates.length)]
-        : Math.floor(Math.random() * pool.length)
+      let chosenIdx = 0
+      if (candidates.length > 0) {
+        const candidateScores = candidates.map(i => {
+          const comp = pool[i]
+          const name = getCompName(comp)
+          const review = reviews.find(r => r.panel === name)
+          let weight = 1.0
+          if (review?.rating === 'up') {
+            weight = 3.0
+          } else if (review?.rating === 'down') {
+            weight = 0.0
+          }
+          const u = Math.random()
+          const score = weight > 0 ? Math.pow(u, 1 / weight) : -1
+          return { i, score }
+        })
+        candidateScores.sort((a, b) => b.score - a.score)
+        chosenIdx = candidateScores[0].i
+      } else {
+        chosenIdx = Math.floor(Math.random() * pool.length)
+      }
 
       const newCells = [...curr.cells]
       newCells[slotIndex] = {
@@ -759,34 +958,40 @@ export default function App() {
 
   const handleSkipMobileSlot = useCallback((slotIndex: number) => {
     setMobileIndices(curr => {
+      const reviews = loadReviews()
+      const { textPool, gfxPool } = getFilteredPools(reviews)
       const otherActiveComps = new Set<React.ComponentType<any>>()
 
       if (slotIndex !== 0) {
-        otherActiveComps.add(POOL_TEXT[curr.textIdx])
+        const comp = textPool[curr.textIdx]
+        if (comp) otherActiveComps.add(comp)
       }
       if (slotIndex !== 1) {
-        otherActiveComps.add(POOL_GFX[curr.gfxIdx1])
+        const comp = gfxPool[curr.gfxIdx1]
+        if (comp) otherActiveComps.add(comp)
       }
       if (slotIndex !== 2) {
-        otherActiveComps.add(POOL_GFX[curr.gfxIdx2])
+        const comp = gfxPool[curr.gfxIdx2]
+        if (comp) otherActiveComps.add(comp)
       }
       if (slotIndex !== 3) {
-        otherActiveComps.add(POOL_GFX[curr.gfxIdx3])
+        const comp = gfxPool[curr.gfxIdx3]
+        if (comp) otherActiveComps.add(comp)
       }
 
       let pool: React.ComponentType<any>[]
       let currentIdx: number
       if (slotIndex === 0) {
-        pool = POOL_TEXT
+        pool = textPool
         currentIdx = curr.textIdx
       } else if (slotIndex === 1) {
-        pool = POOL_GFX
+        pool = gfxPool
         currentIdx = curr.gfxIdx1
       } else if (slotIndex === 2) {
-        pool = POOL_GFX
+        pool = gfxPool
         currentIdx = curr.gfxIdx2
       } else {
-        pool = POOL_GFX
+        pool = gfxPool
         currentIdx = curr.gfxIdx3
       }
 
@@ -798,9 +1003,27 @@ export default function App() {
         }
       })
 
-      const chosenIdx = candidates.length > 0
-        ? candidates[Math.floor(Math.random() * candidates.length)]
-        : Math.floor(Math.random() * pool.length)
+      let chosenIdx = 0
+      if (candidates.length > 0) {
+        const candidateScores = candidates.map(i => {
+          const comp = pool[i]
+          const name = getCompName(comp)
+          const review = reviews.find(r => r.panel === name)
+          let weight = 1.0
+          if (review?.rating === 'up') {
+            weight = 3.0
+          } else if (review?.rating === 'down') {
+            weight = 0.0
+          }
+          const u = Math.random()
+          const score = weight > 0 ? Math.pow(u, 1 / weight) : -1
+          return { i, score }
+        })
+        candidateScores.sort((a, b) => b.score - a.score)
+        chosenIdx = candidateScores[0].i
+      } else {
+        chosenIdx = Math.floor(Math.random() * pool.length)
+      }
 
       if (slotIndex === 0) {
         return { ...curr, textIdx: chosenIdx }
@@ -816,10 +1039,11 @@ export default function App() {
 
   // Automatische Review-Zurücksetzung bei Versionsänderung
   useEffect(() => {
-    const RESET_VERSION = 'v1.1.0-reset-1'
+    const RESET_VERSION = 'v1.1.0-reset-2'
     const currentReset = localStorage.getItem('fraktallab_reset_version')
     if (currentReset !== RESET_VERSION) {
       localStorage.removeItem(LS_KEY)
+      localStorage.removeItem(SEED_KEY)
       localStorage.setItem('fraktallab_reset_version', RESET_VERSION)
     }
   }, [])
@@ -833,6 +1057,9 @@ export default function App() {
     const val = localStorage.getItem('fraktallab_review_idx')
     return val ? parseInt(val, 10) : 0
   })
+  const [hideArchived, setHideArchived] = useState(() => {
+    return localStorage.getItem('fraktallab_hide_archived') === 'true'
+  })
 
   useEffect(() => {
     localStorage.setItem('fraktallab_review_mode', String(reviewMode))
@@ -841,6 +1068,26 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('fraktallab_review_idx', String(reviewIdx))
   }, [reviewIdx])
+
+  useEffect(() => {
+    localStorage.setItem('fraktallab_hide_archived', String(hideArchived))
+  }, [hideArchived])
+
+  const activeAllPanels = React.useMemo(() => {
+    if (!hideArchived) return ALL_PANELS
+    return ALL_PANELS.filter(p => {
+      const review = reviews.find(r => r.panel === p.name)
+      return review?.rating !== 'down'
+    })
+  }, [hideArchived, reviews])
+
+  // Ensure index is within range of activeAllPanels
+  useEffect(() => {
+    if (reviewIdx >= activeAllPanels.length) {
+      setReviewIdx(Math.max(0, activeAllPanels.length - 1))
+    }
+  }, [activeAllPanels.length, reviewIdx])
+
   // Aktuelle Bewertungsauswahl (noch nicht gespeichert, nur UI-State)
   const [reviewRating, setReviewRating] = useState<'up' | 'down' | null>(null)
   // useRef für das Textarea verhindert Re-Renders beim Tippen
@@ -859,42 +1106,42 @@ export default function App() {
   /** Wechselt zu einem Panel per Index — speichert aktuellen Stand zuerst */
   const goToPanel = useCallback((idx: number) => {
     // Auto-save falls ein Daumen gewählt wurde (Kommentar wird mitgespeichert)
-    if (reviewRating && ALL_PANELS[reviewIdx]) {
+    if (reviewRating && activeAllPanels[reviewIdx]) {
       saveReview({
-        panel:   ALL_PANELS[reviewIdx].name,
+        panel:   activeAllPanels[reviewIdx].name,
         rating:  reviewRating,
         comment: commentRef.current?.value ?? '',
         ts:      Date.now(),
       })
     }
-    const safeIdx = ((idx % ALL_PANELS.length) + ALL_PANELS.length) % ALL_PANELS.length
+    const safeIdx = activeAllPanels.length > 0 ? (((idx % activeAllPanels.length) + activeAllPanels.length) % activeAllPanels.length) : 0
     setReviewIdx(safeIdx)
-    if (ALL_PANELS[safeIdx]) {
-      loadPanelReview(ALL_PANELS[safeIdx].name)
+    if (activeAllPanels[safeIdx]) {
+      loadPanelReview(activeAllPanels[safeIdx].name)
     }
-  }, [reviewIdx, reviewRating, loadPanelReview])
+  }, [reviewIdx, reviewRating, loadPanelReview, activeAllPanels])
 
   /** Öffnet den Review-Modus und lädt die Bewertung für das erste Panel */
   const enterReview = useCallback(() => {
     setReviewMode(true)
     setReviewIdx(0)
-    if (ALL_PANELS[0]) {
-      loadPanelReview(ALL_PANELS[0].name)
+    if (activeAllPanels[0]) {
+      loadPanelReview(activeAllPanels[0].name)
     }
-  }, [loadPanelReview])
+  }, [loadPanelReview, activeAllPanels])
 
   /** Wählt Daumen und speichert sofort — kein separater Save-Schritt nötig */
   const handleRating = useCallback((rating: 'up' | 'down') => {
     setReviewRating(rating)
-    if (ALL_PANELS[reviewIdx]) {
+    if (activeAllPanels[reviewIdx]) {
       saveReview({
-        panel:   ALL_PANELS[reviewIdx].name,
+        panel:   activeAllPanels[reviewIdx].name,
         rating,
         comment: commentRef.current?.value ?? '',
         ts:      Date.now(),
       })
     }
-  }, [reviewIdx])
+  }, [reviewIdx, activeAllPanels])
 
   // Ref für den laufenden Auto-Switch-Timer — wird bei jedem Wechsel neu gesetzt
   const autoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -902,7 +1149,8 @@ export default function App() {
   const doSwitch = useCallback((current: GeneratedLayout) => {
     // Neue ID vergeben und neues Layout generieren
     layoutIdRef.current += 1
-    const next = generateLayout(layoutIdRef.current)
+    const reviews = loadReviews()
+    const next = generateLayout(layoutIdRef.current, reviews)
 
     setPrevLayout(current)
     setSliding(true)
@@ -970,19 +1218,19 @@ export default function App() {
       
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
         e.preventDefault()
-        goToPanel((reviewIdx + 1) % ALL_PANELS.length)
+        goToPanel((reviewIdx + 1) % activeAllPanels.length)
       } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
         e.preventDefault()
-        goToPanel((reviewIdx - 1 + ALL_PANELS.length) % ALL_PANELS.length)
+        goToPanel((reviewIdx - 1 + activeAllPanels.length) % activeAllPanels.length)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [reviewMode, reviewIdx, goToPanel])
+  }, [reviewMode, reviewIdx, goToPanel, activeAllPanels.length])
 
   // ── abgeleitete Variablen für den Review-Modus ─────────────────────────────
-  const totalPanels    = ALL_PANELS.length
-  const currentPanel   = ALL_PANELS[reviewIdx]
+  const totalPanels    = activeAllPanels.length
+  const currentPanel   = activeAllPanels[reviewIdx]
   // Bereits gespeicherte Bewertung für das aktuelle Panel (für grüne Hervorhebung nach SAVE)
   const savedReviews   = reviewMode ? loadReviews() : []
   const savedForCurrent = savedReviews.find(r => r.panel === currentPanel?.name)
@@ -1083,7 +1331,8 @@ export default function App() {
                 /* Auf Mobile (unter 768px) rendern wir NUR das eine aktive Panel */
                 <div className="flex-1 min-h-0 h-full flex flex-col">
                   {(() => {
-                    const panel = ALL_PANELS[reviewIdx]
+                    const panel = activeAllPanels[reviewIdx]
+                    if (!panel) return <div className="p-4 text-center text-green-700">NO PANELS AVAILABLE</div>
                     const Comp = panel.Component
                     return <Comp />
                   })()}
@@ -1091,40 +1340,55 @@ export default function App() {
               ) : (
                 /* Auf Desktop rendern wir das 2x2 Grid (4 Panels) */
                 <div className="grid flex-1 min-h-0 grid-cols-2 grid-rows-2 gap-1 bg-black">
-                  {[0, 1, 2, 3].map(offset => {
-                    const pageStartIdx = Math.floor(reviewIdx / 4) * 4
-                    const idx = pageStartIdx + offset
-                    if (idx < totalPanels) {
-                      const panel = ALL_PANELS[idx]
-                      const Comp = panel.Component
-                      const isActive = idx === reviewIdx
-                      return (
-                        <div
-                          key={panel.name}
-                          className={`flex-1 min-h-0 h-full min-w-0 relative flex flex-col transition-all duration-200 cursor-pointer ${
-                            isActive ? 'ring-2 ring-green-500 border border-green-500 z-10' : ''
-                          }`}
-                          onClick={() => goToPanel(idx)}
-                        >
-                          {/* Nur das aktive Panel animiert live (B-4: Main-Thread
-                              entlasten). Inaktive Slots zeigen einen statischen
-                              Platzhalter und mounten erst beim Anklicken. */}
-                          {isActive ? <Comp /> : <FrozenReviewSlot name={panel.name} />}
-                          {/* Review-Mode-Marker: Index + Kurzname des Panels.
-                              Sitzt oben rechts ueber der Title-Bar des Panels
-                              (rechte Seite dort ist leer, ausser dem Pulse-
-                              Dot). Hoher Kontrast, gut lesbar — frueher unten
-                              rechts mit zu wenig Kontrast und ohne Kurzname.
-                              Kurzname hilft beim Verweisen auf Panels in
-                              Konversationen. */}
-                          <div className="absolute top-0.5 right-7 z-20 pointer-events-none select-none flex items-center gap-1 font-mono text-xs tracking-wider bg-black/80 border border-green-700/40 px-1.5 py-[1px] rounded-sm">
-                            <span className="text-green-500 font-bold">#{idx + 1}</span>
-                            <span className="text-green-700">·</span>
-                            <span className="text-green-300">{panel.name}</span>
+                  {activeAllPanels.length === 0 ? (
+                    <div className="col-span-2 row-span-2 flex items-center justify-center text-xs text-green-700 uppercase">
+                      [ NO ACTIVE PANELS IN REVIEW CYCLE ]
+                    </div>
+                  ) : (
+                    [0, 1, 2, 3].map(offset => {
+                      const pageStartIdx = Math.floor(reviewIdx / 4) * 4
+                      const idx = pageStartIdx + offset
+                      if (idx < totalPanels) {
+                        const panel = activeAllPanels[idx]
+                        const Comp = panel.Component
+                        const isActive = idx === reviewIdx
+                        const review = reviews.find(r => r.panel === panel.name)
+                        const isUp = review?.rating === 'up'
+                        const isDown = review?.rating === 'down'
+
+                        return (
+                          <div
+                            key={panel.name}
+                            className={`flex-1 min-h-0 h-full min-w-0 relative flex flex-col transition-all duration-200 cursor-pointer ${
+                              isActive
+                                ? isUp
+                                  ? 'ring-2 ring-green-400 border border-green-400 z-10'
+                                  : isDown
+                                    ? 'ring-2 ring-red-500 border border-red-500 z-10'
+                                    : 'ring-2 ring-green-500 border border-green-500 z-10'
+                                : isUp
+                                  ? 'border border-green-900/60 bg-green-950/5'
+                                  : isDown
+                                    ? 'border border-red-950/60 bg-red-950/5'
+                                    : ''
+                            }`}
+                            onClick={() => goToPanel(idx)}
+                          >
+                            {/* Nur das aktive Panel animiert live (B-4: Main-Thread
+                                entlasten). Inaktive Slots zeigen einen statischen
+                                Platzhalter und mounten erst beim Anklicken. */}
+                            {isActive ? <Comp /> : <FrozenReviewSlot name={panel.name} />}
+                            {/* Review-Mode-Marker: Index + Kurzname des Panels. */}
+                            <div className="absolute top-0.5 right-7 z-20 pointer-events-none select-none flex items-center gap-1 font-mono text-xs tracking-wider bg-black/80 border border-green-700/40 px-1.5 py-[1px] rounded-sm">
+                              <span className="text-green-500 font-bold">#{idx + 1}</span>
+                              <span className="text-green-700">·</span>
+                              <span className="text-green-300">{panel.name}</span>
+                              {isUp && <span className="ml-1 text-green-400">👍</span>}
+                              {isDown && <span className="ml-1 text-red-500">👎</span>}
+                            </div>
                           </div>
-                        </div>
-                      )
-                    } else {
+                        )
+                      } else {
                       // Render empty placeholder panel to keep 2x2 grid balanced
                       return (
                         <div
@@ -1139,7 +1403,7 @@ export default function App() {
                         </div>
                       )
                     }
-                  })}
+                  }))}
                 </div>
               )}
             </div>
@@ -1207,6 +1471,17 @@ export default function App() {
                 {/* Action Buttons */}
                 <div className="flex gap-1">
                   <button
+                    onClick={() => setHideArchived(prev => !prev)}
+                    title="Archivierte Panels (Daumen runter) ausblenden"
+                    className={`border text-[10px] px-2 py-1 transition-colors cursor-pointer ${
+                      hideArchived
+                        ? 'border-red-500 text-red-300 bg-red-950/20'
+                        : 'border-green-800 text-green-600 hover:border-green-500 hover:text-green-300'
+                    }`}
+                  >
+                    {hideArchived ? 'SHOW ARCHIVED' : 'HIDE ARCHIVED'}
+                  </button>
+                  <button
                     onClick={() => {
                       const data = loadReviews()
                       navigator.clipboard.writeText(JSON.stringify(data, null, 2))
@@ -1221,6 +1496,7 @@ export default function App() {
                     onClick={() => {
                       if (window.confirm("Alle Kommentare und Bewertungen zurücksetzen?")) {
                         localStorage.removeItem(LS_KEY)
+                        localStorage.removeItem(SEED_KEY) // Also reset seed state to allow fresh seeding
                         window.location.reload()
                       }
                     }}
@@ -1267,7 +1543,7 @@ export default function App() {
                 {/* Panel 1: Text-Panel */}
                 <div className="flex-1 min-h-0">
                   <PanelSlot
-                    pool={POOL_TEXT}
+                    pool={textPool}
                     activeIdx={mobileIndices.textIdx}
                     onSkip={() => handleSkipMobileSlot(0)}
                     className="h-full"
@@ -1276,7 +1552,7 @@ export default function App() {
                 {/* Panel 2: Grafik-Panel 1 */}
                 <div className="flex-1 min-h-0">
                   <PanelSlot
-                    pool={POOL_GFX}
+                    pool={gfxPool}
                     activeIdx={mobileIndices.gfxIdx1}
                     onSkip={() => handleSkipMobileSlot(1)}
                     className="h-full"
@@ -1285,7 +1561,7 @@ export default function App() {
                 {/* Panel 3: Grafik-Panel 2 */}
                 <div className="flex-1 min-h-0">
                   <PanelSlot
-                    pool={POOL_GFX}
+                    pool={gfxPool}
                     activeIdx={mobileIndices.gfxIdx2}
                     onSkip={() => handleSkipMobileSlot(2)}
                     className="h-full"
@@ -1294,7 +1570,7 @@ export default function App() {
                 {/* Panel 4: Grafik-Panel 3 */}
                 <div className="flex-1 min-h-0">
                   <PanelSlot
-                    pool={POOL_GFX}
+                    pool={gfxPool}
                     activeIdx={mobileIndices.gfxIdx3}
                     onSkip={() => handleSkipMobileSlot(3)}
                     className="h-full"
@@ -1312,7 +1588,7 @@ export default function App() {
                     aria-hidden="true"
                     style={{ contain: 'paint' }}
                   >
-                    <LayoutContent layout={prevLayout} onSkipSlot={() => {}} />
+                    <LayoutContent layout={prevLayout} onSkipSlot={() => {}} textPool={textPool} gfxPool={gfxPool} />
                   </div>
                 )}
 
@@ -1321,7 +1597,7 @@ export default function App() {
                   key={`in-${layout.id}`}
                   className={sliding ? 'absolute inset-0 p-1 layout-slide-in' : 'h-full p-1'}
                 >
-                  <LayoutContent layout={layout} onSkipSlot={handleSkipSlot} />
+                  <LayoutContent layout={layout} onSkipSlot={handleSkipSlot} textPool={textPool} gfxPool={gfxPool} />
                 </div>
               </div>
             )}

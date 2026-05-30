@@ -156,10 +156,9 @@ function OscilloscopePanel() {
       setCurrentSubtune(0)
       setLoading(false)
       if (shouldAutoPlayRef.current) {
-        requestAudioFocus(AUDIO_ID)
-        p.play()
-        setPlaying(true)
         shouldAutoPlayRef.current = false
+        requestAudioFocus(AUDIO_ID)
+        p.play().then(() => setPlaying(true)).catch(console.error)
       }
     })
     
@@ -177,18 +176,17 @@ function OscilloscopePanel() {
     }
   }, [player])
 
-  // Load track when index changes
+  // Load track data when index changes (NO AudioContext needed)
   useEffect(() => {
     const p = playerRef.current
-    queueMicrotask(() => {
-      setLoading(true)
-      setLoadError(null)
-      setPlaying(false)
-    })
+    setLoading(true)
+    setLoadError(null)
+    setPlaying(false)
+    p.stop()
     
     const track = allTracks[trackIdx]
     if (!track) {
-      queueMicrotask(() => setLoading(false))
+      setLoading(false)
       return
     }
 
@@ -205,8 +203,8 @@ function OscilloscopePanel() {
     }
   }, [trackIdx, allTracks])
 
-  // Play/Stop toggle
-  const handlePlayToggle = () => {
+  // Play/Stop toggle — play() is async and sets up AudioContext on first call
+  const handlePlayToggle = async () => {
     const p = playerRef.current
     if (loading || !p.loaded) return
 
@@ -215,10 +213,15 @@ function OscilloscopePanel() {
       setPlaying(false)
       releaseAudioFocus(AUDIO_ID)
     } else {
-      p.resumeContext()
-      requestAudioFocus(AUDIO_ID)
-      p.play()
-      setPlaying(true)
+      try {
+        p.resumeContext()
+        requestAudioFocus(AUDIO_ID)
+        await p.play()
+        setPlaying(true)
+      } catch (err) {
+        console.error('SID play failed:', err)
+        setLoadError(String(err))
+      }
     }
   }
 
@@ -439,9 +442,8 @@ function OscilloscopePanel() {
             <select
               value={trackIdx}
               onChange={(e) => {
-                playerRef.current.resumeContext()
                 setTrackIdx(Number(e.target.value))
-                shouldAutoPlayRef.current = true
+                shouldAutoPlayRef.current = playing  // auto-play if already playing
               }}
               disabled={loading}
               className="bg-black border border-[#334155] text-[#4ade80] text-[10px] px-1 py-0.5 focus:outline-none cursor-pointer disabled:opacity-50"
@@ -505,9 +507,13 @@ function OscilloscopePanel() {
             <button
               onClick={handlePlayToggle}
               disabled={loading}
-              className="bg-[#0f172a] border border-[#334155] active:bg-[#1e293b] text-[#4ade80] font-bold text-[10px] px-2 py-0.5 cursor-pointer rounded"
+              className={`border font-bold text-[10px] px-2 py-0.5 cursor-pointer rounded ${
+                playing
+                  ? 'bg-red-900/40 border-red-500/60 text-red-300 active:bg-red-800/60'
+                  : 'bg-[#0f172a] border-[#334155] text-[#4ade80] active:bg-[#1e293b]'
+              }`}
             >
-              {loading ? 'LOAD...' : playing ? 'STOP' : 'PLAY'}
+              {loading ? '⏳ LOADING...' : playing ? '■ STOP' : '▶ PLAY'}
             </button>
           </div>
         </div>
