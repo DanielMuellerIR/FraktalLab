@@ -47,6 +47,13 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 - `c64_font.png` (`public/`) wird in `C64Panel.tsx:140` aktiv geladen (nicht obsolet).
 - `RetroErrorPanel` ist bereits voll prozedural (Canvas2D), keine statischen Bilder.
 
+### GitHub-Vorbereitung (Todo, eigene Session)
+
+- [ ] **Repo:** https://github.com/DanielMuellerIR/FraktalLab.git
+- [ ] **Erst privat** veröffentlichen — wegen mitgelieferter MOD- und SID-Dateien (urheberrechtlich geschützt, nicht für öffentliches Repo). Vor späterem Public-Schalten klären: Assets entfernen / extern laden / Lizenzlage.
+- [ ] **Deutsches README** erzeugen: alle **aktiven** Panels auflisten + technische Vorzüge (z.B. eigene GPU-Fraktal-Engine mit double-single-Präzision, eigener ProTracker-MOD-Player + C64-SID-Player als AudioWorklet, prozedurale Panels, kleine Bundle-Größe ~1 MB ohne Assets). **Nüchtern/technisch, nichts erfinden**, so formuliert als wäre es public (Umstellung auf public evtl. bald).
+- [ ] **Claude NICHT als Contributor/Autor angeben.** README-Autor = Daniel. Künftige Commits ohne `Co-Authored-By: Claude`-Trailer. Bestehende History enthält den Trailer noch — vor Public ggf. entscheiden, ob umgeschrieben wird (History-Rewrite ist riskant, nicht ungefragt machen).
+
 > **Nächste Schritte — Panel-Rework Phase 2 (priorisiert nach Kritik-Intensität, ABGESCHLOSSEN):**
 >
 > ### Tier 1 — Kritische Ausfälle
