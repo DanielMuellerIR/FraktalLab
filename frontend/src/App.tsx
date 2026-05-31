@@ -294,19 +294,21 @@ function generateLayout(id: number, reviews: ReviewEntry[], targetCellCount?: nu
   const width = typeof window !== 'undefined' ? window.innerWidth : 1200
   let sizes: [number, number][]
 
-  // Layout-V2 (Density): targetCellCount überschreibt Auto-Wahl
+  // Layout-V2 (Density): targetCellCount überschreibt die breitenbasierte Auto-
+  // Wahl mit einer FESTEN Ziel-Kachelzahl pro Auslastungs-Stufe. Statt aus festen
+  // Grid-Kandidaten zu wählen (die die Höchstzahl an die Breite koppelten und z.B.
+  // Proxima ~30 auf Laptops verhinderten), leiten wir cols×rows direkt aus dem Ziel
+  // und dem Bildschirm-Seitenverhältnis ab. So sind auch hohe Stufen auf jedem
+  // Display erreichbar.
   if (targetCellCount != null) {
-    const candidates: [number, number][] = []
-    if (width >= 3440) candidates.push([5, 3], [5, 4], [6, 4])
-    else if (width >= 2560) candidates.push([4, 3], [4, 4])
-    else if (width >= 1920) candidates.push([3, 3], [4, 3])
-    else if (width >= 1440) candidates.push([3, 2], [3, 3])
-    else if (width >= 1024) candidates.push([2, 2], [3, 2])
-    else candidates.push([2, 2])
-    const best = candidates.reduce((a, b) =>
-      Math.abs(a[0] * a[1] - targetCellCount) < Math.abs(b[0] * b[1] - targetCellCount) ? a : b
-    )
-    sizes = [best]
+    const height = typeof window !== 'undefined' ? window.innerHeight : 800
+    const ratio = Math.max(0.5, width / Math.max(1, height))   // Querformat → >1
+    // cols ~ sqrt(N · ratio), rows füllt den Rest auf. Caps halten Zellen sichtbar groß.
+    let cCols = Math.round(Math.sqrt(targetCellCount * ratio))
+    cCols = Math.min(8, Math.max(2, cCols))
+    let cRows = Math.max(1, Math.round(targetCellCount / cCols))
+    cRows = Math.min(6, Math.max(1, cRows))
+    sizes = [[cCols, cRows]]
   } else if (width >= 3440) {
     // Ultra-wide / sehr große Entwickler-Bildschirme
     sizes = [[5, 3], [5, 4], [6, 4]]
@@ -991,16 +993,16 @@ const DENSITY_STYLE: Record<DensityLevel, { active: string; idle: string; glow?:
 
 const DENSITY_ORDER: DensityLevel[] = ['25mhz', 'turbo', 'overclock', 'proxima']
 
-function densityPanelCount(level: DensityLevel, width: number): number {
-  const base = (() => {
-    switch (level) {
-      case '25mhz':   return Math.min(8, Math.max(4, Math.floor(width / 280)))
-      case 'turbo':   return Math.min(14, Math.max(6, Math.floor(width / 200)))
-      case 'overclock': return Math.min(30, Math.max(12, Math.floor(width / 120)))
-      case 'proxima': return Math.min(32, Math.max(16, Math.floor(width / 100)))
-    }
-  })()
-  return Math.max(2, base)
+// FESTE Ziel-Kachelzahl pro Stufe (nicht breitenabhängig). generateLayout leitet
+// daraus cols×rows passend zum Bildschirm-Seitenverhältnis ab. Proxima zielt
+// bewusst Richtung 30 — auf künftiger Hardware bei 120 Hz trotzdem flüssig.
+function densityPanelCount(level: DensityLevel): number {
+  switch (level) {
+    case '25mhz':     return 6
+    case 'turbo':     return 12
+    case 'overclock': return 20
+    case 'proxima':   return 30
+  }
 }
 
 const LS_DENSITY = 'fraktallab_density'
@@ -1019,16 +1021,16 @@ export default function App() {
   const [audioMuted, setAudioMuted] = useState(() => isAudioMuted())
 
   // ── Auslastung (Layout-V2) ─────────────────────────────────────────────────
-  // Gewählte Galerie-Dichte. `null` = noch keine manuelle Wahl → der FPS-
-  // Benchmark beim Start entscheidet (25 MHz oder Turbo). Eine MANUELLE Wahl
-  // (Klick) wird in localStorage gemerkt und gewinnt beim Reload über den
-  // Benchmark. Overclock/Proxima gibt es ausschließlich manuell.
-  const [density, setDensity] = useState<DensityLevel | null>(() => {
+  // Gewählte Galerie-Dichte. Allererster Start (nichts persistiert) = `turbo`.
+  // Kein Benchmark mehr (sorgte für Verspringen). Wer schwache Hardware hat, geht
+  // manuell auf `25 MHz` runter. Jede Wahl wird in localStorage gemerkt und beim
+  // Reload wiederhergestellt.
+  const [density, setDensity] = useState<DensityLevel>(() => {
     const saved = localStorage.getItem(LS_DENSITY)
-    return DENSITY_ORDER.includes(saved as DensityLevel) ? (saved as DensityLevel) : null
+    return DENSITY_ORDER.includes(saved as DensityLevel) ? (saved as DensityLevel) : 'turbo'
   })
   // Ref-Spiegel, damit doSwitch (leere Deps) immer die aktuelle Dichte sieht.
-  const densityRef = useRef<DensityLevel | null>(density)
+  const densityRef = useRef<DensityLevel>(density)
   useEffect(() => { densityRef.current = density }, [density])
 
   const [mobileIndices, setMobileIndices] = useState(() => {
@@ -1355,10 +1357,8 @@ export default function App() {
     // Neue ID vergeben und neues Layout generieren
     layoutIdRef.current += 1
     const reviews = loadReviews()
-    // Aktuelle Dichte → Ziel-Kachelzahl (oder Auto-Wahl, falls noch keine).
-    const lvl = densityRef.current
-    const target = lvl ? densityPanelCount(lvl, window.innerWidth) : undefined
-    const next = generateLayout(layoutIdRef.current, reviews, target)
+    // Aktuelle Dichte → feste Ziel-Kachelzahl.
+    const next = generateLayout(layoutIdRef.current, reviews, densityPanelCount(densityRef.current))
 
     setPrevLayout(current)
     setSliding(true)
@@ -1376,9 +1376,9 @@ export default function App() {
     }, 520)
   }, [])
 
-  // Dichte-Stufe wählen → State setzen, optional persistieren und Layout mit der
-  // passenden Ziel-Kachelzahl neu würfeln. `persist=true` nur bei manueller Wahl
-  // (Klick), damit der Benchmark-Default beim Reload nicht als "gewählt" gilt.
+  // Dichte-Stufe wählen → State setzen, persistieren und Layout mit der festen
+  // Ziel-Kachelzahl neu würfeln. `persist=false` nur für die einmalige Mount-
+  // Synchronisierung des Initial-Layouts (kein neuer localStorage-Schreib nötig).
   const applyDensity = useCallback((level: DensityLevel, persist: boolean) => {
     setDensity(level)
     densityRef.current = level
@@ -1387,40 +1387,16 @@ export default function App() {
     }
     layoutIdRef.current += 1
     const reviews = loadReviews()
-    const next = generateLayout(layoutIdRef.current, reviews, densityPanelCount(level, window.innerWidth))
+    const next = generateLayout(layoutIdRef.current, reviews, densityPanelCount(level))
     setLayout(next)
     resetAudioFocus()
   }, [])
 
-  // FPS-Mini-Benchmark beim Start: nur wenn noch KEINE manuelle Wahl persistiert
-  // ist. Zählt Frames über ~1 s. requestAnimationFrame ist an die Bildwiederhol-
-  // rate gekoppelt (~60/120 Hz) — wir können M1 vs. M5 daraus nicht ableiten,
-  // aber flüssig (≈60 fps erreicht) vs. ruckelig unterscheiden. Ergebnis: nur
-  // 25 MHz oder Turbo (Overclock/Proxima bleiben manuell).
+  // Mount: Initial-Layout wurde ohne Ziel-Kachelzahl gewürfelt → einmalig mit der
+  // aktuellen Dichte (persistiert oder Default `turbo`) neu aufbauen, damit die
+  // Kachelzahl von Anfang an zur gewählten Stufe passt. Kein Benchmark.
   useEffect(() => {
-    if (densityRef.current != null) {
-      // Persistierte manuelle Wahl: kein Benchmark, aber das Initial-Layout wurde
-      // ohne Ziel-Kachelzahl gewürfelt → einmalig mit der gemerkten Dichte neu
-      // aufbauen, damit Reload die zuletzt gewählte Auslastung auch zeigt.
-      applyDensity(densityRef.current, false)
-      return
-    }
-    let frames = 0
-    let raf = 0
-    const start = performance.now()
-    const tick = () => {
-      frames++
-      const elapsed = performance.now() - start
-      if (elapsed < 1000) {
-        raf = requestAnimationFrame(tick)
-      } else {
-        const fps = (frames * 1000) / elapsed
-        // ≥ 50 fps → flüssig genug für mehr Kacheln → Turbo, sonst 25 MHz.
-        applyDensity(fps >= 50 ? 'turbo' : '25mhz', false)
-      }
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
+    applyDensity(densityRef.current, false)
   }, [applyDensity])
 
   // Versucht Layout zu wechseln — wartet, falls ein Audio-Panel läuft
@@ -1546,7 +1522,10 @@ export default function App() {
                 <button
                   key={level}
                   onClick={() => {
-                    if (isAudioPlaying()) return
+                    // KEIN isAudioPlaying-Guard: der Erst-Klick startet per
+                    // Election einen Audio-Player → der Guard hätte den allerersten
+                    // (und damit faktisch jeden) Dichte-Klick verschluckt. Dichte
+                    // ändern soll immer gehen; resetAudioFocus läuft in applyDensity.
                     applyDensity(level, true)   // manuelle Wahl → persistieren
                   }}
                   title={`Galerie-Dichte: ${DENSITY_LABELS[level]} (Klick = neu würfeln)`}
