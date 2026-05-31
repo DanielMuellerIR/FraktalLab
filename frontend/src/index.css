@@ -1,4 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+/* IBM Plex Sans: gut lesbare Sans für die Titel-Pillen (auch klein), kein ALLCAPS. */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
 *, *::before, *::after { box-sizing: border-box; }

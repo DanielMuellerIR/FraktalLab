@@ -260,18 +260,32 @@ function getBaseComponent(Comp: any): any {
   return current
 }
 
+// Fallback-Identitäten für Komponenten ohne registrierten/echten Namen. WICHTIG:
+// Gäbe getCompName für mehrere VERSCHIEDENE (anonyme) Komponenten "" zurück,
+// würde der Dedup-Pass sie als Duplikate behandeln und fälschlich entfernen →
+// Löcher / vom Füll-Pass nachgezogene echte Duplikate. Eine stabile synthetische
+// ID je Komponente verhindert das.
+const SYNTHETIC_NAMES = new WeakMap<object, string>()
+let syntheticCounter = 0
+
 function getCompName(Comp: any): string {
   const base = getBaseComponent(Comp)
   if (!base) return ''
-  
+
   const name = COMPONENT_NAMES.get(base)
   if (name) return name
-  
-  if (typeof base === 'function') {
-    return base.name || ''
+
+  if (typeof base === 'function' && base.name) {
+    return base.name
   }
   if (typeof base === 'string') {
     return base
+  }
+  // Kein echter Name → stabile, EINDEUTIGE synthetische ID (pro Komponente eine).
+  if (typeof base === 'function' || typeof base === 'object') {
+    let syn = SYNTHETIC_NAMES.get(base)
+    if (!syn) { syn = `__anon_${syntheticCounter++}`; SYNTHETIC_NAMES.set(base, syn) }
+    return syn
   }
   return ''
 }
@@ -303,10 +317,22 @@ function generateLayout(id: number, reviews: ReviewEntry[], targetCellCount?: nu
   if (targetCellCount != null) {
     const height = typeof window !== 'undefined' ? window.innerHeight : 800
     const ratio = Math.max(0.5, width / Math.max(1, height))   // Querformat → >1
+
+    // Auf die Zahl TATSÄCHLICH verfügbarer Distinct-Panels deckeln, damit nie
+    // Duplikate nötig werden. Down-gevotete Panels (Review) verkleinern den Pool
+    // → die Dichte passt sich automatisch nach unten an. Platzierbar sind: GL-
+    // Panels nur bis zum WebGL-Kontingent, dazu alle Nicht-GL-GFX + alle TEXT +
+    // die eine Fraktal-Zelle.
+    const { textPool: tp, gfxPool: gp } = getFilteredPools(reviews)
+    let glAvail = 0, nonGlAvail = 0
+    gp.forEach(c => { if (isGLPanel(getCompName(c))) glAvail++; else nonGlAvail++ })
+    const maxDistinct = Math.min(glAvail, MAX_GL_PANELS_PER_LAYOUT) + nonGlAvail + tp.length + 1
+    const eff = Math.max(2, Math.min(targetCellCount, maxDistinct))
+
     // cols ~ sqrt(N · ratio), rows füllt den Rest auf. Caps halten Zellen sichtbar groß.
-    let cCols = Math.round(Math.sqrt(targetCellCount * ratio))
+    let cCols = Math.round(Math.sqrt(eff * ratio))
     cCols = Math.min(8, Math.max(2, cCols))
-    let cRows = Math.max(1, Math.round(targetCellCount / cCols))
+    let cRows = Math.max(1, Math.round(eff / cCols))
     cRows = Math.min(6, Math.max(1, cRows))
     sizes = [[cCols, cRows]]
   } else if (width >= 3440) {
@@ -971,12 +997,12 @@ function isAudioPlaying(): boolean {
 // ── Layout-Renderer ───────────────────────────────────────────────────────────
 function LayoutContent({
   layout,
-  onSkipSlot,
+  onNavSlot,
   textPool,
   gfxPool,
 }: {
   layout: GeneratedLayout
-  onSkipSlot: (slotIndex: number) => void
+  onNavSlot: (slotIndex: number, dir: number) => void
   textPool: React.ComponentType<any>[]
   gfxPool: React.ComponentType<any>[]
 }) {
@@ -986,9 +1012,10 @@ function LayoutContent({
         display:             'grid',
         gridTemplateColumns: layout.gridTemplateColumns,
         gridTemplateRows:    layout.gridTemplateRows,
-        // Galerie: mehr Weißraum zwischen den Kacheln (vorher 4px).
-        gap:                 '10px',
-        padding:             '6px',
+        // Platzsparend: KEINE Lücken zwischen den Kacheln — Panels berühren sich
+        // direkt (rahmenlos). Maximiert die nutzbare Fläche jeder Kachel.
+        gap:                 '0px',
+        padding:             '0px',
         height:              '100%',
         width:               '100%',
       }}
@@ -1006,7 +1033,8 @@ function LayoutContent({
               key={`${layout.id}-text-${i}`}
               pool={textPool}
               activeIdx={cell.panelIdx!}
-              onSkip={() => onSkipSlot(i)}
+              onNav={(dir) => onNavSlot(i, dir)}
+              fallbackName={getCompName(textPool[cell.panelIdx!])}
               className="h-full"
             />
           )}
@@ -1015,7 +1043,8 @@ function LayoutContent({
               key={`${layout.id}-gfx-${i}`}
               pool={gfxPool}
               activeIdx={cell.panelIdx!}
-              onSkip={() => onSkipSlot(i)}
+              onNav={(dir) => onNavSlot(i, dir)}
+              fallbackName={getCompName(gfxPool[cell.panelIdx!])}
               className="h-full"
               locked={AUDIO_PANELS.has(getCompName(gfxPool[cell.panelIdx!]))}
             />
@@ -1059,8 +1088,11 @@ function densityPanelCount(level: DensityLevel): number {
   switch (level) {
     case '25mhz':     return 6
     case 'turbo':     return 12
-    case 'overclock': return 20
-    case 'proxima':   return 30
+    case 'overclock': return 18
+    // Proxima auf 24 begrenzt: das ist die distinct-Untergrenze (11 GL-Panels +
+    // 13 TEXT-Panels sind aspect-neutral genug), damit NIE Duplikate nötig sind.
+    // Höhere Dichte erfordert Roadmap-Schritt 2 (Freeze-to-Image für GL-Panels).
+    case 'proxima':   return 24
   }
 }
 
@@ -1138,87 +1170,60 @@ export default function App() {
   const reviews = loadReviews()
   const { textPool, gfxPool } = getFilteredPools(reviews)
 
-  const handleSkipSlot = useCallback((slotIndex: number) => {
+  // ── Deterministische Vor/Zurück-Navigation (Titel-Pillen-Pfeile) ────────────
+  // Baut für den Slot eine STABILE (nach Pool-Index sortierte) Liste KOMPATIBLER
+  // Panels und blättert mit dir = -1/+1 durch. Kompatibel heißt: nicht schon in
+  // einem anderen Slot, gleiches Seitenverhältnis, gleiche Größenklasse und (bei
+  // GL-Panels) innerhalb des WebGL-Kontingents — dieselben Regeln wie beim Bauen
+  // des Layouts, damit nie eine ungültige Kombination entsteht.
+  const handleNavSlot = useCallback((slotIndex: number, dir: number) => {
     setLayout(curr => {
       const cell = curr.cells[slotIndex]
-      if (!cell) return curr
+      if (!cell || cell.panelIdx == null || (cell.type !== 'text' && cell.type !== 'gfx')) return curr
 
       const reviews = loadReviews()
       const { textPool, gfxPool } = getFilteredPools(reviews)
       const pool = cell.type === 'text' ? textPool : gfxPool
 
-      // Get all currently active components in OTHER slots of this layout
-      const otherActiveComps = new Set<React.ComponentType<any>>()
+      // Namen der OTHER-Slots (für Dedup) + GL-Verbrauch der übrigen Kacheln.
+      const otherNames = new Set<string>()
+      let otherGL = 0
       curr.cells.forEach((c, idx) => {
-        if (idx !== slotIndex) {
-          if (c.type === 'text') {
-            const comp = textPool[c.panelIdx!]
-            if (comp) otherActiveComps.add(comp)
-          } else if (c.type === 'gfx') {
-            const comp = gfxPool[c.panelIdx!]
-            if (comp) otherActiveComps.add(comp)
-          }
+        if (idx === slotIndex || c.panelIdx == null) return
+        if (c.type === 'text' || c.type === 'gfx') {
+          const p = c.type === 'text' ? textPool : gfxPool
+          const name = getCompName(p[c.panelIdx])
+          otherNames.add(name)
+          if (c.type === 'gfx' && isGLPanel(name)) otherGL++
         }
       })
 
-      const currentComp = pool[cell.panelIdx!]
-      const candidates: number[] = []
+      const cellA = cellAspect(cell)
+      const isLarge = isCellLarge(cell)
+
+      // Stabile Kandidatenliste (Pool-Index-Reihenfolge).
+      const cands: number[] = []
       pool.forEach((comp, i) => {
-        if (comp !== currentComp && !otherActiveComps.has(comp)) {
-          if (cell.type === 'gfx') {
-            const isLarge = isCellLarge(cell)
-            const compName = getCompName(comp)
-            const isCompLarge = panelMayBeLarge(compName)
-            if (isLarge === isCompLarge) {
-              candidates.push(i)
-            }
-          } else {
-            candidates.push(i)
-          }
+        const name = getCompName(comp)
+        if (otherNames.has(name)) return
+        if (cell.type === 'gfx') {
+          if (!aspectMatches(PANEL_ASPECT[name] ?? 'ANY', cellA)) return
+          if (panelMayBeLarge(name) !== isLarge) return
+          if (isGLPanel(name) && otherGL + 1 > MAX_GL_PANELS_PER_LAYOUT) return
         }
+        cands.push(i)
       })
+      if (cands.length === 0) return curr
 
-      // Fallback if no matching size candidate was found
-      if (candidates.length === 0) {
-        pool.forEach((comp, i) => {
-          if (comp !== currentComp && !otherActiveComps.has(comp)) {
-            candidates.push(i)
-          }
-        })
-      }
-
-      let chosenIdx = 0
-      if (candidates.length > 0) {
-        const candidateScores = candidates.map(i => {
-          const comp = pool[i]
-          const name = getCompName(comp)
-          const review = reviews.find(r => r.panel === name)
-          let weight = 1.0
-          if (review?.rating === 'up') {
-            weight = 3.0
-          } else if (review?.rating === 'down') {
-            weight = 0.0
-          }
-          const u = Math.random()
-          const score = weight > 0 ? Math.pow(u, 1 / weight) : -1
-          return { i, score }
-        })
-        candidateScores.sort((a, b) => b.score - a.score)
-        chosenIdx = candidateScores[0].i
-      } else {
-        chosenIdx = Math.floor(Math.random() * pool.length)
-      }
+      // Aktuelle Position finden und in Richtung dir weiterspringen (mit Umlauf).
+      const curPos = cands.indexOf(cell.panelIdx)
+      const nextPos = curPos === -1
+        ? (dir > 0 ? 0 : cands.length - 1)
+        : ((curPos + dir) % cands.length + cands.length) % cands.length
 
       const newCells = [...curr.cells]
-      newCells[slotIndex] = {
-        ...cell,
-        panelIdx: chosenIdx,
-      }
-
-      return {
-        ...curr,
-        cells: newCells,
-      }
+      newCells[slotIndex] = { ...cell, panelIdx: cands[nextPos] }
+      return { ...curr, cells: newCells }
     })
   }, [])
 
@@ -1856,7 +1861,8 @@ export default function App() {
                   <PanelSlot
                     pool={textPool}
                     activeIdx={mobileIndices.textIdx}
-                    onSkip={() => handleSkipMobileSlot(0)}
+                    onNav={() => handleSkipMobileSlot(0)}
+                    fallbackName={getCompName(textPool[mobileIndices.textIdx])}
                     className="h-full"
                   />
                 </div>
@@ -1865,7 +1871,8 @@ export default function App() {
                   <PanelSlot
                     pool={gfxPool}
                     activeIdx={mobileIndices.gfxIdx1}
-                    onSkip={() => handleSkipMobileSlot(1)}
+                    onNav={() => handleSkipMobileSlot(1)}
+                    fallbackName={getCompName(gfxPool[mobileIndices.gfxIdx1])}
                     className="h-full"
                     locked={AUDIO_PANELS.has(getCompName(gfxPool[mobileIndices.gfxIdx1]))}
                   />
@@ -1875,7 +1882,8 @@ export default function App() {
                   <PanelSlot
                     pool={gfxPool}
                     activeIdx={mobileIndices.gfxIdx2}
-                    onSkip={() => handleSkipMobileSlot(2)}
+                    onNav={() => handleSkipMobileSlot(2)}
+                    fallbackName={getCompName(gfxPool[mobileIndices.gfxIdx2])}
                     className="h-full"
                     locked={AUDIO_PANELS.has(getCompName(gfxPool[mobileIndices.gfxIdx2]))}
                   />
@@ -1885,7 +1893,8 @@ export default function App() {
                   <PanelSlot
                     pool={gfxPool}
                     activeIdx={mobileIndices.gfxIdx3}
-                    onSkip={() => handleSkipMobileSlot(3)}
+                    onNav={() => handleSkipMobileSlot(3)}
+                    fallbackName={getCompName(gfxPool[mobileIndices.gfxIdx3])}
                     className="h-full"
                     locked={AUDIO_PANELS.has(getCompName(gfxPool[mobileIndices.gfxIdx3]))}
                   />
@@ -1902,7 +1911,7 @@ export default function App() {
                     aria-hidden="true"
                     style={{ contain: 'paint' }}
                   >
-                    <LayoutContent layout={prevLayout} onSkipSlot={() => {}} textPool={textPool} gfxPool={gfxPool} />
+                    <LayoutContent layout={prevLayout} onNavSlot={() => {}} textPool={textPool} gfxPool={gfxPool} />
                   </div>
                 )}
 
@@ -1911,7 +1920,7 @@ export default function App() {
                   key={`in-${layout.id}`}
                   className={sliding ? 'absolute inset-0 p-1 layout-slide-in' : 'h-full p-1'}
                 >
-                  <LayoutContent layout={layout} onSkipSlot={handleSkipSlot} textPool={textPool} gfxPool={gfxPool} />
+                  <LayoutContent layout={layout} onNavSlot={handleNavSlot} textPool={textPool} gfxPool={gfxPool} />
                 </div>
               </div>
             )}
