@@ -606,6 +606,56 @@ function generateLayout(id: number, reviews: ReviewEntry[], targetCellCount?: nu
     })
   }
 
+  // ── Füll-Pass: KEINE leeren Zellen ──────────────────────────────────────────
+  // Bei hoher Dichte (Proxima) + WebGL-Deckel bleiben sonst GFX-Zellen ohne
+  // panelIdx (kein aspect-passendes Nicht-GL-Panel mehr frei) → LayoutContent
+  // rendert für solche Zellen NICHTS → Löcher (z.B. fast leere unterste Reihe).
+  // Füller sind ausschließlich Nicht-GL-Panels: Canvas-2D-/DOM-GFX und TEXT
+  // (beides ohne WebGL-Kontext, sprengt also das Kontingent nicht). Distinkte
+  // Panels werden bevorzugt; reichen sie nicht, sind als letzte Rettung Duplikate
+  // erlaubt — besser eine doppelte Kachel als ein Loch.
+  {
+    const usedNames = new Set<string>()
+    cells.forEach(c => {
+      if (c.panelIdx == null) return
+      const pool = c.type === 'text' ? textPool : gfxPool
+      if (c.type === 'text' || c.type === 'gfx') usedNames.add(getCompName(pool[c.panelIdx]))
+    })
+
+    // Nicht-GL-GFX-Indizes — als Füller geeignet (kein WebGL-Kontext).
+    const nonGlGfx = gfxIndices.filter(idx => !isGLPanel(getCompName(gfxPool[idx])))
+
+    // Einen Füller für eine Zelle wählen. `allowDup=false`: nur unbenutzte Namen.
+    const pickFiller = (cellA: Aspect, allowDup: boolean): { type: 'gfx' | 'text'; idx: number } | null => {
+      // 1. Nicht-GL-GFX mit passendem Seitenverhältnis (behält Bild-Charakter)
+      for (const idx of nonGlGfx) {
+        const name = getCompName(gfxPool[idx])
+        if (!allowDup && usedNames.has(name)) continue
+        if (!aspectMatches(PANEL_ASPECT[name] ?? 'ANY', cellA)) continue
+        return { type: 'gfx', idx }
+      }
+      // 2. TEXT-Panel (reines DOM, aspect-neutral)
+      for (const idx of textIndices) {
+        const name = getCompName(textPool[idx])
+        if (!allowDup && usedNames.has(name)) continue
+        return { type: 'text', idx }
+      }
+      return null
+    }
+
+    cells.forEach(cell => {
+      if (cell.panelIdx != null) return
+      const cellA = cellAspect(cell)
+      const f = pickFiller(cellA, false) ?? pickFiller(cellA, true)
+      if (f) {
+        cell.type = f.type
+        cell.panelIdx = f.idx
+        const pool = f.type === 'text' ? textPool : gfxPool
+        usedNames.add(getCompName(pool[f.idx]))
+      }
+    })
+  }
+
   // ── Audio-Garantie: GENAU EIN Audio-Panel pro Layout ───────────────────────
   // Das Audio-Konzept (Erst-Klick-Election in audio-focus.ts) wählt zufällig
   // einen der drei Player {AllYourBase-Video, SID, MOD}. Dafür muss mindestens
