@@ -251,10 +251,12 @@ function VisitorProfilePanel({ onComplete }: { onComplete?: () => void }) {
 
   return (
     <Panel title="VISITOR PROFILE // BIOMETRIC SCAN ACTIVE">
+      {/* fontSize-clamp: der Scan-Output skaliert mit der Kachelgröße (cqmin),
+          Untergrenze ~7,5px. text-xs entfernt, leading-snug für mitschrumpfende Zeilen. */}
       <div
         ref={outputRef}
-        className="flex-1 overflow-y-auto text-xs font-mono leading-relaxed p-1 min-h-0"
-        style={{ scrollbarWidth: 'none' }}
+        className="flex-1 overflow-y-auto font-mono leading-snug p-1 min-h-0"
+        style={{ scrollbarWidth: 'none', fontSize: 'clamp(7.5px, 3.4cqmin, 13px)' }}
       />
     </Panel>
   )

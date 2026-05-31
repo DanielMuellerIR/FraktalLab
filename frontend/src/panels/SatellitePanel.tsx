@@ -199,7 +199,14 @@ function SatellitePanel({ onComplete }: { onComplete?: () => void }) {
 
   return (
     <Panel title="SATELLITE TRACKING // ORBITAL GRID">
-      <div className="flex flex-col h-full w-full overflow-hidden p-1.5 gap-1 text-xs font-mono">
+      {/* fontSize-clamp am Wurzel-Container: die gesamte Satelliten-Tabelle erbt
+          die kachelgrößenabhängige Schrift (text-xs entfernt). Die Spaltenbreiten
+          weiter unten sind in em angegeben, damit sie mit der Schrift mitschrumpfen.
+          Untergrenze ~7,5px. */}
+      <div
+        className="flex flex-col h-full w-full overflow-hidden p-1.5 gap-1 font-mono"
+        style={{ fontSize: 'clamp(7.5px, 3cqmin, 12px)' }}
+      >
 
         {/* ── Ground-Station-Lock-Indikator ──────────────────────────────── */}
         <div className="flex items-center gap-2 shrink-0">
@@ -232,22 +239,23 @@ function SatellitePanel({ onComplete }: { onComplete?: () => void }) {
               >
                 {/* Zeile 1: Name + Orbitalwerte + Status */}
                 <div className="flex gap-1 items-baseline">
-                  {/* Satellitenname, auf 13 Zeichen aufgefüllt */}
-                  <span className="text-green-400 w-[6.5rem] truncate shrink-0">
+                  {/* Satellitenname, auf 13 Zeichen aufgefüllt. Breite in em statt rem,
+                      damit die Spalte mit der skalierbaren Schrift mitschrumpft. */}
+                  <span className="text-green-400 w-[6.5em] truncate shrink-0">
                     {sat.id}
                   </span>
                   {/* Höhe rechtsbündig in festem Block */}
-                  <span className="text-green-400 w-[4.5rem] text-right shrink-0">
+                  <span className="text-green-400 w-[4.5em] text-right shrink-0">
                     {sat.altKm.toFixed(1)}
                   </span>
                   <span className="text-green-700 shrink-0">km</span>
                   {/* Geschwindigkeit */}
-                  <span className="text-green-400 w-[3.5rem] text-right shrink-0">
+                  <span className="text-green-400 w-[3.5em] text-right shrink-0">
                     {sat.velKms.toFixed(2)}
                   </span>
                   <span className="text-green-700 shrink-0">km/s</span>
                   {/* Inklination */}
-                  <span className="text-green-400 w-[4rem] text-right shrink-0">
+                  <span className="text-green-400 w-[4em] text-right shrink-0">
                     {sat.incDeg.toFixed(1)}°
                   </span>
                   {/* Status mit Farbe je nach Wert */}
@@ -277,19 +285,21 @@ function SatellitePanel({ onComplete }: { onComplete?: () => void }) {
           })}
         </div>
 
-        {/* ── Grid Scan & Logs ────────────────────────────────────────── */}
-        <div className="flex gap-2 shrink-0 h-[65px] mt-0.5 border-t border-green-950 pt-1">
-          {/* Grid scan on left */}
-          <div className="font-mono text-[9px] text-green-400 bg-black/40 p-1 border border-green-900/50 rounded shrink-0 select-none w-[110px]">
-            <div className="text-green-700 text-[8px] uppercase mb-0.5 border-b border-green-950 font-bold">GRID SCAN</div>
+        {/* ── Grid Scan & Logs ──────────────────────────────────────────
+            Höhe und Breite relativ (em) zur skalierbaren Schrift, damit der
+            untere Block in kleinen Kacheln mitschrumpft statt fix in px zu bleiben. */}
+        <div className="flex gap-2 shrink-0 h-[6em] mt-0.5 border-t border-green-950 pt-1">
+          {/* Grid scan on left — Schrift relativ zum Root-clamp (0.85em ≈ ehemals 9px) */}
+          <div className="font-mono text-[0.85em] text-green-400 bg-black/40 p-1 border border-green-900/50 rounded shrink-0 select-none w-[10em]">
+            <div className="text-green-700 text-[0.75em] uppercase mb-0.5 border-b border-green-950 font-bold">GRID SCAN</div>
             <div className="leading-none whitespace-pre text-green-500 font-bold mt-0.5">
               {drawAsciiGrid(tick).join('\n')}
             </div>
           </div>
-          
+
           {/* Dynamic Tracking Logs on right */}
-          <div className="flex-1 font-mono text-[9px] text-green-500/80 bg-black/40 p-1 border border-green-900/50 rounded overflow-hidden select-none flex flex-col justify-end">
-            <div className="text-green-700 text-[8px] uppercase mb-0.5 border-b border-green-950 pb-0.5 font-bold">TRACKING LOGS</div>
+          <div className="flex-1 font-mono text-[0.85em] text-green-500/80 bg-black/40 p-1 border border-green-900/50 rounded overflow-hidden select-none flex flex-col justify-end">
+            <div className="text-green-700 text-[0.75em] uppercase mb-0.5 border-b border-green-950 pb-0.5 font-bold">TRACKING LOGS</div>
             <div className="flex flex-col gap-0.5 leading-none overflow-hidden justify-end flex-1">
               {logs.map((log, idx) => (
                 <div key={idx} className="whitespace-nowrap overflow-hidden text-ellipsis">

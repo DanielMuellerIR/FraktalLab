@@ -67,6 +67,11 @@ Alle Unterpunkte (a-e) umgesetzt. Build grün (tsc + vite), im Browser verifizie
 - [x] **FESTE Kachelzahl je Stufe** (nicht mehr breitenabhängig): `25 MHz`=6 · `Turbo`=12 · `Overclock`=20 · `Proxima Centauri`=30. `generateLayout` leitet cols×rows aus Ziel + Bildschirm-Seitenverhältnis ab (`cols≈√(N·ratio)`, Caps 8×6) → hohe Stufen auch auf Laptops erreichbar.
 - [x] **KEIN Benchmark mehr** (sorgte für Verspringen beim Start). Allererster Start = **Turbo**. Schwache Hardware → manuell auf `25 MHz` runter.
 - [x] **WebGL-Kontingent (Fix "SLOT EVICTED")** — Browser deckeln aktive WebGL-Kontexte (~8–16/Tab); bei Proxima (~30 Kacheln) sprengten die GL-Panels den Pool (`utils/webgl-pool.ts`, MAX=12) → verdrängte Kontexte zeigten dauerhaft "SLOT EVICTED TO CONSERVE POWER" (reaktivieren nur bei Sichtbarkeitswechsel, in statischer Galerie nie). Fix: `generateLayout` platziert nie mehr als `MAX_GL_PANELS_PER_LAYOUT=11` GL-Panels (Set `GL_PANELS` listet alle three.js-/Shadertoy-/FractalGL-Komponenten; Puffer 1 für das FractalView-Hintergrundbild). Überzählige Zellen bekommen Canvas-2D-/DOM-Panels. Im Browser verifiziert: Proxima 7×4, 19 Canvases, **0 Evictions**.
+### Echte Schrift-Skalierung der Text-/UI-Panels (App-Version **v1.16.0**)
+
+- [x] **Container-relative Schrift** — Kachel-Wrapper (`PanelSlot`) hat `container-type:size` → Panels nutzen `clamp(MIN, X·cqmin, MAX)` für Schriftgrößen. In dichten Layouts schrumpft die Schrift mit der Kachel (Untergrenze ~7,5px), in großen Kacheln wird sie größer. Geprüft: Font löst je nach Kachelgröße zu 8–11px auf.
+- [x] Betroffen: gemeinsame `ScrollingLog`/`StatBar` (deckt SystemLog/DataStream/PseudoCode/PortScanner/Vitals ab) + `ICQChatPanel` (Hauptfall: Nachrichtenliste skaliert mit, em-relativ), `AgentCodePanel`, `ClassifiedPanel`, `DiskCleanupPanel`, `VisitorProfilePanel`, `StockTickerPanel`, `SatellitePanel`, `BitcoinMinerPanel`, `MetaAgentPanel`. Reine Grafik/Canvas-Panels unangetastet.
+
 ### Panel-Deko-Überarbeitung + Dichte-Feinschliff (App-Version **v1.15.0**)
 
 - [x] **Rahmenlos, berührend** — `Panel.tsx` hat keine Rahmen/Titelleiste mehr, füllt die Kachel randlos. `LayoutContent` mit `gap:0`/`padding:0` → Panels berühren sich direkt.

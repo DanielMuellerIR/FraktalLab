@@ -25,7 +25,15 @@ export default function ScrollingLog({ lines, interval, className = '' }: {
 
   return (
     // justify-end: neueste Zeilen unten, älteste werden oben abgeschnitten → Terminal-Scroll
-    <div className={`overflow-hidden font-mono text-xs leading-5 h-full flex flex-col justify-end ${className}`}>
+    // Skalierbare Schrift: clamp(MIN, X*cqmin, MAX) bindet die Schriftgröße an die
+    // Kachelgröße (cqmin = kleinere Kantenlänge des Container-Querys aus PanelSlot).
+    // In dichten Layouts (kleine Kacheln) wird die Schrift kleiner – aber nie unter
+    // ~7,5px, damit sie lesbar bleibt. leading-snug statt fixem leading-5, damit
+    // die Zeilenhöhe mitschrumpft. Kind-Zeilen erben über text-[1em].
+    <div
+      className={`overflow-hidden font-mono leading-snug h-full flex flex-col justify-end ${className}`}
+      style={{ fontSize: 'clamp(7.5px, 3.4cqmin, 13px)' }}
+    >
       {log.map((line, i) => (
         <div key={i} className={i === log.length - 1 ? 'text-green-300' : 'text-green-700'}>
           {line}
