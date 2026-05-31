@@ -102,7 +102,7 @@ async function collectSidFilesFromEntries(entries: any[]): Promise<File[]> {
 }
 
 function OscilloscopePanel() {
-  const [trackIdx, setTrackIdx] = useState(0)
+  const [trackIdx, setTrackIdx] = useState(() => Math.floor(Math.random() * DEFAULT_TRACKS.length))
   const [playing, setPlaying] = useState(false)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)

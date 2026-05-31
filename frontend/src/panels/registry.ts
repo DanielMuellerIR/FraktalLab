@@ -20,6 +20,7 @@ export const ARCHIVED_PANELS = new Set<string>([
   'TrafficMonitor',
   'NuclearTargets',
   'PwdCracker',
+  'SupervolcanoPanel',
 ])
 
 // Medien-Panels, die NIE automatisch (Auto-Switch / Layout-Wechsel) verdrängt

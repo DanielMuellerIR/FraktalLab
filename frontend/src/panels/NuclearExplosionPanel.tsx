@@ -151,10 +151,18 @@ const VOLUMETRIC_EXPLOSION_SHADER = `
     return rise * fall * cutoff;
   }
 
+  // Beginn des Wolken-Aufstiegs: KURZ nach dem Blitz-Start, NICHT erst nach
+  // flashEnd. Der Blitz kommt von der Explosion selbst — also muss die Lichtkugel
+  // / der entstehende Pilz schon sichtbar sein, WAEHREND der Blitz noch nachgluet
+  // (Blitz faellt von ~1.8 s bis flashEnd ~5.2 s ab). Frueher startete der Aufstieg
+  // erst bei flashEnd → Pilz erschien ~1 s nach dem Blitz. Jetzt ueberlappen sich
+  // abklingender Blitz und aufsteigende Wolke.
+  float growStart() { return flashStart() + 0.5; }
+
   // Wachstums-Fortschritt der Wolke (0..1), bleibt nach growEnd auf 1
   float growProgress(float lt) {
-    float fe = flashEnd();
-    return clamp((lt - fe) / (growEnd() - fe), 0.0, 1.0);
+    float gs = growStart();
+    return clamp((lt - gs) / (growEnd() - gs), 0.0, 1.0);
   }
 
   // ==========================================================================
@@ -369,9 +377,9 @@ const VOLUMETRIC_EXPLOSION_SHADER = `
     float accumOpacity = 0.0;
     vec3 accumColor = vec3(0.0);
 
-    // Vor dem Blitz (Phase A) und waehrend des Blitz-Peaks ist noch kein Pilz da.
-    // grow == 0 bis flashEnd -> die Wolke erscheint erst danach. Wir marchen
-    // trotzdem (kostet wenig, da die Dichte 0 ist), halten den Ablauf aber sauber.
+    // Vor dem Blitz (Phase A) ist noch kein Pilz da. Ab growStart (kurz nach dem
+    // Blitz-Start) waechst die Wolke bereits, WAEHREND der Blitz noch abklingt.
+    // Vorher ist grow == 0 und die Dichte 0 -> Marchen kostet dann fast nichts.
     for (int i = 0; i < 48; i++) {
       if (t >= tMax || accumOpacity >= 0.98) break;
 

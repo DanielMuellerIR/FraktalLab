@@ -71,7 +71,6 @@ import MoonPanel from './panels/MoonPanel'
 import PhysicsSandboxPanel from './panels/PhysicsSandboxPanel'
 import NuclearExplosionPanel from './panels/NuclearExplosionPanel'
 import ThermonuclearWarPanel from './panels/ThermonuclearWarPanel'
-import SupervolcanoPanel from './panels/SupervolcanoPanel'
 import { MandelbulbScene, ApollonianGasketScene, MengerSpongeScene } from './panels/DEFractalScenes'
 
 // ── Panel-Pools ───────────────────────────────────────────────────────────────
@@ -97,7 +96,7 @@ const POOL_GFX: React.ComponentType[] = [
   DaggerfallPanel, LidarScanPanel,
   TixyPanel, IQSmoothMin, IQDigitalStorm, LovebyteShowcasePanel,
   MoonPanel, PhysicsSandboxPanel, NuclearExplosionPanel,
-  ThermonuclearWarPanel, SupervolcanoPanel,
+  ThermonuclearWarPanel,
   MandelbulbScene, ApollonianGasketScene, MengerSpongeScene,
 ]
 
@@ -209,18 +208,13 @@ function randomPartition(n: number): number[] {
 }
 
 const LARGE_PANELS = new Set([
-  'AmiModPanel',
-  'C64Panel',
   'ElitePanel',
-  'ThermonuclearWarPanel',
-  'SupervolcanoPanel',
   'SolarSystemPanel',
   'DNAHelix',
   'CADRobotPanel',
-  'NeuralLinkDecoderPanel',
   'ShaderRetroWave',
   'NuclearExplosionPanel',
-  'MoonPanel'
+  'MoonPanel',
 ]);
 
 // Die drei Audio-Player. Genau einer davon muss in jedem Layout vorhanden sein
@@ -295,16 +289,25 @@ function isCellLarge(cell: GridCell): boolean {
  * Erzeugt ein vollständig zufälliges CSS-Grid-Layout.
  * @param id Eindeutiger Zähler — wird als React-Key verwendet
  */
-function generateLayout(id: number, reviews: ReviewEntry[]): GeneratedLayout {
+function generateLayout(id: number, reviews: ReviewEntry[], targetCellCount?: number): GeneratedLayout {
   // 1. Gittergröße: cols × rows basierend auf der Bildschirmbreite
   const width = typeof window !== 'undefined' ? window.innerWidth : 1200
   let sizes: [number, number][]
 
-  // Galerie-Dichte (Relaunch 2026-05-31): bewusst WENIGER, dafür GRÖSSERE Panels
-  // mit mehr Weißraum. Früher war das Dashboard sehr dicht (bis 32 Panels) und
-  // ruckelte auf schwächerer Hardware (schwächere Hardware). Die Kachelzahl ist jetzt grob
-  // halbiert — der Nutzer erkundet eine kuratierte Galerie statt einer Wand.
-  if (width >= 3440) {
+  // Layout-V2 (Density): targetCellCount überschreibt Auto-Wahl
+  if (targetCellCount != null) {
+    const candidates: [number, number][] = []
+    if (width >= 3440) candidates.push([5, 3], [5, 4], [6, 4])
+    else if (width >= 2560) candidates.push([4, 3], [4, 4])
+    else if (width >= 1920) candidates.push([3, 3], [4, 3])
+    else if (width >= 1440) candidates.push([3, 2], [3, 3])
+    else if (width >= 1024) candidates.push([2, 2], [3, 2])
+    else candidates.push([2, 2])
+    const best = candidates.reduce((a, b) =>
+      Math.abs(a[0] * a[1] - targetCellCount) < Math.abs(b[0] * b[1] - targetCellCount) ? a : b
+    )
+    sizes = [best]
+  } else if (width >= 3440) {
     // Ultra-wide / sehr große Entwickler-Bildschirme
     sizes = [[5, 3], [5, 4], [6, 4]]
   } else if (width >= 2560) {
@@ -507,29 +510,53 @@ function generateLayout(id: number, reviews: ReviewEntry[]): GeneratedLayout {
     if (textCell) { textCell.type = 'gfx'; gfxCount++; textCount-- }
   }
 
-  // Index-Zuweisung: strikt ohne Wraparound → jedes Panel nur einmal
-  let textIdxPtr = 0
-  let largeGfxPtr = 0
-  let smallGfxPtr = 0
+  // Index-Zuweisung mit Aspect-Matching (Layout-V2): jedes Panel nur einmal,
+  // nur auf Zellen mit passendem Seitenverhältnis.
+  let textPtr = 0
+  const usedGfxAs = new Set<number>()
 
   cells.forEach(cell => {
     if (cell.type === 'text') {
-      if (textIdxPtr < textIndices.length) {
-        cell.panelIdx = textIndices[textIdxPtr++]
+      if (textPtr < textIndices.length) {
+        cell.panelIdx = textIndices[textPtr++]
       }
     } else if (cell.type === 'gfx') {
-      if (isCellLarge(cell)) {
-        if (largeGfxPtr < largeGfxIndices.length) {
-          cell.panelIdx = largeGfxIndices[largeGfxPtr++]
-        } else if (smallGfxPtr < smallGfxIndices.length) {
-          cell.panelIdx = smallGfxIndices[smallGfxPtr++]
+      const cellA = cellAspect(cell)
+
+      function findGfx(candidates: number[], fallback: number[]): number | undefined {
+        for (let i = 0; i < candidates.length; i++) {
+          const idx = candidates[i]
+          if (usedGfxAs.has(idx)) continue
+          const name = getCompName(gfxPool[idx])
+          const pA = PANEL_ASPECT[name] ?? 'ANY'
+          if (aspectMatches(pA, cellA)) return idx
         }
+        // Fallback (andere Größenklasse) — aber WEITERHIN nur aspect-konform.
+        // Sonst landet z.B. ein SQUARE-Panel (C64) in einer WIDE-Zelle und wird
+        // breitgezogen. Lieber Zelle leer lassen als Seitenverhältnis brechen.
+        for (const idx of fallback) {
+          if (usedGfxAs.has(idx)) continue
+          const name = getCompName(gfxPool[idx])
+          const pA = PANEL_ASPECT[name] ?? 'ANY'
+          if (aspectMatches(pA, cellA)) return idx
+        }
+        return undefined
+      }
+
+      const isLarge = isCellLarge(cell)
+      let idx: number | undefined
+
+      if (isLarge) {
+        idx = findGfx(largeGfxIndices, smallGfxIndices)
+        if (idx == null) idx = findGfx(smallGfxIndices, largeGfxIndices)
       } else {
-        if (smallGfxPtr < smallGfxIndices.length) {
-          cell.panelIdx = smallGfxIndices[smallGfxPtr++]
-        } else if (largeGfxPtr < largeGfxIndices.length) {
-          cell.panelIdx = largeGfxIndices[largeGfxPtr++]
-        }
+        idx = findGfx(smallGfxIndices, largeGfxIndices)
+        if (idx == null) idx = findGfx(largeGfxIndices, smallGfxIndices)
+      }
+
+      if (idx != null) {
+        cell.panelIdx = idx
+        usedGfxAs.add(idx)
       }
     }
   })
@@ -691,7 +718,6 @@ const ALL_PANELS: { name: string; Component: React.ComponentType }[] = [
   { name: 'PhysicsSandboxPanel', Component: PhysicsSandboxPanel },
   { name: 'NuclearExplosionPanel', Component: NuclearExplosionPanel },
   { name: 'ThermonuclearWarPanel', Component: ThermonuclearWarPanel },
-  { name: 'SupervolcanoPanel',   Component: SupervolcanoPanel },
   { name: 'MandelbulbScene',     Component: MandelbulbScene },
   { name: 'ApollonianGasketScene', Component: ApollonianGasketScene },
   { name: 'MengerSpongeScene',   Component: MengerSpongeScene },
@@ -942,6 +968,43 @@ function LayoutContent({
   )
 }
 
+// ── Auslastungs-Wähler (Layout-V2, 2026-05-31) ──────────────────────────────
+type DensityLevel = '25mhz' | 'turbo' | 'overclock' | 'proxima'
+
+const DENSITY_LABELS: Record<DensityLevel, string> = {
+  '25mhz': '25 MHz',
+  'turbo': 'Turbo',
+  'overclock': 'Overclock',
+  'proxima': 'Proxima Centauri',
+}
+
+// Vollständige (literale) Tailwind-Klassen pro Stufe — literal, damit der
+// Tailwind-JIT sie beim Scannen findet. `active` = aktivierter Look (heller
+// Rahmen + Text + dezenter Hintergrund), `idle` = gedimmt. Proxima bleibt auch
+// im Idle leicht rötlich (Warn-Köder); Glow nur, wenn aktiv.
+const DENSITY_STYLE: Record<DensityLevel, { active: string; idle: string; glow?: string }> = {
+  '25mhz':     { active: 'border-green-500 text-green-200 bg-green-950/50',    idle: 'border-green-900 text-green-700 hover:text-green-400' },
+  'turbo':     { active: 'border-green-400 text-green-100 bg-green-900/40',    idle: 'border-green-900 text-green-700 hover:text-green-300' },
+  'overclock': { active: 'border-yellow-400 text-yellow-200 bg-yellow-950/40', idle: 'border-green-900 text-green-700 hover:text-yellow-300' },
+  'proxima':   { active: 'border-red-400 text-red-200 bg-red-950/40',          idle: 'border-red-900/60 text-red-700/80 hover:text-red-300', glow: '0 0 10px rgba(255,40,40,0.55)' },
+}
+
+const DENSITY_ORDER: DensityLevel[] = ['25mhz', 'turbo', 'overclock', 'proxima']
+
+function densityPanelCount(level: DensityLevel, width: number): number {
+  const base = (() => {
+    switch (level) {
+      case '25mhz':   return Math.min(8, Math.max(4, Math.floor(width / 280)))
+      case 'turbo':   return Math.min(14, Math.max(6, Math.floor(width / 200)))
+      case 'overclock': return Math.min(30, Math.max(12, Math.floor(width / 120)))
+      case 'proxima': return Math.min(32, Math.max(16, Math.floor(width / 100)))
+    }
+  })()
+  return Math.max(2, base)
+}
+
+const LS_DENSITY = 'fraktallab_density'
+
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 export default function App() {
   // Aufsteigender ID-Zähler für React-Keys — als Ref, um Stale-Closure-Probleme zu vermeiden
@@ -954,6 +1017,19 @@ export default function App() {
   const [sliding,    setSliding]    = useState(false)
   // Globaler Audio-Mute-Zustand (gespiegelt aus audio-focus.ts für das Button-Label).
   const [audioMuted, setAudioMuted] = useState(() => isAudioMuted())
+
+  // ── Auslastung (Layout-V2) ─────────────────────────────────────────────────
+  // Gewählte Galerie-Dichte. `null` = noch keine manuelle Wahl → der FPS-
+  // Benchmark beim Start entscheidet (25 MHz oder Turbo). Eine MANUELLE Wahl
+  // (Klick) wird in localStorage gemerkt und gewinnt beim Reload über den
+  // Benchmark. Overclock/Proxima gibt es ausschließlich manuell.
+  const [density, setDensity] = useState<DensityLevel | null>(() => {
+    const saved = localStorage.getItem(LS_DENSITY)
+    return DENSITY_ORDER.includes(saved as DensityLevel) ? (saved as DensityLevel) : null
+  })
+  // Ref-Spiegel, damit doSwitch (leere Deps) immer die aktuelle Dichte sieht.
+  const densityRef = useRef<DensityLevel | null>(density)
+  useEffect(() => { densityRef.current = density }, [density])
 
   const [mobileIndices, setMobileIndices] = useState(() => {
     const reviews = loadReviews()
@@ -1031,7 +1107,7 @@ export default function App() {
           if (cell.type === 'gfx') {
             const isLarge = isCellLarge(cell)
             const compName = getCompName(comp)
-            const isCompLarge = LARGE_PANELS.has(compName)
+            const isCompLarge = panelMayBeLarge(compName)
             if (isLarge === isCompLarge) {
               candidates.push(i)
             }
@@ -1279,7 +1355,10 @@ export default function App() {
     // Neue ID vergeben und neues Layout generieren
     layoutIdRef.current += 1
     const reviews = loadReviews()
-    const next = generateLayout(layoutIdRef.current, reviews)
+    // Aktuelle Dichte → Ziel-Kachelzahl (oder Auto-Wahl, falls noch keine).
+    const lvl = densityRef.current
+    const target = lvl ? densityPanelCount(lvl, window.innerWidth) : undefined
+    const next = generateLayout(layoutIdRef.current, reviews, target)
 
     setPrevLayout(current)
     setSliding(true)
@@ -1296,6 +1375,53 @@ export default function App() {
       setPaused(false)
     }, 520)
   }, [])
+
+  // Dichte-Stufe wählen → State setzen, optional persistieren und Layout mit der
+  // passenden Ziel-Kachelzahl neu würfeln. `persist=true` nur bei manueller Wahl
+  // (Klick), damit der Benchmark-Default beim Reload nicht als "gewählt" gilt.
+  const applyDensity = useCallback((level: DensityLevel, persist: boolean) => {
+    setDensity(level)
+    densityRef.current = level
+    if (persist) {
+      try { localStorage.setItem(LS_DENSITY, level) } catch { /* Private-Mode etc. */ }
+    }
+    layoutIdRef.current += 1
+    const reviews = loadReviews()
+    const next = generateLayout(layoutIdRef.current, reviews, densityPanelCount(level, window.innerWidth))
+    setLayout(next)
+    resetAudioFocus()
+  }, [])
+
+  // FPS-Mini-Benchmark beim Start: nur wenn noch KEINE manuelle Wahl persistiert
+  // ist. Zählt Frames über ~1 s. requestAnimationFrame ist an die Bildwiederhol-
+  // rate gekoppelt (~60/120 Hz) — wir können M1 vs. M5 daraus nicht ableiten,
+  // aber flüssig (≈60 fps erreicht) vs. ruckelig unterscheiden. Ergebnis: nur
+  // 25 MHz oder Turbo (Overclock/Proxima bleiben manuell).
+  useEffect(() => {
+    if (densityRef.current != null) {
+      // Persistierte manuelle Wahl: kein Benchmark, aber das Initial-Layout wurde
+      // ohne Ziel-Kachelzahl gewürfelt → einmalig mit der gemerkten Dichte neu
+      // aufbauen, damit Reload die zuletzt gewählte Auslastung auch zeigt.
+      applyDensity(densityRef.current, false)
+      return
+    }
+    let frames = 0
+    let raf = 0
+    const start = performance.now()
+    const tick = () => {
+      frames++
+      const elapsed = performance.now() - start
+      if (elapsed < 1000) {
+        raf = requestAnimationFrame(tick)
+      } else {
+        const fps = (frames * 1000) / elapsed
+        // ≥ 50 fps → flüssig genug für mehr Kacheln → Turbo, sonst 25 MHz.
+        applyDensity(fps >= 50 ? 'turbo' : '25mhz', false)
+      }
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [applyDensity])
 
   // Versucht Layout zu wechseln — wartet, falls ein Audio-Panel läuft
   const trySwitch = useCallback(() => {
@@ -1407,19 +1533,31 @@ export default function App() {
           {audioMuted ? 'AUDIO OFF' : 'AUDIO ON'}
         </button>
 
-        {/* Layout-Wechsel-Button — nur auf Desktop, im Review-Modus ausgeblendet */}
+        {/* Auslastungs-Wähler (Layout-V2) — nur Desktop, im Review-Modus aus.
+            Label links, dann 4 Stufen-Segmente. Aktive Stufe = aktivierter Look.
+            Klick = Dichte setzen + Layout neu würfeln; erneuter Klick = neu würfeln. */}
         {!reviewMode && (
-          <button
-            onClick={() => {
-              if (isAudioPlaying()) return;
-              setLayout(current => { doSwitch(current); return current });
-            }}
-            title="Zufälliges neues Layout generieren (auch: Leertaste)"
-            className="hidden md:inline-flex border border-green-800 text-green-600 text-xs px-2 py-0.5
-                       hover:border-green-600 hover:text-green-200 transition-colors"
-          >
-            ⟳ LAYOUT
-          </button>
+          <div className="hidden md:flex items-center gap-1">
+            <span className="text-green-700 text-xs uppercase tracking-wide mr-0.5">Auslastung</span>
+            {DENSITY_ORDER.map(level => {
+              const active = density === level
+              const style = DENSITY_STYLE[level]
+              return (
+                <button
+                  key={level}
+                  onClick={() => {
+                    if (isAudioPlaying()) return
+                    applyDensity(level, true)   // manuelle Wahl → persistieren
+                  }}
+                  title={`Galerie-Dichte: ${DENSITY_LABELS[level]} (Klick = neu würfeln)`}
+                  className={`border text-xs px-2 py-0.5 transition-colors ${active ? style.active : style.idle}`}
+                  style={active && style.glow ? { boxShadow: style.glow } : undefined}
+                >
+                  {DENSITY_LABELS[level]}
+                </button>
+              )
+            })}
+          </div>
         )}
 
         {/* Review-Modus-Button — auf allen Geräten sichtbar, zeigt EXIT wenn aktiv, sonst [?] */}
@@ -1740,3 +1878,99 @@ export default function App() {
     </div>
   )
 }
+
+// ── Aspect-Ratio-Gruppen (Layout-V2, 2026-05-31) ─────────────────────────────
+type Aspect = 'WIDE' | 'SQUARE' | 'TALL' | 'ANY' | 'TEXT'
+
+const PANEL_ASPECT: Record<string, Aspect> = {
+  VoxelDemoColor:        'WIDE',
+  VoxelDemoBW:           'WIDE',
+  VoxelThermal:          'WIDE',
+  VoxelLava:             'WIDE',
+  StarfieldScene:        'WIDE',
+  ElitePanel:            'WIDE',
+  ParallaxPanel:         'WIDE',
+  EnhanceView:           'WIDE',
+  RetroErrorPanel:       'WIDE',
+  DaggerfallPanel:       'WIDE',
+  OscilloscopePanel:     'WIDE',
+  ThermonuclearWarPanel: 'WIDE',
+  PhysicsSandboxPanel:   'WIDE',
+  GlobePanel:        'SQUARE',
+  RadarSweepPanel:   'SQUARE',
+  SolarSystemPanel:  'SQUARE',
+  MoonPanel:         'SQUARE',
+  C64Panel:          'SQUARE',
+  AllYourBase:       'SQUARE',
+  AmiModPanel:       'SQUARE',
+  ShaderHackingCore: 'SQUARE',
+  TixyPanel:         'SQUARE',
+  VoxelNeon:         'SQUARE',
+  ThreeBodyScene:    'SQUARE',
+  TunnelScene:       'SQUARE',
+  DotCloudScene:     'SQUARE',
+  NuclearExplosionPanel: 'TALL',
+  SystemLog:         'TEXT',
+  DataStream:        'TEXT',
+  Vitals:            'TEXT',
+  PortScanner:       'TEXT',
+  PseudoCode:        'TEXT',
+  AgentCodePanel:    'TEXT',
+  VisitorProfilePanel: 'TEXT',
+  ICQChatPanel:      'TEXT',
+  DiskCleanupPanel:  'TEXT',
+  StockTickerPanel:  'TEXT',
+  SatellitePanel:    'TEXT',
+  ClassifiedPanel:   'TEXT',
+  MetaAgentPanel:    'TEXT',
+  FractalSeahorse:       'ANY',
+  FractalSpiral:         'ANY',
+  FractalLightning:      'ANY',
+  FractalElephant:       'ANY',
+  FractalMini:           'ANY',
+  FractalSatellite:      'ANY',
+  FractalTendril:        'ANY',
+  FractalDragon:         'ANY',
+  FractalDendrite:       'ANY',
+  FractalSwirl:          'ANY',
+  FractalJulia:          'ANY',
+  PlasmaDemo:            'ANY',
+  ShaderMandelbox:       'ANY',
+  ShaderRetroWave:       'ANY',
+  LidarScanPanel:        'ANY',
+  IQSmoothMin:           'ANY',
+  IQDigitalStorm:        'ANY',
+  LovebyteShowcasePanel: 'ANY',
+  MandelbulbScene:       'ANY',
+  ApollonianGasketScene: 'ANY',
+  MengerSpongeScene:     'ANY',
+}
+
+function cellAspect(cell: GridCell): Aspect {
+  const colParts = cell.gridColumn.split('/').map(s => parseInt(s.trim(), 10))
+  const rowParts = cell.gridRow.split('/').map(s => parseInt(s.trim(), 10))
+  const colSpan = colParts[1] - colParts[0]
+  const rowSpan = rowParts[1] - rowParts[0]
+  if (colSpan === 1 && rowSpan === 1) return 'SQUARE'
+  if (colSpan > rowSpan) return 'WIDE'
+  if (rowSpan > colSpan) return 'TALL'
+  return 'SQUARE'
+}
+
+function aspectMatches(panelAspect: Aspect, cellAspect: Aspect): boolean {
+  if (panelAspect === 'ANY' || panelAspect === 'TEXT') return true
+  return panelAspect === cellAspect
+}
+
+const NO_LARGE_PANELS = new Set([
+  'C64Panel',
+  'ThermonuclearWarPanel',
+  'AllYourBase',
+])
+
+function panelMayBeLarge(name: string): boolean {
+  if (NO_LARGE_PANELS.has(name)) return false
+  if (LARGE_PANELS.has(name)) return true
+  return PANEL_ASPECT[name] !== 'TEXT'
+}
+
