@@ -267,204 +267,385 @@ export const FireScene = React.memo(function FireScene() {
   )
 })
 
-// ── Effekt 2: Starfield — 3D-Sterne fliegen auf die Kamera zu ────────────────
-// Volle Auflösung OK (nur Punkte, kein Pixel-Buffer-Overhead).
-// Alle 20–30 s: 1,5s Hyperraum-Effekt — Sterne strecken sich zu Linien.
-type Star = { x: number; y: number; z: number }
-// Gemeinsamer Hyperraum-Zustand — alle Felder: Startzeitpunkt und Dauer des Effekts.
+type Star = { x: number; y: number; z: number; color: string }
 type StarfieldState = {
   stars: Star[]
-  nextHyperAt: number
-  hyperEndAt: number
-  phase: 'normal' | 'warpin' | 'hyperspace' | 'warpout'
-  speedVal: number
-  warpFactor: number
+  phase: 'chase' | 'countdown' | 'jump' | 'hyperspace' | 'exit'
   xCoord: number
   yCoord: number
   zCoord: number
 }
 export const StarfieldScene = makeScene(
   'DEEP SPACE // SCANNING SECTOR 9', 99999, 99999,
-  // 450 Sterne statt 150 — dreifache Dichte
   (): StarfieldState => ({
-    stars: Array.from({length: 450}, () => ({
-      x: (Math.random()-0.5)*2, y: (Math.random()-0.5)*2, z: Math.random(),
+    stars: Array.from({length: 400}, () => ({
+      x: (Math.random()-0.5)*2,
+      y: (Math.random()-0.5)*2,
+      z: Math.random(),
+      color: ['#00ffff', '#ff00ff', '#ffffff', '#a855f7'][Math.floor(Math.random() * 4)],
     })),
-    nextHyperAt: 0,
-    hyperEndAt:  -1,
-    phase: 'normal',
-    speedVal: 0.006,
-    warpFactor: 0,
+    phase: 'chase',
     xCoord: 49.32,
     yCoord: -12.44,
     zCoord: 102.05,
   }),
-  (buf, W, H, t, state: StarfieldState) => {
-    const cycleTime = (t / 1000) % 22
-    let speed = 0.006
-    let phase: 'normal' | 'warpin' | 'hyperspace' | 'warpout' = 'normal'
-    let warpFactor = 0
+  (buf, _W, _H, t, state: StarfieldState) => {
+    const cycleTime = (t / 1000) % 26
+    let speed = 0.005
+    let phase: 'chase' | 'countdown' | 'jump' | 'hyperspace' | 'exit' = 'chase'
 
     if (cycleTime < 8) {
-      phase = 'normal'
-      speed = 0.006
-      warpFactor = 0
-    } else if (cycleTime < 10) {
-      phase = 'warpin'
-      const p = (cycleTime - 8) / 2
-      speed = 0.006 + 0.114 * p * p // ramps up to 0.12
-      warpFactor = p
-    } else if (cycleTime < 20) {
+      phase = 'chase'
+      speed = 0.005
+    } else if (cycleTime < 12) {
+      phase = 'countdown'
+      const p = (cycleTime - 8) / 4
+      speed = 0.005 + 0.015 * p * p
+    } else if (cycleTime < 14) {
+      phase = 'jump'
+      const p = (cycleTime - 12) / 2
+      speed = 0.02 + 0.12 * p * p
+    } else if (cycleTime < 22) {
       phase = 'hyperspace'
-      speed = 0.12 // very fast
-      warpFactor = 1
+      speed = 0.14
     } else {
-      phase = 'warpout'
-      const p = (cycleTime - 20) / 2
-      speed = 0.12 - 0.114 * (1 - (1 - p) * (1 - p)) // ramps down back to 0.006
-      warpFactor = 1 - p
+      phase = 'exit'
+      const p = (cycleTime - 22) / 4
+      speed = 0.14 * (1 - p)
     }
 
     state.phase = phase
-    state.speedVal = speed
-    state.warpFactor = warpFactor
     state.xCoord += (phase === 'hyperspace' ? 0.35 : 0.01) * (Math.random() * 0.5 + 0.75)
     state.yCoord += (phase === 'hyperspace' ? -0.15 : -0.005) * (Math.random() * 0.5 + 0.75)
     state.zCoord += (phase === 'hyperspace' ? 0.95 : 0.02) * (Math.random() * 0.5 + 0.75)
 
-    // Hintergrund schwarz, Alpha voll opak
+    // Clear buffer (make it black)
     buf.fill(0)
     for (let i = 3; i < buf.length; i+=4) buf[i] = 255
 
+    // Update stars
     for (let idx = 0; idx < state.stars.length; idx++) {
       const s = state.stars[idx]
-      const prevZ = s.z          // z vor dem Update → für Linien-Endpunkt
       s.z -= speed
       if (s.z <= 0.01) {
         s.x = (Math.random()-0.5)*2
         s.y = (Math.random()-0.5)*2
         s.z = 1
-        continue
-      }
-
-      // Bildschirm-Koordinate am aktuellen z
-      const sx = Math.round(s.x / s.z * W * 0.45 + W/2)
-      const sy = Math.round(s.y / s.z * H * 0.45 + H/2)
-      if (sx < 0 || sx >= W || sy < 0 || sy >= H) continue
-
-      if (phase === 'normal') {
-        // Normaler Modus: einzelner Punkt, Helligkeit steigt mit Nähe zur Kamera
-        const br  = Math.round(255 * (1 - s.z))
-        const ext = s.z < 0.15 ? 1 : 0  // helle Sterne nahe der Kamera etwas größer
-        for (let dy = -ext; dy <= ext; dy++)
-          for (let dx = -ext; dx <= ext; dx++) {
-            const px = sx + dx, py = sy + dy
-            if (px < 0 || px >= W || py < 0 || py >= H) continue
-            const pi = (py * W + px) * 4
-            buf[pi] = br; buf[pi+1] = br; buf[pi+2] = br; buf[pi+3] = 255
-          }
-      } else {
-        // Hyperraum: Linie vom vorherigen z-Punkt zum aktuellen z-Punkt zeichnen
-        const psx = Math.round(s.x / prevZ * W * 0.45 + W/2)
-        const psy = Math.round(s.y / prevZ * H * 0.45 + H/2)
-
-        // Farbbestimmung
-        let r = 255, g = 255, b = 255
-        if (phase === 'hyperspace') {
-          if (idx % 3 === 0) { r = 0; g = 255; b = 255 } // Neon Cyan
-          else if (idx % 3 === 1) { r = 255; g = 0; b = 255 } // Neon Magenta
-          else { r = 0; g = 255; b = 0 } // Neon Green
-        } else if (phase === 'warpout') {
-          let nr = 255, ng = 255, nb = 255
-          if (idx % 3 === 0) { nr = 0; ng = 255; nb = 255 }
-          else if (idx % 3 === 1) { nr = 255; ng = 0; nb = 255 }
-          else { nr = 0; ng = 255; nb = 0 }
-          r = Math.round(255 + (nr - 255) * warpFactor)
-          g = Math.round(255 + (ng - 255) * warpFactor)
-          b = Math.round(255 + (nb - 255) * warpFactor)
-        } else if (phase === 'warpin') {
-          let nr = 255, ng = 255, nb = 255
-          if (idx % 3 === 0) { nr = 0; ng = 255; nb = 255 }
-          else if (idx % 3 === 1) { nr = 255; ng = 0; nb = 255 }
-          else { nr = 0; ng = 255; nb = 0 }
-          r = Math.round(255 + (nr - 255) * warpFactor)
-          g = Math.round(255 + (ng - 255) * warpFactor)
-          b = Math.round(255 + (nb - 255) * warpFactor)
-        }
-
-        // Bresenham-Linie zwischen (psx,psy) und (sx,sy)
-        let lx = psx, ly = psy
-        const dx = Math.abs(sx - psx), dy = Math.abs(sy - psy)
-        const stepX = psx < sx ? 1 : -1, stepY = psy < sy ? 1 : -1
-        let err = dx - dy
-        const maxSteps = 100
-        for (let step = 0; step < maxSteps; step++) {
-          if (lx >= 0 && lx < W && ly >= 0 && ly < H) {
-            const pi = (ly * W + lx) * 4
-            buf[pi] = r; buf[pi+1] = g; buf[pi+2] = b; buf[pi+3] = 255
-          }
-          if (lx === sx && ly === sy) break
-          const e2 = err * 2
-          if (e2 > -dy) { err -= dy; lx += stepX }
-          if (e2 <  dx) { err += dx; ly += stepY }
-        }
       }
     }
   },
   (offCtx, W, H, t, state: StarfieldState) => {
+    const cycleTime = (t / 1000) % 26
     const cx = W / 2
     const cy = H / 2
+    const phase = state.phase
 
-    // Brackets um Zielzone
-    offCtx.strokeStyle = 'rgba(74, 222, 128, 0.8)' // Neon grün
-    offCtx.lineWidth = 1.5
-    
-    const targetX = cx + Math.sin(t * 0.001) * (W * 0.15)
-    const targetY = cy + Math.cos(t * 0.0012) * (H * 0.15)
-    const bracketSize = 25
-    
-    offCtx.beginPath()
-    // Top-left
-    offCtx.moveTo(targetX - bracketSize, targetY - bracketSize + 8)
-    offCtx.lineTo(targetX - bracketSize, targetY - bracketSize)
-    offCtx.lineTo(targetX - bracketSize + 8, targetY - bracketSize)
-    // Top-right
-    offCtx.moveTo(targetX + bracketSize, targetY - bracketSize + 8)
-    offCtx.lineTo(targetX + bracketSize, targetY - bracketSize)
-    offCtx.lineTo(targetX + bracketSize - 8, targetY - bracketSize)
-    // Bottom-left
-    offCtx.moveTo(targetX - bracketSize, targetY + bracketSize - 8)
-    offCtx.lineTo(targetX - bracketSize, targetY + bracketSize)
-    offCtx.lineTo(targetX - bracketSize + 8, targetY + bracketSize)
-    // Bottom-right
-    offCtx.moveTo(targetX + bracketSize, targetY + bracketSize - 8)
-    offCtx.lineTo(targetX + bracketSize, targetY + bracketSize)
-    offCtx.lineTo(targetX + bracketSize - 8, targetY + bracketSize)
-    offCtx.stroke()
-
-    // Zielzonen-Label
-    offCtx.fillStyle = 'rgba(74, 222, 128, 0.9)'
-    offCtx.font = '9px monospace'
-    offCtx.fillText('LOCK // TRAP-1e', targetX - bracketSize, targetY - bracketSize - 4)
-
-    // Telemetrie Status & Speed Bestimmung
-    let statusText = 'STATUS: NOMINAL'
-    let speedText = '0.05c'
-    if (state.phase === 'normal') {
-      statusText = 'STATUS: NOMINAL'
-      speedText = `${(0.05 + state.speedVal * 2).toFixed(3)}c`
-    } else if (state.phase === 'warpin') {
-      statusText = 'STATUS: WARP ACTIVE'
-      speedText = `WARP ${(9.9 * state.warpFactor).toFixed(1)}`
-    } else if (state.phase === 'hyperspace') {
-      statusText = (t % 1000 < 500) ? 'STATUS: CRITICAL' : 'STATUS: WARP ACTIVE'
-      speedText = 'WARP 9.9'
-    } else if (state.phase === 'warpout') {
-      statusText = 'STATUS: DECELLERATING'
-      speedText = `WARP ${(9.9 * state.warpFactor).toFixed(1)}`
+    let speed = 0.005
+    let warpFactor = 0
+    if (cycleTime < 8) {
+      speed = 0.005
+      warpFactor = 0
+    } else if (cycleTime < 12) {
+      const p = (cycleTime - 8) / 4
+      speed = 0.005 + 0.015 * p * p
+      warpFactor = p
+    } else if (cycleTime < 14) {
+      const p = (cycleTime - 12) / 2
+      speed = 0.02 + 0.12 * p * p
+      warpFactor = p
+    } else if (cycleTime < 22) {
+      speed = 0.14
+      warpFactor = 1
+    } else {
+      const p = (cycleTime - 22) / 4
+      speed = 0.14 * (1 - p)
+      warpFactor = 1 - p
     }
 
-    // Scanlines
+    // Set line cap for clean star trails
+    offCtx.lineCap = 'round'
+
+    // Draw stars
+    for (let idx = 0; idx < state.stars.length; idx++) {
+      const s = state.stars[idx]
+      const prevZ = s.z + speed
+      const sx = s.x / s.z * W * 0.45 + cx
+      const sy = s.y / s.z * H * 0.45 + cy
+      const psx = s.x / prevZ * W * 0.45 + cx
+      const psy = s.y / prevZ * H * 0.45 + cy
+
+      if (sx < 0 || sx >= W || sy < 0 || sy >= H) continue
+
+      const brightness = Math.min(1, 1 - s.z)
+
+      if (phase === 'chase' || phase === 'countdown') {
+        offCtx.fillStyle = `rgba(255, 255, 255, ${brightness})`
+        const size = s.z < 0.2 ? 2 : 1
+        offCtx.fillRect(sx - size/2, sy - size/2, size, size)
+      } else {
+        const alpha = brightness * (phase === 'jump' ? warpFactor : 1)
+        offCtx.strokeStyle = phase === 'hyperspace'
+          ? s.color + Math.round(alpha * 255).toString(16).padStart(2, '0')
+          : `rgba(255, 255, 255, ${alpha})`
+
+        offCtx.lineWidth = phase === 'hyperspace' ? 2 : 1
+        offCtx.beginPath()
+        offCtx.moveTo(psx, psy)
+        offCtx.lineTo(sx, sy)
+        offCtx.stroke()
+      }
+    }
+
+    // Target tracking HUD position
+    const targetX = cx + Math.sin(t * 0.001) * (W * 0.18)
+    const targetY = cy + Math.cos(t * 0.0012) * (H * 0.15)
+    const droneSize = 14
+
+    // Chaser interceptor position
+    const chaserX = cx + Math.sin(t * 0.0009 - 0.4) * (W * 0.15)
+    const chaserY = cy + 45 + Math.cos(t * 0.0011 - 0.3) * (H * 0.1)
+    const chaserSize = 28
+
+    if (phase === 'chase' || phase === 'countdown') {
+      // Draw locking brackets on target
+      offCtx.strokeStyle = 'rgba(74, 222, 128, 0.8)'
+      offCtx.lineWidth = 1.2
+      const bracketSize = 18
+      offCtx.beginPath()
+      // Top-left
+      offCtx.moveTo(targetX - bracketSize, targetY - bracketSize + 6)
+      offCtx.lineTo(targetX - bracketSize, targetY - bracketSize)
+      offCtx.lineTo(targetX - bracketSize + 6, targetY - bracketSize)
+      // Top-right
+      offCtx.moveTo(targetX + bracketSize, targetY - bracketSize + 6)
+      offCtx.lineTo(targetX + bracketSize, targetY - bracketSize)
+      offCtx.lineTo(targetX + bracketSize - 6, targetY - bracketSize)
+      // Bottom-left
+      offCtx.moveTo(targetX - bracketSize, targetY + bracketSize - 6)
+      offCtx.lineTo(targetX - bracketSize, targetY + bracketSize)
+      offCtx.lineTo(targetX - bracketSize + 6, targetY + bracketSize)
+      // Bottom-right
+      offCtx.moveTo(targetX + bracketSize, targetY + bracketSize - 6)
+      offCtx.lineTo(targetX + bracketSize, targetY + bracketSize)
+      offCtx.lineTo(targetX + bracketSize - 6, targetY + bracketSize)
+      offCtx.stroke()
+
+      offCtx.fillStyle = 'rgba(74, 222, 128, 0.9)'
+      offCtx.font = '9px monospace'
+      offCtx.fillText('LOCK // ESC-01', targetX - bracketSize, targetY - bracketSize - 4)
+
+      // Draw Chased Drone (Target)
+      offCtx.strokeStyle = 'rgba(255, 60, 60, 0.9)'
+      offCtx.lineWidth = 1.5
+      offCtx.beginPath()
+      offCtx.moveTo(targetX, targetY - droneSize * 0.5)
+      offCtx.lineTo(targetX + droneSize * 0.3, targetY)
+      offCtx.lineTo(targetX, targetY + droneSize * 0.4)
+      offCtx.lineTo(targetX - droneSize * 0.3, targetY)
+      offCtx.closePath()
+      offCtx.moveTo(targetX - droneSize * 0.3, targetY)
+      offCtx.lineTo(targetX - droneSize * 0.8, targetY - droneSize * 0.2)
+      offCtx.lineTo(targetX - droneSize * 0.7, targetY + droneSize * 0.3)
+      offCtx.lineTo(targetX - droneSize * 0.2, targetY + droneSize * 0.2)
+      offCtx.moveTo(targetX + droneSize * 0.3, targetY)
+      offCtx.lineTo(targetX + droneSize * 0.8, targetY - droneSize * 0.2)
+      offCtx.lineTo(targetX + droneSize * 0.7, targetY + droneSize * 0.3)
+      offCtx.lineTo(targetX + droneSize * 0.2, targetY + droneSize * 0.2)
+      offCtx.stroke()
+
+      // Target Thruster
+      const droneEngine = 3 + Math.sin(t * 0.05) * 1.5
+      offCtx.fillStyle = phase === 'countdown' ? 'rgba(0, 240, 255, 0.9)' : 'rgba(255, 100, 0, 0.8)'
+      offCtx.beginPath()
+      offCtx.arc(targetX, targetY + droneSize * 0.4, droneEngine, 0, Math.PI * 2)
+      offCtx.fill()
+
+      // Draw Chasing Interceptor
+      offCtx.strokeStyle = 'rgba(0, 255, 240, 0.95)'
+      offCtx.lineWidth = 1.8
+      offCtx.beginPath()
+      offCtx.moveTo(chaserX, chaserY - chaserSize * 0.8)
+      offCtx.lineTo(chaserX + chaserSize * 0.15, chaserY - chaserSize * 0.2)
+      offCtx.lineTo(chaserX + chaserSize * 0.2, chaserY + chaserSize * 0.4)
+      offCtx.lineTo(chaserX - chaserSize * 0.2, chaserY + chaserSize * 0.4)
+      offCtx.lineTo(chaserX - chaserSize * 0.15, chaserY - chaserSize * 0.2)
+      offCtx.closePath()
+      offCtx.moveTo(chaserX - chaserSize * 0.15, chaserY + chaserSize * 0.1)
+      offCtx.lineTo(chaserX - chaserSize * 0.9, chaserY - chaserSize * 0.3)
+      offCtx.lineTo(chaserX - chaserSize * 0.7, chaserY + chaserSize * 0.2)
+      offCtx.lineTo(chaserX - chaserSize * 0.2, chaserY + chaserSize * 0.3)
+      offCtx.moveTo(chaserX + chaserSize * 0.15, chaserY + chaserSize * 0.1)
+      offCtx.lineTo(chaserX + chaserSize * 0.9, chaserY - chaserSize * 0.3)
+      offCtx.lineTo(chaserX + chaserSize * 0.7, chaserY + chaserSize * 0.2)
+      offCtx.lineTo(chaserX + chaserSize * 0.2, chaserY + chaserSize * 0.3)
+      offCtx.stroke()
+
+      // Chaser Thrusters
+      const chaserEngine = 4 + Math.sin(t * 0.03) * 1.5
+      offCtx.fillStyle = 'rgba(0, 240, 255, 0.95)'
+      offCtx.beginPath()
+      offCtx.arc(chaserX - chaserSize * 0.15, chaserY + chaserSize * 0.4, chaserEngine * 0.7, 0, Math.PI * 2)
+      offCtx.arc(chaserX + chaserSize * 0.15, chaserY + chaserSize * 0.4, chaserEngine * 0.7, 0, Math.PI * 2)
+      offCtx.fill()
+    }
+
+    if (phase === 'chase') {
+      const shootInterval = 1200
+      const timeInInterval = t % shootInterval
+      if (timeInInterval < 150) {
+        const progress = timeInInterval / 150
+        offCtx.strokeStyle = 'rgba(255, 50, 50, 0.95)'
+        offCtx.lineWidth = 2
+
+        const lx1 = chaserX - chaserSize * 0.9
+        const ly1 = chaserY - chaserSize * 0.3
+        const lleftX = lx1 + (targetX - lx1) * progress
+        const lleftY = ly1 + (targetY - ly1) * progress
+        offCtx.beginPath()
+        offCtx.moveTo(lleftX - (targetX - lx1) * 0.15, lleftY - (targetY - ly1) * 0.15)
+        offCtx.lineTo(lleftX, lleftY)
+        offCtx.stroke()
+
+        const rx1 = chaserX + chaserSize * 0.9
+        const ry1 = chaserY - chaserSize * 0.3
+        const lrightX = rx1 + (targetX - rx1) * progress
+        const lrightY = ry1 + (targetY - ry1) * progress
+        offCtx.beginPath()
+        offCtx.moveTo(lrightX - (targetX - rx1) * 0.15, lrightY - (targetY - ry1) * 0.15)
+        offCtx.lineTo(lrightX, lrightY)
+        offCtx.stroke()
+
+        if (progress > 0.8) {
+          offCtx.strokeStyle = 'rgba(0, 255, 255, 0.8)'
+          offCtx.lineWidth = 1
+          offCtx.beginPath()
+          offCtx.arc(targetX, targetY, droneSize * 1.5 * (progress - 0.8) * 5, 0, Math.PI * 2)
+          offCtx.stroke()
+        }
+      }
+    }
+
+    if (phase === 'countdown') {
+      const countdownVal = Math.max(0, 12 - cycleTime)
+      offCtx.fillStyle = '#facc15'
+      offCtx.font = 'bold 12px monospace'
+      offCtx.fillText(`WARNING: ESCAPE VECTOR INITIATED`, cx - 110, cy + 50)
+      offCtx.fillText(`HYPERJUMP DETECTED IN: ${countdownVal.toFixed(2)}s`, cx - 110, cy + 68)
+
+      offCtx.strokeStyle = 'rgba(0, 240, 255, 0.7)'
+      offCtx.lineWidth = 1
+      for (let i = 0; i < 4; i++) {
+        const angle = t * 0.01 + (i * Math.PI / 2)
+        const rad = 25 - (t % 500) / 500 * 20
+        offCtx.beginPath()
+        offCtx.arc(targetX, targetY, rad, angle, angle + 0.5)
+        offCtx.stroke()
+      }
+    }
+
+    if (phase === 'jump') {
+      const p = (cycleTime - 12) / 2
+      const shipScale = 1 - p
+
+      const targetJumpX = targetX + (cx - targetX) * p
+      const targetJumpY = targetY + (cy - targetY) * p
+      const chaserJumpX = chaserX + (cx - chaserX) * (p * 0.8)
+      const chaserJumpY = chaserY + (cy - chaserY) * (p * 0.8)
+
+      if (p < 0.6) {
+        const droneSizeJ = droneSize * (1 - p / 0.6)
+        offCtx.strokeStyle = `rgba(255, 60, 60, ${1 - p / 0.6})`
+        offCtx.beginPath()
+        offCtx.moveTo(targetJumpX, targetJumpY - droneSizeJ * 0.5)
+        offCtx.lineTo(targetJumpX + droneSizeJ * 0.3, targetJumpY)
+        offCtx.lineTo(targetJumpX, targetJumpY + droneSizeJ * 0.4)
+        offCtx.lineTo(targetJumpX - droneSizeJ * 0.3, targetJumpY)
+        offCtx.closePath()
+        offCtx.stroke()
+      }
+
+      const chaserSizeJ = chaserSize * shipScale
+      offCtx.strokeStyle = `rgba(0, 255, 240, ${shipScale})`
+      offCtx.beginPath()
+      offCtx.moveTo(chaserJumpX, chaserJumpY - chaserSizeJ * 0.8)
+      offCtx.lineTo(chaserJumpX + chaserSizeJ * 0.15, chaserJumpY - chaserSizeJ * 0.2)
+      offCtx.lineTo(chaserJumpX + chaserSizeJ * 0.2, chaserJumpY + chaserSizeJ * 0.4)
+      offCtx.lineTo(chaserJumpX - chaserSizeJ * 0.2, chaserJumpY + chaserSizeJ * 0.4)
+      offCtx.lineTo(chaserJumpX - chaserSizeJ * 0.15, chaserJumpY - chaserSizeJ * 0.2)
+      offCtx.closePath()
+      offCtx.stroke()
+
+      const flashRad = p * Math.max(W, H) * 0.8
+      offCtx.strokeStyle = `rgba(255, 255, 255, ${1 - p})`
+      offCtx.lineWidth = 4 * (1 - p)
+      offCtx.beginPath()
+      offCtx.arc(cx, cy, flashRad, 0, Math.PI * 2)
+      offCtx.stroke()
+    }
+
+    if (phase === 'hyperspace') {
+      offCtx.fillStyle = '#ef4444'
+      offCtx.font = 'bold 12px monospace'
+      offCtx.fillText(`HYPERSPACE DRIVE STABLE`, cx - 75, cy + 50)
+      offCtx.font = '9px monospace'
+      offCtx.fillStyle = 'rgba(74, 222, 128, 0.8)'
+      offCtx.fillText(`WARP VECTOR FLUIDIC COHERENCE: 99.8%`, cx - 100, cy + 68)
+
+      offCtx.lineWidth = 1.5
+      const numCircles = 6
+      for (let i = 0; i < numCircles; i++) {
+        const offset = ((t * 0.001) + (i / numCircles)) % 1
+        const rad = offset * Math.max(W, H) * 0.7
+        const opacity = (1 - offset) * 0.4
+        const hue = (t * 0.05 + i * 60) % 360
+        offCtx.strokeStyle = `hsla(${hue}, 80%, 60%, ${opacity})`
+        offCtx.beginPath()
+        offCtx.arc(cx, cy, rad, 0, Math.PI * 2)
+        offCtx.stroke()
+      }
+    }
+
+    if (phase === 'exit') {
+      const p = (cycleTime - 22) / 4
+      offCtx.fillStyle = '#facc15'
+      offCtx.font = 'bold 12px monospace'
+      offCtx.fillText(`WARP DESYNCHRONIZATION IN PROGRESS`, cx - 110, cy + 50)
+
+      const targetJumpX = cx + (targetX - cx) * p
+      const targetJumpY = cy + (targetY - cy) * p
+      const chaserJumpX = cx + (chaserX - cx) * p
+      const chaserJumpY = cy + (chaserY - cy) * p
+
+      const droneSizeJ = droneSize * p
+      offCtx.strokeStyle = `rgba(255, 60, 60, ${p})`
+      offCtx.beginPath()
+      offCtx.moveTo(targetJumpX, targetJumpY - droneSizeJ * 0.5)
+      offCtx.lineTo(targetJumpX + droneSizeJ * 0.3, targetJumpY)
+      offCtx.lineTo(targetJumpX, targetJumpY + droneSizeJ * 0.4)
+      offCtx.lineTo(targetJumpX - droneSizeJ * 0.3, targetJumpY)
+      offCtx.closePath()
+      offCtx.stroke()
+
+      const chaserSizeJ = chaserSize * p
+      offCtx.strokeStyle = `rgba(0, 255, 240, ${p})`
+      offCtx.beginPath()
+      offCtx.moveTo(chaserJumpX, chaserJumpY - chaserSizeJ * 0.8)
+      offCtx.lineTo(chaserJumpX + chaserSizeJ * 0.15, chaserJumpY - chaserSizeJ * 0.2)
+      offCtx.lineTo(chaserJumpX + chaserSizeJ * 0.2, chaserJumpY + chaserSizeJ * 0.4)
+      offCtx.lineTo(chaserJumpX - chaserSizeJ * 0.2, chaserJumpY + chaserSizeJ * 0.4)
+      offCtx.lineTo(chaserJumpX - chaserSizeJ * 0.15, chaserJumpY - chaserSizeJ * 0.2)
+      offCtx.closePath()
+      offCtx.stroke()
+
+      const flashRad = (1 - p) * Math.max(W, H) * 0.5
+      offCtx.strokeStyle = `rgba(255, 255, 255, ${1 - p})`
+      offCtx.lineWidth = 2 * (1 - p)
+      offCtx.beginPath()
+      offCtx.arc(cx, cy, flashRad, 0, Math.PI * 2)
+      offCtx.stroke()
+    }
+
+    // Grid / Scan lines
     offCtx.strokeStyle = 'rgba(74, 222, 128, 0.04)'
     offCtx.lineWidth = 1
     for (let y = 0; y < H; y += 3) {
@@ -474,25 +655,21 @@ export const StarfieldScene = makeScene(
       offCtx.stroke()
     }
 
-    // HUD Rahmen
     const margin = 12
     offCtx.strokeStyle = 'rgba(74, 222, 128, 0.3)'
     offCtx.lineWidth = 1
     offCtx.strokeRect(margin, margin, W - 2 * margin, H - 2 * margin)
 
-    // Telemetrie Ticks an den Rändern
     const ladderXLeft = 35
     const ladderXRight = W - 35
     offCtx.strokeStyle = 'rgba(74, 222, 128, 0.25)'
     offCtx.beginPath()
-    // Vertikale Linien
     offCtx.moveTo(ladderXLeft, 40)
     offCtx.lineTo(ladderXLeft, H - 40)
     offCtx.moveTo(ladderXRight, 40)
     offCtx.lineTo(ladderXRight, H - 40)
     offCtx.stroke()
 
-    // Ticks
     offCtx.beginPath()
     for (let y = 45; y < H - 40; y += 15) {
       offCtx.moveTo(ladderXLeft, y)
@@ -502,29 +679,45 @@ export const StarfieldScene = makeScene(
     }
     offCtx.stroke()
 
-    // HUD Text und Status
+    let statusText = 'STATUS: CHASE / LOCKED'
+    let speedText = '0.050c'
+    if (phase === 'chase') {
+      statusText = 'STATUS: CHASE / LOCKED'
+      speedText = `${(0.05 + speed * 2).toFixed(3)}c`
+    } else if (phase === 'countdown') {
+      statusText = 'STATUS: PRE-WARP ALERT'
+      speedText = `${(0.05 + speed * 2).toFixed(3)}c`
+    } else if (phase === 'jump') {
+      statusText = 'STATUS: WARP TRANSITION'
+      speedText = `WARP ${(9.9 * warpFactor).toFixed(1)}`
+    } else if (phase === 'hyperspace') {
+      statusText = 'STATUS: WARP ACTIVE'
+      speedText = 'WARP 9.98'
+    } else if (phase === 'exit') {
+      statusText = 'STATUS: EXIT ENTRANCE'
+      speedText = `WARP ${(9.9 * warpFactor).toFixed(1)}`
+    }
+
     const bottomY = H - 22
     offCtx.fillStyle = '#4ade80'
     offCtx.font = 'bold 10px monospace'
     offCtx.fillText(`SPEED: ${speedText}`, 25, bottomY)
-    
+
     let statusColor = '#4ade80'
-    if (statusText === 'STATUS: CRITICAL') statusColor = '#ef4444'
-    else if (statusText === 'STATUS: DECELLERATING') statusColor = '#facc15'
+    if (statusText.includes('ALERT') || statusText.includes('TRANSITION')) statusColor = '#facc15'
+    else if (statusText.includes('ACTIVE')) statusColor = '#ef4444'
     offCtx.fillStyle = statusColor
-    offCtx.fillText(statusText, W / 2 - 50, bottomY)
+    offCtx.fillText(statusText, W / 2 - 60, bottomY)
 
     offCtx.fillStyle = '#4ade80'
     const coordsText = `X: ${state.xCoord.toFixed(2)} Y: ${state.yCoord.toFixed(2)} Z: ${state.zCoord.toFixed(2)}`
     offCtx.fillText(coordsText, W - 200, bottomY)
 
-    // Künstlicher Horizont Kreis
     offCtx.strokeStyle = 'rgba(74, 222, 128, 0.1)'
     offCtx.beginPath()
     offCtx.arc(cx, cy, Math.min(W, H) * 0.22, 0, Math.PI * 2)
     offCtx.stroke()
 
-    // Fadenkreuz Center
     offCtx.strokeStyle = 'rgba(74, 222, 128, 0.3)'
     offCtx.beginPath()
     offCtx.moveTo(cx - 8, cy); offCtx.lineTo(cx + 8, cy)
@@ -550,40 +743,56 @@ const TUNNEL_SHADER = `
 
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float ts = iTime;
+    vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;
 
-    // Skalierung passend zur originalen CPU-Aufloesung fuer identische Wellenformen.
-    // ASPECT-PRESERVING: einheitlicher Skalenfaktor in beiden Achsen, sonst werden
-    // radiale Muster (Ringe, Kreise) bei nicht-4:3-Panels zu Ellipsen verzerrt.
-    // p ist im virtuellen 320x240-Raum, zentriert auf der Canvas-Mitte; auf
-    // breiteren/hoeheren Panels zeigt der Tunnel ueber den 320/240-Rand hinaus
-    // mehr Inhalt statt zu strecken.
-    float originalW = min(iResolution.x, 320.0);
-    float originalH = min(iResolution.y, 240.0);
-    float scale = min(iResolution.x / originalW, iResolution.y / originalH);
-    vec2 p = (fragCoord.xy - iResolution.xy * 0.5) / scale + vec2(originalW, originalH) * 0.5;
+    float r = length(uv) + 0.001;
+    float angle = atan(uv.y, uv.x);
 
-    float cx = p.x - originalW / 2.0;
-    float cy = p.y - originalH / 2.0;
-    float r = length(vec2(cx, cy)) + 0.001;
+    // Polar coordinates for cylindrical tunnel mapping
+    float u = angle / 3.14159265;
+    float v = 1.0 / r; // depth coordinate
+
+    // Warp: geometry twisting and radial ripple wave
+    float twist = sin(v * 0.05 + ts * 1.0) * 0.4;
+    float ripple = sin(u * 5.0 - ts * 2.0) * 0.1;
+    u += twist + ripple;
+    v += cos(u * 3.0 + ts * 1.5) * 2.0;
+
+    // Continuous color shifting: cycles between cyan, deep blue, fuchsia, purple
+    float baseHue = 0.58 + 0.18 * sin(ts * 0.2 + v * 0.005);
+    vec3 tunnelBase = hsl2rgb(vec3(mod(baseHue, 1.0), 0.85, 0.4));
+
+    // Crystalline facet highlights (crystal walls)
+    float facet1 = abs(fract(u * 5.0 + v * 0.15 + ts * 0.1) - 0.5);
+    float facet2 = abs(fract(u * -5.0 + v * 0.15 - ts * 0.15) - 0.5);
+    float crystal = smoothstep(0.12, 0.0, abs(facet1 - facet2));
     
-    float u = atan(cy, cx) / 3.14159265 + ts * 0.72;
-    float v = 20.0 / r + ts * 2.25;
+    // Highlight sparkles based on angle/depth
+    float sparkles = smoothstep(0.8, 1.0, sin(u * 12.0 + v * 0.8 + ts * 4.0)) 
+                   * smoothstep(0.8, 1.0, cos(u * 8.0 - v * 1.2 + ts * 3.0));
     
-    float uCheck = floor(u * 3.0);
-    float vCheck = floor(v * 3.0);
-    float c = mod(uCheck + vCheck, 2.0);
-    
-    float hue = 140.0 + sin(ts * 0.15) * 40.0;
-    float finalHue = mod(hue + r * 2.0, 360.0) / 360.0;
-    
-    float lightness = c > 0.5 ? 0.6 : 0.07;
-    vec3 col = hsl2rgb(vec3(finalHue, 1.0, lightness));
-    
-    // Weichzeichnen im Zentrum zur Vermeidung von Aliasing
-    float fade = min(1.0, pow(r / 32.0, 1.5));
-    col *= fade;
-    
-    fragColor = vec4(col, 1.0);
+    vec3 wallCol = mix(tunnelBase, vec3(1.0), crystal * 0.45);
+    wallCol += vec3(0.9, 0.95, 1.0) * sparkles * 0.8;
+
+    // Moving energy pulses/rings zipping through the tunnel
+    float pulse = exp(-pow(mod(v + ts * 28.0, 60.0) - 30.0, 2.0) * 0.04);
+    vec3 pulseCol = vec3(0.5, 0.9, 1.0) * pulse * 1.6;
+
+    // Final color assembly
+    vec3 col = wallCol + pulseCol;
+
+    // Glowing core/singularity at the tunnel center
+    float core = exp(-r * 4.0);
+    col = mix(col, vec3(1.0, 0.96, 0.9), core * 0.95);
+
+    // Fade out at the center and screen edges
+    float centerFade = smoothstep(0.005, 0.06, r);
+    col *= centerFade;
+
+    // Subtle scanline overlay
+    col *= 0.93 + 0.07 * sin(fragCoord.y * 2.0);
+
+    fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
   }
 `
 
@@ -616,11 +825,24 @@ const ROTOZOOM_SHADER = `
 
     float cx = p.x - originalW / 2.0;
     float cy = p.y - originalH / 2.0;
-
-    float z = 0.04 + 0.03 * sin(ts * 0.5);
-    float cVal = cos(ts * 0.6) * z;
-    float sVal = sin(ts * 0.6) * z;
-    
+    // Trampolin ease-in-out snap bounce physics
+    float period = 5.0;
+    float cycle = mod(ts, period);
+    float bounce = 0.0;
+    if (cycle < 1.5) {
+      float x = cycle / 1.5;
+      bounce = x * x * x;
+    } else if (cycle < 3.5) {
+      float x = (cycle - 1.5) / 2.0;
+      bounce = 1.0 + sin(x * 18.0) * exp(-x * 2.5) * 0.4;
+    } else {
+      float x = (cycle - 3.5) / 1.5;
+      bounce = mix(1.0, 0.0, smoothstep(0.0, 1.0, x));
+    }
+    float z = 0.012 + 0.068 * bounce;
+    float angle = ts * 0.15 + bounce * 2.356;
+    float cVal = cos(angle) * z;
+    float sVal = sin(angle) * z;    
     // 2x2 grid supersampling on checker function to smooth edges
     float checkerSum = 0.0;
     float offsets[2];
@@ -672,55 +894,96 @@ const METABALLS_SHADER = `
   }
 
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
-    float ts = iTime;
-    // Aspect-preserving virtual coords (siehe TUNNEL_SHADER): einheitlicher
-    // Skalenfaktor in beiden Achsen, damit Metaball-Kreise nicht zu Ellipsen
-    // werden, wenn das Panel nicht 4:3 ist.
-    float originalW = 200.0;
-    float originalH = 150.0;
-    float scale = min(iResolution.x / originalW, iResolution.y / originalH);
-    vec2 p = (fragCoord.xy - iResolution.xy * 0.5) / scale + vec2(originalW, originalH) * 0.5;
+    vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;
+    float ts = iTime * 0.85;
+    
+    // Dynamic number of active balls: cycles between 2 and 8
+    float activeBalls = 5.0 + 3.0 * sin(ts * 0.25);
     
     float sum = 0.0;
     vec3 colorSum = vec3(0.0);
     
-    for (int i = 0; i < 5; i++) {
-      vec3 ball;
-      float r = 0.0;
-      
-      if (i == 0) {
-        ball = vec3(originalW * (0.5 + 0.4 * sin(ts * 0.95 + 1.0)), originalH * (0.5 + 0.4 * cos(ts * 1.12 + 2.0)), 0.0);
-        r = 12.0;
-      } else if (i == 1) {
-        ball = vec3(originalW * (0.5 + 0.38 * cos(ts * 0.75 + 4.0)), originalH * (0.5 + 0.35 * sin(ts * 1.35 + 0.5)), 72.0);
-        r = 15.0;
-      } else if (i == 2) {
-        ball = vec3(originalW * (0.5 + 0.42 * sin(ts * 1.15 + 3.1)), originalH * (0.5 + 0.38 * cos(ts * 0.85 + 1.2)), 144.0);
-        r = 10.0;
-      } else if (i == 3) {
-        ball = vec3(originalW * (0.5 + 0.35 * cos(ts * 1.25 + 2.4)), originalH * (0.5 + 0.4 * sin(ts * 0.95 + 4.8)), 216.0);
-        r = 16.0;
-      } else {
-        ball = vec3(originalW * (0.5 + 0.4 * sin(ts * 0.85 + 0.8)), originalH * (0.5 + 0.38 * sin(ts * 1.05 + 3.5)), 288.0);
-        r = 11.0;
-      }
-      
-      float dx = p.x - ball.x;
-      float dy = p.y - ball.y;
-      float distSq = dx * dx + dy * dy + 1.0;
-      float w = (r * r) / distSq;
-      sum += w;
-      
-      vec3 ballCol = hsl2rgb(vec3(ball.z / 360.0, 1.0, 0.5));
-      colorSum += ballCol * w;
+    // Trajectories for collision detection
+    vec2 pos0 = vec2(0.32 * sin(ts * 1.1), 0.20 * cos(ts * 0.85));
+    vec2 pos1 = vec2(-0.28 * cos(ts * 0.9), -0.18 * sin(ts * 1.05));
+    float dist01 = length(pos0 - pos1);
+    
+    // Collision detection: triggers split when parent balls collide
+    float collideVal = smoothstep(0.35, 0.15, dist01);
+    float splitAmt0 = mix(0.08, 0.38 + 0.12 * sin(ts * 8.0), collideVal);
+    
+    vec2 pos3 = vec2(0.25 * cos(ts * 0.7), -0.22 * cos(ts * 1.2));
+    vec2 pos4 = vec2(-0.32 * sin(ts * 0.95), 0.22 * sin(ts * 0.65));
+    float dist34 = length(pos3 - pos4);
+    float collideVal2 = smoothstep(0.40, 0.20, dist34);
+    float splitAmt1 = mix(0.06, 0.34 + 0.10 * cos(ts * 9.5), collideVal2);
+
+    for (int i = 0; i < 8; i++) {
+        float active = step(float(i), activeBalls - 0.5);
+        
+        vec2 pos = vec2(0.0);
+        float radius = 0.075 + 0.015 * sin(ts + float(i));
+        float hue = float(i) * 45.0 + ts * 15.0;
+        
+        if (i == 0) {
+            pos = pos0;
+        } else if (i == 1) {
+            pos = pos1;
+        } else if (i == 2) {
+            // Child of Ball 0, splits on collision
+            pos = pos0 + vec2(splitAmt0 * sin(ts * 5.0), splitAmt0 * cos(ts * 5.0));
+            radius *= 0.7;
+        } else if (i == 3) {
+            pos = pos3;
+        } else if (i == 4) {
+            pos = pos4;
+        } else if (i == 5) {
+            // Child of Ball 1, splits on collision
+            pos = pos1 + vec2(-splitAmt0 * cos(ts * 4.5), splitAmt0 * sin(ts * 4.5));
+            radius *= 0.65;
+        } else if (i == 6) {
+            pos = vec2(0.20 * sin(ts * 1.4), 0.18 * cos(ts * 1.6));
+        } else if (i == 7) {
+            // Child of Ball 3, splits on collision
+            pos = pos3 + vec2(splitAmt1 * cos(ts * 6.0), -splitAmt1 * sin(ts * 6.0));
+            radius *= 0.6;
+        }
+        
+        float d = length(uv - pos);
+        float w = (radius * radius) / (d * d + 0.0001);
+        w *= active;
+        sum += w;
+        
+        vec3 ballCol = hsl2rgb(vec3(mod(hue, 360.0) / 360.0, 0.95, 0.55));
+        colorSum += ballCol * w;
     }
     
-    vec3 finalCol = vec3(0.0);
-    if (sum > 1.0) {
-      finalCol = min(vec3(1.0), colorSum / sum);
+    vec3 col = vec3(0.0);
+    float threshold = 1.0;
+    float borderThickness = 0.08;
+    
+    if (sum > threshold) {
+        vec3 fluidCol = colorSum / sum;
+        float interior = clamp((sum - threshold) * 0.2, 0.0, 1.0);
+        col = mix(fluidCol * 0.8, fluidCol, interior);
+        
+        float innerGlow = smoothstep(threshold + borderThickness, threshold, sum);
+        col += vec3(1.0) * innerGlow * 0.35;
     }
     
-    fragColor = vec4(finalCol, 1.0);
+    float glow = exp(-abs(sum - threshold) * 2.5);
+    vec3 outlineCol = mix(vec3(0.0, 0.95, 0.95), vec3(0.9, 0.08, 0.85), sin(ts * 0.5) * 0.5 + 0.5);
+    
+    // Extra visual burst flash during collisions
+    vec3 flashCol = vec3(1.0, 0.9, 0.7) * (collideVal + collideVal2) * 0.4;
+    col += (outlineCol + flashCol) * glow * 0.8;
+    
+    col += outlineCol * sum * 0.02;
+
+    col *= 0.93 + 0.07 * sin(fragCoord.y * 2.0);
+    col *= 1.0 - length(uv) * 0.3;
+
+    fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
   }
 `
 
@@ -736,12 +999,13 @@ export const MetaballsScene = React.memo(function MetaballsScene() {
 // ── Effekt 6: Neural Net — Canvas-2D-Version mit scharfen Linien + Labels ────
 // Standalone-Komponente (kein makeScene), damit Canvas-2D-API genutzt werden
 // kann: pixelscharfe Linien via ctx.strokePath, Text-Labels via ctx.fillText.
-type NeuralNode2D = {
-  x: number; y: number    // aktuelle Position
-  bx: number; by: number  // Drift-Basis
-  vx: number; vy: number  // Drift-Geschwindigkeit
-  label: string           // z.B. "N-01"
+interface Node3D {
+  x: number
+  y: number
+  z: number
+  colorIdx: number
 }
+
 export const DotCloudScene = React.memo(function DotCloudScene() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -753,21 +1017,16 @@ export const DotCloudScene = React.memo(function DotCloudScene() {
     if (!_ctx) return
     const ctx: CanvasRenderingContext2D = _ctx
 
-    // Migration auf zentralen raf-coordinator (AUDIT_FINDINGS.md H-05).
     let unsubscribe: (() => void) | null = null
-    let nodes: NeuralNode2D[] = []   // lazy-init beim ersten Frame
-    let nextPulseAt = 0
-    let pulseEndAt  = -1
+    let nodes: Node3D[] = []
 
-    // ResizeObserver: Canvas-Auflösung an Panel-Größe anpassen
     const ro = new ResizeObserver(() => {
       canvas.width  = canvas.clientWidth
       canvas.height = canvas.clientHeight
-      nodes = []   // Knoten neu verteilen nach Resize
+      initNodes()
     })
     ro.observe(canvas)
 
-    // IntersectionObserver: rAF-Subscription pausieren wenn unsichtbar
     const io = new IntersectionObserver(([e]) => {
       if (e.isIntersecting) {
         if (!unsubscribe) unsubscribe = subscribe(loop)
@@ -777,89 +1036,150 @@ export const DotCloudScene = React.memo(function DotCloudScene() {
     })
     io.observe(canvas)
 
+    function initNodes() {
+      nodes = []
+      // 450 actual nodes in a 3D spherical shell / nebula (300+ nodes)
+      for (let i = 0; i < 450; i++) {
+        const u = Math.random()
+        const v = Math.random()
+        const theta = u * 2.0 * Math.PI
+        const phi = Math.acos(2.0 * v - 1.0)
+        const radius = 100 + Math.random() * 60 // thick shell
+        
+        nodes.push({
+          x: radius * Math.sin(phi) * Math.cos(theta),
+          y: radius * Math.sin(phi) * Math.sin(theta),
+          z: radius * Math.cos(phi),
+          colorIdx: i % 4
+        })
+      }
+    }
+
     const loop = (t: number) => {
       const W = canvas.width
       const H = canvas.height
       if (W === 0 || H === 0) return
 
-      // Knoten beim ersten Frame (oder nach Resize) initialisieren
-      if (nodes.length === 0) {
-        nodes = Array.from({ length: 40 }, (_, i) => {
-          const x = Math.random() * W
-          const y = Math.random() * H
-          return {
-            x, y, bx: x, by: y,
-            vx: (Math.random() - 0.5) * 0.4,
-            vy: (Math.random() - 0.5) * 0.4,
-            label: `N-${String(i + 1).padStart(2, '0')}`,
-          }
-        })
-        nextPulseAt = t + 8_000
-        pulseEndAt  = -1
-      }
+      if (nodes.length === 0) initNodes()
 
-      // Puls-Logik
-      if (pulseEndAt < 0 && t >= nextPulseAt) pulseEndAt = t + 800
-      const isPulse = pulseEndAt >= 0 && t <= pulseEndAt
-      if (pulseEndAt >= 0 && t > pulseEndAt) {
-        pulseEndAt  = -1
-        nextPulseAt = t + 8_000
-      }
-      const pulseDuration = 800
-      const pulsePhase = isPulse
-        ? Math.sin(Math.PI * (t - (pulseEndAt - pulseDuration)) / pulseDuration)
-        : 0
-      const cx = W / 2, cy = H / 2
-
-      // Knoten bewegen
-      for (const n of nodes) {
-        n.bx += n.vx; n.by += n.vy
-        if (n.bx < 0 || n.bx > W) { n.vx *= -1; n.bx = Math.max(0, Math.min(W, n.bx)) }
-        if (n.by < 0 || n.by > H) { n.vy *= -1; n.by = Math.max(0, Math.min(H, n.by)) }
-        n.x = n.bx + (cx - n.bx) * pulsePhase * 0.4
-        n.y = n.by + (cy - n.by) * pulsePhase * 0.4
-      }
-
-      // Hintergrund
-      ctx.fillStyle = '#000'
+      // Dark futuristic blue/purple space background
+      ctx.fillStyle = '#020108'
       ctx.fillRect(0, 0, W, H)
 
-      // Verbindungslinien: Canvas-2D → pixelscharf
-      const maxDist = Math.min(W, H) * 0.35
-      ctx.lineWidth = 1
-      for (let a = 0; a < nodes.length; a++) {
-        for (let b = a + 1; b < nodes.length; b++) {
-          const na = nodes[a], nb = nodes[b]
-          const dx = na.x - nb.x, dy = na.y - nb.y
-          const dist = Math.sqrt(dx * dx + dy * dy)
-          if (dist >= maxDist) continue
-          const alpha = (1 - dist / maxDist).toFixed(2)
-          ctx.strokeStyle = `rgba(20,83,45,${alpha})`
-          ctx.beginPath()
-          ctx.moveTo(na.x, na.y)
-          ctx.lineTo(nb.x, nb.y)
-          ctx.stroke()
+      // Continuous multi-axis camera orbit
+      const orbitY = t * 0.00045
+      const orbitX = t * 0.00025 + 0.3 * Math.sin(t * 0.0001)
+      const orbitZ = t * 0.00015
+      
+      const cosY = Math.cos(orbitY)
+      const sinY = Math.sin(orbitY)
+      const cosX = Math.cos(orbitX)
+      const sinX = Math.sin(orbitX)
+      const cosZ = Math.cos(orbitZ)
+      const sinZ = Math.sin(orbitZ)
+
+      const focalLength = 300
+      const zoom = 1.0 + 0.35 * Math.sin(t * 0.0003) // Elegant breathing zoom
+
+      interface ProjectedNode {
+        sx: number
+        sy: number
+        sz: number
+        node: Node3D
+      }
+      const projected: ProjectedNode[] = []
+
+      // 1. Rotate and project all nodes
+      for (const n of nodes) {
+        // Rotate around Y axis
+        let x1 = n.x * cosY - n.z * sinY
+        let z1 = n.x * sinY + n.z * cosY
+        
+        // Rotate around X axis
+        let y2 = n.y * cosX - z1 * sinX
+        let z2 = n.y * sinX + z1 * cosX
+
+        // Rotate around Z axis
+        let x3 = x1 * cosZ - y2 * sinZ
+        let y3 = x1 * sinZ + y2 * cosZ
+
+        // Perspective projection
+        const scale = (focalLength / (focalLength + z2)) * zoom
+        const sx = W / 2 + x3 * scale * (W / 640) * 1.6
+        const sy = H / 2 + y3 * scale * (H / 480) * 1.6
+
+        projected.push({ sx, sy, sz: z2, node: n })
+      }
+
+      // Sort by depth (z) for correct painter's rendering
+      projected.sort((a, b) => b.sz - a.sz)
+
+      const colors = [
+        { r: 255, g: 46,  b: 126 }, // neon fuchsia
+        { r: 0,   g: 240, b: 220 }, // bright teal
+        { r: 145, g: 60,  b: 255 }, // deep violet
+        { r: 255, g: 170, b: 40  }  // neon amber
+      ]
+
+      // 2. Draw connections (only close nodes in 3D to look like a constellation)
+      ctx.lineWidth = 0.5
+      const connectDistSq = 45 * 45
+      for (let i = 0; i < projected.length; i += 3) { // Step to keep it super high perf
+        for (let j = i + 1; j < projected.length; j += 4) {
+          const pi = projected[i]
+          const pj = projected[j]
+          
+          const dx = pi.node.x - pj.node.x
+          const dy = pi.node.y - pj.node.y
+          const dz = pi.node.z - pj.node.z
+          const dsq = dx*dx + dy*dy + dz*dz
+          
+          if (dsq < connectDistSq) {
+            // Neon gradient alpha based on depth and distance
+            const distAlpha = (1.0 - dsq / connectDistSq)
+            const depthAlpha = (1.0 - (pi.sz + pj.sz + 320) / 640)
+            const alpha = Math.max(0, Math.min(1.0, distAlpha * depthAlpha * 0.42))
+            
+            const c = colors[pi.node.colorIdx]
+            ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha.toFixed(3)})`
+              
+            ctx.beginPath()
+            ctx.moveTo(pi.sx, pi.sy)
+            ctx.lineTo(pj.sx, pj.sy)
+            ctx.stroke()
+          }
         }
       }
 
-      // Knoten-Kreise + Labels
-      const nodeR = Math.max(3, Math.min(W, H) * 0.012)
-      const fontSize = Math.max(7, Math.round(nodeR * 1.1))
-      ctx.font = `${fontSize}px monospace`
-      ctx.textBaseline = 'middle'
-      for (const n of nodes) {
-        // Kreis
-        ctx.fillStyle = '#4ade80'
+      // 3. Draw nodes as glowing points
+      for (const p of projected) {
+        const baseSize = 2.0
+        const size = Math.max(0.5, (1.0 - (p.sz + 160) / 320) * baseSize * zoom)
+        
+        // Depth-fade
+        const alpha = Math.max(0.15, Math.min(1.0, 1.0 - (p.sz + 160) / 320))
+        
+        const c = colors[p.node.colorIdx]
+        ctx.fillStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha.toFixed(3)})`
+
         ctx.beginPath()
-        ctx.arc(n.x, n.y, nodeR, 0, Math.PI * 2)
+        ctx.arc(p.sx, p.sy, size, 0, Math.PI * 2)
         ctx.fill()
-        // Label rechts neben Knoten, nur wenn es ins Canvas passt
-        const labelX = n.x + nodeR + 2
-        if (labelX + fontSize * 4 < W && n.y > fontSize / 2 && n.y < H - fontSize / 2) {
-          ctx.fillStyle = 'rgba(74,222,128,0.65)'
-          ctx.fillText(n.label, labelX, n.y)
+
+        // Highlight center core for closer nodes
+        if (p.sz < -40) {
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'
+          ctx.beginPath()
+          ctx.arc(p.sx, p.sy, size * 0.4, 0, Math.PI * 2)
+          ctx.fill()
         }
       }
+
+      // 4. Subtle diagnostic overlay
+      ctx.font = '8px monospace'
+      ctx.fillStyle = 'rgba(240, 230, 255, 0.4)'
+      ctx.fillText(`NEURAL POINT CLOUD // COGNITIVE NEBULA`, 15, 18)
+      ctx.fillText(`NODES: 450 // RATING: OPTIMAL // ZOOM: x${zoom.toFixed(2)}`, 15, 28)
     }
 
     unsubscribe = subscribe(loop)
@@ -871,7 +1191,7 @@ export const DotCloudScene = React.memo(function DotCloudScene() {
   }, [])
 
   return (
-    <Panel title="NEURAL NET // 300 NODES ACTIVE">
+    <Panel title="NEURAL CONSTELLATION // COGNITIVE CLOUD">
       <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
     </Panel>
   )
@@ -1169,43 +1489,59 @@ export const LissajousScene = () => {
       if (W === 0 || H === 0) return
 
       // Phosphor decay trail
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)'
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.08)'
       ctx.fillRect(0, 0, W, H)
 
-      // Oscilloscope background grid
-      ctx.strokeStyle = 'rgba(0, 60, 20, 0.25)'
+      // Circular reticle and fine tick marks instead of center-cross
+      ctx.strokeStyle = 'rgba(0, 240, 100, 0.08)'
       ctx.lineWidth = 1
       ctx.beginPath()
-      ctx.moveTo(W / 2, 0); ctx.lineTo(W / 2, H)
-      ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2)
+      const maxRadius = Math.min(W, H) * 0.44
+      ctx.arc(W / 2, H / 2, maxRadius, 0, Math.PI * 2)
+      ctx.arc(W / 2, H / 2, maxRadius * 0.5, 0, Math.PI * 2)
+      ctx.stroke()
+
+      // Radial ticks
+      ctx.beginPath()
+      for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 6) {
+        const x1 = W / 2 + Math.cos(angle) * (maxRadius - 4)
+        const y1 = H / 2 + Math.sin(angle) * (maxRadius - 4)
+        const x2 = W / 2 + Math.cos(angle) * maxRadius
+        const y2 = H / 2 + Math.sin(angle) * maxRadius
+        ctx.moveTo(x1, y1)
+        ctx.lineTo(x2, y2)
+      }
       ctx.stroke()
 
       const ts = t * 0.001
-      const freqX = 3 + 0.5 * Math.sin(ts * 0.25)
-      const freqY = 4 + 0.5 * Math.cos(ts * 0.35)
+      // Path variance: aggressive frequency modulation for more varied patterns
+      const modX = 0.8 * Math.sin(ts * 0.7)
+      const modY = 0.8 * Math.cos(ts * 0.5)
+      const freqX = 3 + 1.5 * Math.sin(ts * 0.15) + modX
+      const freqY = 4 + 1.5 * Math.cos(ts * 0.22) + modY
 
-      phi1 += 0.012
-      phi2 += 0.008
+      phi1 += 0.018
+      phi2 += 0.012
 
-      const maxSegments = 400
-      const progress = 0.5 + 0.5 * Math.sin(ts * 0.8)
+      const maxSegments = 450
+      const progress = 0.5 + 0.5 * Math.sin(ts * 0.7)
       const activeSegments = Math.max(2, Math.floor(progress * maxSegments))
 
-      ctx.lineWidth = 2.2
-      ctx.shadowBlur = 8
+      ctx.lineWidth = 2.4
+      ctx.shadowBlur = 10
       ctx.lineCap = 'round'
 
       for (let i = 1; i < activeSegments; i++) {
         const theta1 = ((i - 1) / maxSegments) * Math.PI * 6
         const theta2 = (i / maxSegments) * Math.PI * 6
 
-        const x1 = (0.43 * Math.sin(freqX * theta1 + phi1) + 0.5) * W
-        const y1 = (0.43 * Math.cos(freqY * theta1 + phi2) + 0.5) * H
-        const x2 = (0.43 * Math.sin(freqX * theta2 + phi1) + 0.5) * W
-        const y2 = (0.43 * Math.cos(freqY * theta2 + phi2) + 0.5) * H
+        const x1 = (0.42 * Math.sin(freqX * theta1 + phi1) + 0.5) * W
+        const y1 = (0.42 * Math.cos(freqY * theta1 + phi2) + 0.5) * H
+        const x2 = (0.42 * Math.sin(freqX * theta2 + phi1) + 0.5) * W
+        const y2 = (0.42 * Math.cos(freqY * theta2 + phi2) + 0.5) * H
 
-        const hue = (ts * 80 + (i / maxSegments) * 360) % 360
-        const color = `hsla(${hue}, 100%, 60%, 0.85)`
+        const hue = (ts * 90 + (i / maxSegments) * 360) % 360
+        const color = `hsla(${hue}, 100%, 65%, 0.9)`
         ctx.strokeStyle = color
         ctx.shadowColor = color
 
@@ -1218,9 +1554,9 @@ export const LissajousScene = () => {
       ctx.shadowBlur = 0 // Reset
 
       // HUD Label
-      ctx.font = '10px monospace'
+      ctx.font = '9px monospace'
       ctx.fillStyle = 'rgba(74, 222, 128, 0.7)'
-      ctx.fillText(`SIGNAL TRACE // LISSAJOUS Ω // FREQ_X: ${freqX.toFixed(2)} // FREQ_Y: ${freqY.toFixed(2)}`, 10, H - 10)
+      ctx.fillText(`SIGNAL TRACE // LISSAJOUS Ω // X_MOD: ${freqX.toFixed(2)} // Y_MOD: ${freqY.toFixed(2)} // HILBERT: OK`, 12, H - 12)
     }
 
     unsubscribe = subscribe(loop)

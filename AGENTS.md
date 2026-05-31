@@ -3,11 +3,54 @@
 Universelle Referenz für alle Coding-Agents und KI-Modelle.
 Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 
-> **Status (Stand 2026-05-30): Audit abgeschlossen und in `main` gemergt.** Der gesamte Code-Audit (`blueprint_audit.md`, Phasen 1–3 + 5) ist erledigt und als `--no-ff`-Merge in `main` (App-Version **v1.7.6**). Der Branch `audit/2026-05-29` ist History. **Du arbeitest jetzt auf `main`** (`git status` prüfen) — für neue, in sich geschlossene Arbeit jeweils einen eigenen **Feature-Branch** von `main` anlegen (z.B. `feat/panel-rework`). Die Anweisung in `blueprint_audit.md` §"Erste Schritte" (Audit-Branch anlegen) ist **obsolet**.
+> **Status (Stand 2026-05-31): Panel-Rework abgeschlossen + SID-Player-Session abgeschlossen (App-Version **v1.9.0**). Branch `feat/panel-rework-2026-05-30` wird nach `main` gemergt.** Panel-Rework (RW-01..29) komplett durch, 32 Panels überarbeitet, alle Grafik-Panels auf farbige Paletten migriert, 120 FPS auf Apple GPU nachgewiesen.
 >
-> **Audit-Kernergebnisse** (Details: `AUDIT_FINDINGS.md`, `PERF_NOTES.md`): H-07-Regressionsverdacht **widerlegt**; eigentlicher Befund **B-4** — App war Main-Thread-/CPU-bound, nicht GPU-bound. **Adressiert:** Review-Freeze (nur aktives Panel animiert) + komplette WASM→GPU-Fraktal-Migration (alle Fraktale via `FractalGL`, double-single-Shader; **kein WASM/Rust mehr**) → Grid/Review von 8–18 auf **120 FPS**. Tief-Zoom auf Apple/Metal bei `SAFE_ZOOM_CEIL=5e5` gedeckelt (ds-Präzision; tiefer bräuchte Perturbations-Rendering). **Phase 5** (Demoscene-Tiefenaudit) liefert pro-Panel-Bewertungen + Wegfall-Kandidaten (`AUDIT_FINDINGS.md` → „Demoscene-Audit").
+> **SID-Player-Session (2026-05-31) — `OscilloscopePanel`:** Der C64-SID-Player war stumm (kein Ton, keine Visualizer-Animation). Ursachen gefunden + behoben:
+> - 6502-CPU-Emulation: implied-Opcode-Switch nutzte `IR & 0xC0` statt `IR & 0xF0` → INX/TAY/PHP/PLP kaputt → Song-Position fror ein (Drone/Stille).
+> - `SidPlayerProcessor extends AudioWorkletProcessor` + manuelles `new` → Browser wirft im Konstruktor → Prozessor tot → totale Stille. Engine ist jetzt Plain-Class.
+> - Noise-Waveform-Term + ENV3-Readback an jsSID-Referenz angeglichen.
+> - Neue Features: Drag&drop (Datei + Ordner, rekursiv), Ordner-Button (`webkitdirectory`), Position-Scrubber (frame-stepping Seek, ~28 ms statt ~1 s), Null-Linie bei Pause, echte Waveform-Darstellung pro Stimme (TRI/SAW/PUL/NOI).
+> - Lizenz jsSID = WTFPL (Attribution im Worklet-Header + unten dokumentiert). Emulation ist treu zu jsSID; verbleibende Mini-Klangunterschiede (6581-Filter, Combined Waveforms) sind jsSID-inhärent, kein Bug — gegen 2016-Sidplay verifiziert.
+> - Automatisierter Audio-Test: `frontend/test-sid-audio.mjs` (rendert echtes PCM, prüft Oszillation + Song-Fortschritt, Strukturguard gegen den Plain-Class-Bug).
 >
-> **Nächste geplante Session — Panel-Inhalts-Rework:** Kritik kommt per JSON aus dem **Review-Modus** (COPY-Button → Zwischenablage). Format: Array von `{ panel: string, rating: 'up'|'down', comment: string, ts: number }`, wobei `panel` der **Komponenten-Name** ist (stabile ID, identisch mit den Namen in `ALL_PANELS` und der Demoscene-Audit-Tabelle). Panel-Name → Datei in `frontend/src/panels/` bzw. `components/` mappen, Kritik umsetzen. Erledigte Action-Pläne (QW/PERF/GL/DEMO) → `ARCHIVE.md`; langfristige Roadmap (LR-*) unten.
+> **Nächste Schritte — Panel-Rework Phase 2 (priorisiert nach Kritik-Intensität):**
+>
+> ### Tier 1 — Kritische Ausfälle
+> - [x] **RW-01 `NuclearExplosionPanel`** — Shader noch matschig: fBm auf 6 Oktaven, schärfere Turbulenz, Curl-Noise für rollende Kanten, Toroid-Billows, Self-Shadowing
+> - [x] **RW-02 `MoonPanel`** — Krater sind flache schwarze Ellipsen statt 3D. Center-Hole-Artefakt fixen. Bump-Normal-Stärke hochdrehen. Farbvariation (warme Highlands vs dunkle Maria). Limb-Darkening + Earthshine
+> - [x] **RW-03 `ShaderRetroWave`** — floor()-Quantisierung raus → smooth Noise-Terrain. fwidth() für Grid-AA. Sun-Cuts glätten
+>
+> ### Tier 2 — Strukturelle Neuentwürfe
+> - [x] **RW-04 `StarfieldScene`** — Raumschiff-Verfolgungsszene: Chase → Hyperraumsprung → Countdown → Star-Stretch-Tunnel → Exit
+> - [x] **RW-05 `VoxelDemoBW`** — Komplett neu: z.B. Overhead-Contourmap oder Spiral-Descent
+> - [x] **RW-06 `NeuralNetPanel` (VoxelMatrix)** — Mehr Nodes, Topologie-Wechsel, farbcodierte Subnetze, Attack/Defense-Pakete
+> - [x] **RW-07 `CADRobotPanel`** — Kindische Roboter ersetzen durch Hard-Sci-Fi: Industriearm, Mech-Walker, Satellit, Drone
+> - [x] **RW-08 `OscilloscopePanel`** — Chiptune-Player mit SID-Emulation + Visualizer
+> - [x] **RW-09 `ShaderHackingCore`** — Mass-Effect-Hacking-Spiel: konzentrische Ringe, rotierende Segmente, Bypass-Nodes
+> - [x] **RW-10 `NeuralLinkDecoderPanel`** — Mehr Nodes, schärfer, kein Grün, Hard-Sci-Fi-Palette
+>
+> ### Tier 3 — Signifikante Verbesserungen
+> - [x] **RW-11 `TunnelScene`** — Stargate-Stil: Kristallwände, Energiepulse, warpende Geometrie, Farbwechsel
+> - [x] **RW-12 `ElitePanel`** — Wireframe weiß statt grün, kohärenter Dogfight-Ablauf
+> - [x] **RW-13 `DNAHelix`** — Split-Layout: Helix links, Spezies-Info rechts (6 Spezies)
+> - [x] **RW-14 `RetroErrorPanel`** — macOS Kernel Panic + Linux Oops/Panic ergänzen
+> - [x] **RW-15 `VoxelDemoColor`** — Smooth-Camera-Interpolation, Sky-Gradient statt Schwarz, Soft-Fade
+> - [x] **RW-16 `VoxelThermal`** — Rendering-Artefakte fixen, Soft-Vertical-Fade oben
+> - [x] **RW-17 `VoxelLava`** — Anderer Flugpfad (Overhead/Spiral), eigenständiger Terrain-Charakter
+> - [x] **RW-18 `VectorHudPanel` (VoxelNeon)** — Shape-Morphing zwischen Hypercube-Varianten, Zoom-Pulsing
+> - [x] **RW-19 `MetaballsScene`** — Split bei Kollision, dynamische Blob-Anzahl 2–8
+> - [x] **RW-20 `DotCloudScene`** — 300+ Nodes, kontinuierlicher Kamera-Orbit, modern Color
+> - [x] **RW-21 `RotozoomScene`** — Trampolin-Effekt: ease-in-out Bounce-Physik
+> - [x] **RW-22 `LissajousScene`** — Hintergrund-Kreuz weg, aggressivere Parameter-Variation
+>
+> ### Tier 4 — Fraktal-Parameter-Tweaks
+> - [x] **RW-23 `FractalSpiral`** — Gegen Uhrzeigersinn, kontinuierlicher Hue-Shift
+> - [x] **RW-24 `FractalElephant`** — Tumbling raus, andere Farben (weg von grün/orange)
+> - [x] **RW-25 `FractalMini`** — Mehr Koordinaten-Varianz, langsamerer Zoom, längerer Zyklus
+> - [x] **RW-26 `FractalSatellite`** — Tumbling raus
+> - [x] **RW-27 `FractalDragon`** — Kürzere Full-Red-Verweilzeit (schnellerer Crossfade)
+> - [x] **RW-28 `FractalSwirl`** — Zoom-Tiefe reduzieren (verhindert Pixel-Blowup)
+> - [x] **RW-29 `FractalView`** — Tumbling raus, Max-Zoom-Tiefe reduzieren
 
 ---
 
@@ -20,7 +63,7 @@ Thematischer Rahmen: Ein fiktives „Neural Intrusion Dashboard", das Hacker-Kli
 
 **Speed-first-Regel:** Jedes Feature muss in einer einzigen Session vollständig lauffähig implementiert werden können. Features, die das nicht schaffen, werden auf kleineres Scope reduziert oder verschoben. Keine halbfertigen Implementierungen.
 
-Aktueller Stand: **v1.7.6** auf `main` (Audit gemergt). Deployment auf Netcup-Webspace (Apache).
+Aktueller Stand: **v1.7.8** auf Feature-Branch `feat/panel-rework-2026-05-30` (Rework in progress). Deployment auf Netcup-Webspace (Apache).
 
 ---
 
@@ -100,7 +143,21 @@ Dev-Server:   Vite (setzt COOP/COEP-Header via vite.config.ts)
 Testing:      Playwright (@playwright/test) — visueller Panel-Check + Perf-Suite
 Audio:        Eigene ProTracker-MOD-Implementierung in frontend/src/utils/modplayer/
               (AudioWorklet, kein libopenmpt nötig)
+              SID-Player (OscilloscopePanel): SID+6502-Emulation portiert aus
+              jsSID 0.9.1 von Hermit (Mihaly Horvath) → frontend/public/audio/
+              sid-player-worklet.js
 ```
+
+### Externe Werke & Lizenzen (bereits integriert)
+
+> Bis `licenses.json` (LR-12) existiert, hier festgehalten:
+
+- **jsSID 0.9.1** — Hermit (Mihaly Horvath), 2016, http://hermit.sidrip.com.
+  Lizenz: **WTFPL** ("do what the fuck you want"). Keine Pflichten; der Autor
+  bittet lediglich, das Credit zu behalten. Attribution steht im Header von
+  `frontend/public/audio/sid-player-worklet.js`. SID-Emulation + 6502-CPU-Core
+  wurden adaptiert (Bugfixes: 6502-Opcode-Maske, Engine als Plain-Class für den
+  Worklet, Noise-Waveform-Term, ENV3-Readback) und um Seek/Playtime erweitert.
 
 ---
 
@@ -284,7 +341,7 @@ POOL_GFX        VoxelDemoColor, VoxelDemoBW, VoxelThermal, VoxelLava, VoxelNeon,
                 FractalDendrite, FractalSwirl, FractalJulia
 ```
 
-Aktueller Stand siehe `App.tsx` Z. 68–79. (Hinweis: `GlobePanel`, `VoxelMatrix` via `NeuralNetPanel`-Re-Export, `LissajousScene` in `DemoScenes.tsx` und `OscilloscopePanel` als `SpectrogramPanel` sind aktiv — frühere „temporär entfernt"-Notiz hier war veraltet.)
+Aktueller Stand siehe `App.tsx` (`POOL_GFX`/`POOL_TEXT`) — die obige Liste ist nicht vollständig (viele neuere Panels wie `Shader*`, `Lidar`, `Tixy`, `IQ*`, `Lovebyte`, `Moon`, `Physics`, `Nuclear*`, `Supervolcano`, `Mandelbulb`, `Apollonian`, `Menger` fehlen hier). `OscilloscopePanel` (C64-SID-Player) ist seit der SID-Session wieder in `POOL_GFX` aktiv (war zuvor auskommentiert, weil stumm). `GlobePanel`, `VoxelMatrix` (via `NeuralNetPanel`-Re-Export) und `LissajousScene` sind ebenfalls aktiv.
 
 ---
 

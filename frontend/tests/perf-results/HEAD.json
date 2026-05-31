@@ -5,32 +5,48 @@
   "scenarios": [
     {
       "scenario": "M-01 default-grid @1920",
-      "frames": 175,
-      "median": 66.67,
-      "p95": 75.9,
-      "p99": 83.34,
-      "max": 100.01,
-      "over16": 82.9,
-      "fps": 17.6,
-      "longTasks": 134,
-      "longTaskMax": 94
+      "frames": 1200,
+      "median": 8.33,
+      "p95": 9.27,
+      "p99": 9.32,
+      "max": 9.32,
+      "over16": 0,
+      "fps": 120,
+      "longTasks": 0,
+      "longTaskMax": 0
     },
     {
       "scenario": "M-03 dense-grid @2560",
-      "frames": 73,
-      "median": 133.34,
-      "p95": 150,
-      "p99": 150.05,
-      "max": 150.05,
-      "over16": 100,
-      "fps": 7.3,
-      "longTasks": 74,
-      "longTaskMax": 148
+      "frames": 1199,
+      "median": 8.33,
+      "p95": 9.27,
+      "p99": 9.33,
+      "max": 16.66,
+      "over16": 0,
+      "fps": 119.9,
+      "longTasks": 0,
+      "longTaskMax": 0
+    },
+    {
+      "scenario": "M-07 review 4-panel fractal @1920",
+      "frames": 1199,
+      "median": 8.33,
+      "p95": 9.27,
+      "p99": 9.33,
+      "max": 9.34,
+      "over16": 0,
+      "fps": 120,
+      "longTasks": 0,
+      "longTaskMax": 0
     }
   ],
+  "gpu": {
+    "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple Apple-Silicon-Hardware, Unspecified Version)",
+    "vendor": "Google Inc. (Apple)"
+  },
   "memory": {
-    "heapBeforeMB": 5.2,
-    "heapAfterMB": 14.18,
-    "growthMB": 8.99
+    "heapBeforeMB": 3.94,
+    "heapAfterMB": 3.61,
+    "growthMB": -0.32
   }
 }

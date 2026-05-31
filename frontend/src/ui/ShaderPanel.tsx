@@ -86,6 +86,9 @@ function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData
         return false
       }
 
+      // Enable standard derivatives extension for fwidth/dFdx/dFdy support
+      gl.getExtension('OES_standard_derivatives')
+
       // Compile Shaders
       const vs = compileShader(VERTEX_SHADER_SOURCE, gl.VERTEX_SHADER)
       if (!vs) return false
@@ -114,6 +117,7 @@ function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData
         }
 
         fullFragmentShader = `
+          #extension GL_OES_standard_derivatives : enable
           precision highp float;
           uniform vec3 iResolution;
           uniform float iTime;

@@ -44,6 +44,7 @@ export const FRACTAL_FRAGMENT_SHADER = `
   uniform vec2  uJuliaC;         // Julia-Parameter c des primären Fraktals
   uniform vec2  uJuliaC2;        // Julia-Parameter c des Crossfade-Partners
   uniform int   uColorMode;      // 0 base,1 mono,2 cold,3 hot,4 neon,5 invert
+  uniform float uHueShift;       // Verschiebung des Hue-Winkels in Grad
 
   // Crossfade: optional ein zweites Fraktal (andere Location) einblenden.
   uniform float uFade;           // 0 = kein Fade (nur Fraktal 1), sonst Mix-Anteil 0..1
@@ -190,7 +191,7 @@ export const FRACTAL_FRAGMENT_SHADER = `
     // In der Menge → schwarz (Color-Transform wird hier NICHT angewandt, genau
     // wie applyTransform() schwarze Pixel überspringt).
     if (iter >= uMaxIter) return vec3(0.0);
-    vec3 col = hueToRgb((float(iter) / float(uMaxIter)) * 360.0);
+    vec3 col = hueToRgb((float(iter) / float(uMaxIter)) * 360.0 + uHueShift);
     return applyColorMode(col, uColorMode);
   }
 

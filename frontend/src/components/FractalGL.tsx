@@ -1,4 +1,4 @@
-import { useEffect, useRef, memo } from 'react'
+import { useEffect, useRef, memo, useState } from 'react'
 import { subscribe } from '../utils/raf-coordinator'
 import { acquireWebGLSlot, releaseWebGLSlot, updateWebGLSlotActivity } from '../utils/webgl-pool'
 import { FRACTAL_VERTEX_SHADER, FRACTAL_FRAGMENT_SHADER } from '../utils/fractal-gl-shader'
@@ -12,7 +12,6 @@ import { FRACTAL_VERTEX_SHADER, FRACTAL_FRAGMENT_SHADER } from '../utils/fractal
  * jeder paar Frames ein kleines Navigations-Bild in ein Offscreen-Framebuffer
  * gerendert und ausgelesen (billiger readPixels statt Vollbild).
  */
-
 export interface FractalGLConfig {
   /** Mandelbrot (z₀=0, c=Pixel) oder Julia (z₀=Pixel, c=fest) */
   mode: 'mandelbrot' | 'julia'
@@ -32,6 +31,16 @@ export interface FractalGLConfig {
   zoomMax?: number
   /** Zeigt ein kleines Zoom-/Label-HUD unten rechts an (wie der alte FractalJulia). */
   hud?: boolean
+  /** Rotations-Rate in Radiant/Sekunde (0 = keine Rotation, negative = gegen den Uhrzeigersinn). Default: 0.12. */
+  rotateRate?: number
+  /** Zoom-Faktor pro Sekunde (Default: 0.82) */
+  zoomRate?: number
+  /** Zoom-Obergrenze zur Vermeidung von Pixelbildung (Default: SAFE_ZOOM_CEIL = 5e5) */
+  fadeZoomCeil?: number
+  /** Geschwindigkeit der kontinuierlichen Farbverschiebung in Grad/Sekunde (Default: 0) */
+  hueShiftSpeed?: number
+  /** Optionaler Start-Zoomwert */
+  startZoom?: number
 }
 
 /** Zerlegt eine JS-Zahl (f64) in zwei float32 (hi + lo) für die double-single-Uniforms. */
@@ -48,29 +57,38 @@ const NAV_H = 96
 
 // Maximaler Zoom, bei dem die double-single-Präzision auf ALLEN GPUs noch scharf
 // bleibt. Hintergrund: Der ANGLE/Metal-Shader-Compiler (Apple-GPUs in Chrome)
-// kontrahiert den Dekker-Split der ds-Multiplikation weg → effektiv nur float32-
+// kontrahiert den Dekker-Split der ds-Miniplikation weg → effektiv nur float32-
 // Präzision: ab ~5e5 feines Banding, ab ~5e6 grobe Blöcke (empirisch Apple Apple-Silicon-Hardware,
 // Chrome/Metal). Auf Software-Rasterizer/anderen GPUs hält ds bis ~1e9, aber wir
 // deckeln einheitlich auf den GPU-sicheren Wert. Darüber wird zur nächsten Location
 // gecrossfadet (kein sichtbarer Präzisionsbruch mehr).
 const SAFE_ZOOM_CEIL = 5e5
 
-function FractalGL({ mode, locations, juliaC, juliaSet, colorMode = 0, maxIter = 128, zoomMax = 1.5e6, hud = false }: FractalGLConfig) {
+function FractalGL({
+  mode,
+  locations,
+  juliaC,
+  juliaSet,
+  colorMode = 0,
+  maxIter = 128,
+  zoomMax = 1.5e6,
+  hud = false,
+  rotateRate,
+  zoomRate,
+  fadeZoomCeil,
+  hueShiftSpeed = 0,
+  startZoom,
+}: FractalGLConfig) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const hudRef = useRef<HTMLDivElement>(null)
 
-  // Eindeutige ID für den WebGL-Context-Pool
-  const panelIdRef = useRef<string | null>(null)
-  if (!panelIdRef.current) {
-    panelIdRef.current = `fractal-gl-${Math.random().toString(36).slice(2, 11)}`
-  }
-  const panelId = panelIdRef.current
+  // Eindeutige ID für den WebGL-Context-Pool (in useState initialisiert für Reinheit)
+  const [panelId] = useState(() => `fractal-gl-${Math.random().toString(36).slice(2, 11)}`)
 
-  // Animations-State im Ref (kein React-Re-Render pro Frame).
-  // eslint-disable-next-line react-hooks/purity
-  const stateRef = useRef({
-    zoom:    mode === 'julia' ? 120 : 80 + Math.random() * 800,
+  // Animations-State im Ref (in useState initialisiert für Reinheit, per Ref referenziert)
+  const [initialState] = useState(() => ({
+    zoom:    startZoom !== undefined ? startZoom : (mode === 'julia' ? 120 : 80 + Math.random() * 800),
     locIdx:  Math.floor(Math.random() * Math.max(1, locations.length)),
     centerX: 0,
     centerY: 0,
@@ -82,7 +100,7 @@ function FractalGL({ mode, locations, juliaC, juliaSet, colorMode = 0, maxIter =
     fade:    0,
     // Ziel-Location für den Crossfade
     nextLocIdx: 0,
-    nextZoom:   80,
+    nextZoom:   startZoom !== undefined ? startZoom : 80,
     nextCenterX: 0,
     nextCenterY: 0,
     // Julia-Parameter-Cycling (nur bei juliaSet)
@@ -92,7 +110,9 @@ function FractalGL({ mode, locations, juliaC, juliaSet, colorMode = 0, maxIter =
     targetX: undefined as number | undefined,
     targetY: undefined as number | undefined,
     navFrame: 0,
-  })
+    hueShift: 0,
+  }))
+  const stateRef = useRef(initialState)
 
   useEffect(() => {
     const container = containerRef.current
@@ -172,7 +192,7 @@ function FractalGL({ mode, locations, juliaC, juliaSet, colorMode = 0, maxIter =
       for (const name of [
         'uResolution', 'uCenterHi', 'uCenterLo', 'uPixelScale', 'uAngle',
         'uMaxIter', 'uMode', 'uJuliaC', 'uJuliaC2', 'uColorMode', 'uFade',
-        'uCenter2Hi', 'uCenter2Lo', 'uPixelScale2', 'uAngle2',
+        'uCenter2Hi', 'uCenter2Lo', 'uPixelScale2', 'uAngle2', 'uHueShift',
       ]) {
         u[name] = gl.getUniformLocation(program, name)
       }
@@ -237,6 +257,7 @@ function FractalGL({ mode, locations, juliaC, juliaSet, colorMode = 0, maxIter =
       // Nav-Bild nutzt dieselben Viewport-Uniforms, aber ohne Crossfade.
       gl.uniform2f(u.uResolution, NAV_W, NAV_H)
       gl.uniform1f(u.uFade, 0)
+      gl.uniform1f(u.uHueShift, s.hueShift)
       setViewportUniforms(NAV_W, NAV_H)
       gl.drawArrays(gl.TRIANGLES, 0, 6)
       gl.readPixels(0, 0, NAV_W, NAV_H, gl.RGBA, gl.UNSIGNED_BYTE, navPixels)
@@ -261,7 +282,8 @@ function FractalGL({ mode, locations, juliaC, juliaSet, colorMode = 0, maxIter =
       //  (b) uniforme farbige Fläche (z.B. eine Julia-„Lake", in die man sonst
       //      endlos ohne Detailgewinn hineinzoomen würde).
       const elapsed = performance.now() - s.locTime
-      if (elapsed > 5000) {
+      const detailCheckDelay = mode === 'julia' ? 1500 : 3000
+      if (elapsed > detailCheckDelay) {
         let black = 0
         let maxBucket = 0
         const total = NAV_W * NAV_H
@@ -305,9 +327,13 @@ function FractalGL({ mode, locations, juliaC, juliaSet, colorMode = 0, maxIter =
 
       if (!s.fading) {
         // Live-Zoom + langsame Rotation, zeitbasiert (fps-unabhängig).
-        // ~0.82/s → von Zoom 80 bis ~1.5e6 in rund 12 s, danach Fade.
-        s.zoom *= Math.exp(0.82 * dt)
-        s.angle += 0.12 * dt
+        s.zoom *= Math.exp((zoomRate !== undefined ? zoomRate : 0.82) * dt)
+        s.angle += (rotateRate !== undefined ? rotateRate : 0.12) * dt
+
+        // Kontinuierliche Farbverschiebung
+        if (hueShiftSpeed) {
+          s.hueShift = (s.hueShift + hueShiftSpeed * dt) % 360
+        }
 
         // Julia: Center langsam driften lassen, damit das Detail durchs Bild
         // wandert statt in einer uniformen Fläche zu verharren (Amplitude ∝ 1/zoom,
@@ -331,14 +357,14 @@ function FractalGL({ mode, locations, juliaC, juliaSet, colorMode = 0, maxIter =
 
         // Fade auslösen, bevor die Präzision ausgeht
         const elapsed = performance.now() - s.locTime
-        // zoomMax auf die GPU-sichere Präzisionsgrenze deckeln (siehe SAFE_ZOOM_CEIL)
-        if (s.zoom > Math.min(zoomMax, SAFE_ZOOM_CEIL) && elapsed > 6000) s.fading = true
+        const limit = Math.min(zoomMax, fadeZoomCeil !== undefined ? fadeZoomCeil : SAFE_ZOOM_CEIL)
+        if (s.zoom > limit && elapsed > 4000) s.fading = true
 
         // Beim Fade-Start die Ziel-Location festlegen
         if (s.fading) {
           s.nextLocIdx  = (s.locIdx + 1) % Math.max(1, locations.length)
           const nl = locations[s.nextLocIdx] || { cx: 0, cy: 0 }
-          s.nextZoom    = 80 + Math.random() * 800
+          s.nextZoom    = startZoom !== undefined ? startZoom : (80 + Math.random() * 800)
           s.nextCenterX = nl.cx
           s.nextCenterY = nl.cy
           s.fade = 0
@@ -376,6 +402,7 @@ function FractalGL({ mode, locations, juliaC, juliaSet, colorMode = 0, maxIter =
       // ── Anzeige rendern ───────────────────────────────────────────────────
       gl.viewport(0, 0, canvas!.width, canvas!.height)
       gl.uniform2f(u.uResolution, canvas!.width, canvas!.height)
+      gl.uniform1f(u.uHueShift, s.hueShift)
       setViewportUniforms(canvas!.width, canvas!.height)
 
       if (s.fading) {

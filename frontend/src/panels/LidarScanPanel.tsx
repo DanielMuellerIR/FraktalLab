@@ -50,19 +50,16 @@ function LidarScanPanel() {
       W: number,
       H: number
     ) {
-      // Rotation around Y (horizontal spin)
       const cosY = Math.cos(rotY)
       const sinY = Math.sin(rotY)
       const x1 = x * cosY - z * sinY
       const z1 = x * sinY + z * cosY
 
-      // Rotation around X (pitch tilt)
       const cosX = Math.cos(rotX)
       const sinX = Math.sin(rotX)
       const y2 = y * cosX - z1 * sinX
       const z2 = y * sinX + z1 * cosX
 
-      // Perspective projection
       const distance = 350
       const fov = 320
       const factor = fov / (distance + z2)
@@ -71,6 +68,33 @@ function LidarScanPanel() {
 
       return { sx, sy, z2, scale: factor }
     }
+
+    // 4 Terrain modes with different geometric wave patterns
+    function getTargetHeight(mode: number, dx: number, dz: number, dist: number, waveTime: number): number {
+      switch (mode % 4) {
+        case 0: { // Double sine waves
+          const h1 = Math.sin(dx * 0.22 - waveTime) * Math.cos(dz * 0.22 - waveTime)
+          const h2 = 0.35 * Math.sin(dist * 0.4 - waveTime * 1.5)
+          return (h1 + h2) * 16.0
+        }
+        case 1: { // Radial ripples expanding outwards
+          return Math.sin(dist * 0.48 - waveTime * 1.8) * 16.0
+        }
+        case 2: { // Linear sweeping canyon ridges
+          return Math.cos(dx * 0.3 - waveTime) * Math.sin(dz * 0.18) * 18.0
+        }
+        case 3:
+        default: { // Diagonal peaks
+          return Math.sin((dx + dz) * 0.25 - waveTime * 1.4) * 18.0
+        }
+      }
+    }
+
+    // Dynamic state trackers
+    const renderedHeights = new Float32Array(GRID_SIZE * GRID_SIZE)
+    const pointModes = new Uint8Array(GRID_SIZE * GRID_SIZE)
+    let globalMode = 0
+    let lastStageChange = 0.0
 
     // ── Render Loop ──────────────────────────────────────────────────────────
     function loop(t: number) {
@@ -84,13 +108,21 @@ function LidarScanPanel() {
       ctx.fillStyle = '#010502'
       ctx.fillRect(0, 0, W, H)
 
-      // Animate rotation & waves
-      const rotY = t * 0.0003
-      const rotX = 0.45 + 0.15 * Math.sin(t * 0.0005)
+      // Time variables
       const waveTime = t * 0.002
+      const rotY = t * 0.0003
+      
+      // Slowly animate pitch tilt angle from low perspective to top-down view (0.28 to 1.35)
+      const rotX = 0.81 + 0.54 * Math.sin(t * 0.00015)
 
       // Sonar sweep angle
       const sweepAngle = (t * 0.0018) % (Math.PI * 2)
+
+      // Cycle terrain modes every 15 seconds
+      if (t - lastStageChange > 15000) {
+        lastStageChange = t
+        globalMode = (globalMode + 1) % 4
+      }
 
       // Project all grid points
       const points: { sx: number; sy: number; z2: number; h: number; color: string; scale: number }[][] = []
@@ -99,24 +131,31 @@ function LidarScanPanel() {
       for (let gy = 0; gy < GRID_SIZE; gy++) {
         points[gy] = []
         for (let gx = 0; gx < GRID_SIZE; gx++) {
+          const idx = gy * GRID_SIZE + gx
           const dx = gx - halfSize
           const dz = gy - halfSize
-
-          // Wave formulas (layered sin/cos)
-          const distFromCenter = Math.sqrt(dx * dx + dz * dz)
-          const h1 = Math.sin(dx * 0.22 - waveTime) * Math.cos(dz * 0.22 - waveTime)
-          const h2 = 0.35 * Math.sin(distFromCenter * 0.4 - waveTime * 1.5)
-          const h = (h1 + h2) * 16.0
-
-          const wx = dx * SPACING
-          const wz = dz * SPACING
-
-          const { sx, sy, z2, scale } = project(wx, h, wz, rotY, rotX, W, H)
+          const dist = Math.sqrt(dx * dx + dz * dz)
 
           // Determine angle from center in polar coords for sonar sweep detection
           const ptAngle = Math.atan2(dz, dx) + Math.PI // 0 to 2PI
           const angleDiff = Math.abs(ptAngle - sweepAngle)
           const isSweepHit = angleDiff < 0.22 || angleDiff > Math.PI * 2 - 0.22
+
+          // If sonar sweep line hits point, update its mode to target global mode
+          if (isSweepHit) {
+            pointModes[idx] = globalMode
+          }
+
+          const targetH = getTargetHeight(pointModes[idx], dx, dz, dist, waveTime)
+          // Smoothly interpolate current rendered height towards target wave height
+          const dt = 0.016
+          renderedHeights[idx] += (targetH - renderedHeights[idx]) * 7.5 * dt
+          const h = renderedHeights[idx]
+
+          const wx = dx * SPACING
+          const wz = dz * SPACING
+
+          const { sx, sy, z2, scale } = project(wx, h, wz, rotY, rotX, W, H)
 
           // Color based on height and sweep highlight
           let color = ''
@@ -217,7 +256,7 @@ function LidarScanPanel() {
       // Top Right
       ctx.textAlign = 'right'
       ctx.fillStyle = 'rgba(34, 211, 238, 0.7)'
-      ctx.fillText(`RESOLVING RES: ${GRID_SIZE}x${GRID_SIZE}`, W - 6, 6)
+      ctx.fillText(`RESOLVING RES: ${GRID_SIZE}x${GRID_SIZE} // TILT: ${(rotX * 180 / Math.PI).toFixed(0)}°`, W - 6, 6)
 
       // Bottom Left
       ctx.textAlign = 'left'
@@ -228,7 +267,7 @@ function LidarScanPanel() {
       // Bottom Right
       ctx.textAlign = 'right'
       ctx.fillStyle = 'rgba(232, 121, 249, 0.6)'
-      ctx.fillText('TOPOLOGY: RECONSTRUCTING', W - 6, H - 6)
+      ctx.fillText(`TOPOLOGY: GRID-MODE-${globalMode}`, W - 6, H - 6)
       ctx.textAlign = 'left'
     }
 

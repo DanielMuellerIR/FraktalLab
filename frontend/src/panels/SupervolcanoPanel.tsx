@@ -3,6 +3,7 @@ import Panel from '../ui/Panel'
 // Zentraler rAF-Coordinator: bündelt alle Panel-Animationen in einer einzigen
 // requestAnimationFrame-Schleife. Siehe AUDIT_FINDINGS.md H-05.
 import { subscribe } from '../utils/raf-coordinator'
+import { EARTH_BASE64 } from '../utils/earth-map-base64'
 
 function SupervolcanoPanel() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -31,112 +32,66 @@ function SupervolcanoPanel() {
     offscreen.width = mapWidth
     offscreen.height = mapHeight
     const oCtx = offscreen.getContext('2d')
-    if (oCtx) {
-      // Draw ocean base (fully transparent in final, black in offscreen)
-      oCtx.fillStyle = 'rgb(0,0,0)'
-      oCtx.fillRect(0, 0, mapWidth, mapHeight)
 
-      let seed = 98765
-      const rnd = () => {
-        const x = Math.sin(seed++) * 10000
-        return x - Math.floor(x)
-      }
-
-      // Draw seed-deterministic continent blobs (Red channel > 115 representing Land)
-      oCtx.fillStyle = 'rgb(255, 0, 0)'
-      
-      // Eurasia & Africa masses
-      oCtx.beginPath()
-      oCtx.arc(320, 90, 70, 0, Math.PI * 2)
-      oCtx.arc(280, 140, 55, 0, Math.PI * 2)
-      oCtx.arc(380, 110, 45, 0, Math.PI * 2)
-      oCtx.fill()
-
-      // Americas masses
-      oCtx.beginPath()
-      oCtx.arc(120, 80, 45, 0, Math.PI * 2) // North America
-      oCtx.arc(150, 170, 48, 0, Math.PI * 2) // South America
-      oCtx.fill()
-      
-      // Central America bridge
-      oCtx.lineWidth = 15
-      oCtx.strokeStyle = 'rgb(255, 0, 0)'
-      oCtx.beginPath()
-      oCtx.moveTo(120, 100)
-      oCtx.lineTo(140, 140)
-      oCtx.stroke()
-
-      // Australia
-      oCtx.beginPath()
-      oCtx.arc(420, 180, 25, 0, Math.PI * 2)
-      oCtx.fill()
-
-      // Antarctica
-      oCtx.fillRect(0, 230, 512, 26)
-
-      // Add fractal land details on boundaries
-      oCtx.fillStyle = 'rgb(255, 0, 0)'
-      for (let i = 0; i < 260; i++) {
-        let cx = 0, cy = 0
-        const group = rnd()
-        if (group < 0.35) {
-          cx = 260 + rnd() * 150
-          cy = 60 + rnd() * 120
-        } else if (group < 0.7) {
-          cx = 90 + rnd() * 80
-          cy = 50 + rnd() * 140
-        } else if (group < 0.85) {
-          cx = 390 + rnd() * 50
-          cy = 160 + rnd() * 40
-        } else {
-          cx = rnd() * 512
-          cy = rnd() * 256
-        }
-        const r = 4 + rnd() * 20
-        oCtx.beginPath()
-        oCtx.arc(cx, cy, r, 0, Math.PI * 2)
-        oCtx.fill()
-      }
-
-      // Draw hot spots in North America (Green channel) near Yellowstone (around x: 120, y: 100)
-      oCtx.fillStyle = 'rgb(0, 255, 0)'
-      for (let i = 0; i < 18; i++) {
-        const hx = 110 + rnd() * 35
-        const hy = 80 + rnd() * 35
-        const hr = 8 + rnd() * 14
-        oCtx.beginPath()
-        oCtx.arc(hx, hy, hr, 0, Math.PI * 2)
-        oCtx.fill()
-      }
-
-      // Apply color processing
-      const imgData = oCtx.getImageData(0, 0, mapWidth, mapHeight)
-      const data = imgData.data
-
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i]
-        const g = data[i+1]
+    const mapImg = new Image()
+    mapImg.onload = () => {
+      if (oCtx) {
+        oCtx.drawImage(mapImg, 0, 0, mapWidth, mapHeight)
         
-        if (r > 100) {
-          // Geothermal landmass: volcanic rust red
-          data[i]   = 160 // R
-          data[i+1] = 45  // G
-          data[i+2] = 10  // B
-          data[i+3] = 110 // A (semi-transparent)
-        } else if (g > 100) {
-          // Hotspots: glowing magma orange
-          data[i]   = 255 // R
-          data[i+1] = 110 // G
-          data[i+2] = 0   // B
-          data[i+3] = 255 // A
-        } else {
-          // Ocean: fully transparent
-          data[i+3] = 0
+        let seed = 98765
+        const rnd = () => {
+          const x = Math.sin(seed++) * 10000
+          return x - Math.floor(x)
         }
+
+        // Draw hot spots in North America (Green channel) near Yellowstone (around x: 120, y: 100)
+        oCtx.fillStyle = 'rgb(0, 255, 0)'
+        for (let i = 0; i < 18; i++) {
+          const hx = 110 + rnd() * 35
+          const hy = 80 + rnd() * 35
+          const hr = 8 + rnd() * 14
+          oCtx.beginPath()
+          oCtx.arc(hx, hy, hr, 0, Math.PI * 2)
+          oCtx.fill()
+        }
+
+        // Apply color processing
+        const imgData = oCtx.getImageData(0, 0, mapWidth, mapHeight)
+        const data = imgData.data
+
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i]
+          const g = data[i+1]
+          
+          if (r > 100) {
+            // Geothermal landmass: volcanic rust red
+            data[i]   = 160 // R
+            data[i+1] = 45  // G
+            data[i+2] = 10  // B
+            data[i+3] = 110 // A (semi-transparent)
+          } else if (g > 100) {
+            // Hotspots: glowing magma orange
+            data[i]   = 255 // R
+            data[i+1] = 110 // G
+            data[i+2] = 0   // B
+            data[i+3] = 255 // A
+          } else {
+            // Ocean: fully transparent
+            data[i+3] = 0
+          }
+        }
+        oCtx.putImageData(imgData, 0, 0)
+        processedMap = offscreen
       }
-      oCtx.putImageData(imgData, 0, 0)
-      processedMap = offscreen
     }
+    mapImg.src = `data:image/webp;base64,${EARTH_BASE64}`
+
+    // Synchronously subscribe to the central rAF-coordinator immediately on mount so rendering starts on frame 1
+    unsubscribe = subscribe((t) => {
+      if (firstTick) { lastT = t; firstTick = false }
+      loop(t)
+    })
+
 
     const resize = () => {
       canvas.width = container.clientWidth
@@ -345,13 +300,7 @@ function SupervolcanoPanel() {
       ctx.fillText('ZOOM: NORTH AMERICA REGION [A-1]', W - 12, 36)
     }
 
-    // Initial-Tick: lastT setzen, danach normale Loop ausführen.
-    // Beim zentralen rAF-Coordinator abonnieren — loop wird bei jedem Tick automatisch aufgerufen.
     let firstTick = true
-    unsubscribe = subscribe((t) => {
-      if (firstTick) { lastT = t; firstTick = false }
-      loop(t)
-    })
 
     return () => {
       alive = false

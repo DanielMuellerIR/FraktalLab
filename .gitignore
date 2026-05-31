@@ -34,3 +34,9 @@ frontend/scratch_test_mod.cjs
 screenshots/
 archive/
 
+# Claude Code local tooling (preview launch config etc.)
+.claude/
+
+# Local SID scratch file (duplicate of frontend/public/audio/Turrican.sid, manual testing)
+/Turrican.sid
+

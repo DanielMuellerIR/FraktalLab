@@ -1,474 +1,573 @@
-import { memo,  useEffect, useRef } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import Panel from '../ui/Panel'
-// rAF-Loop laeuft ueber den zentralen raf-coordinator. Siehe AUDIT_FINDINGS.md H-05.
 import { subscribe } from '../utils/raf-coordinator'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ElitePanel: Simuliert das Original-Elite (1984) — Wireframe-3D-Raumschiff.
-// Einfache 3D-Rotation + orthografische Projektion, kein WebGL.
+// ElitePanel: Authentic 1984 first-person vector space dogfight simulation.
+// Features a 3D starfield responsive to player steering, a maneuvering 3D
+// wireframe Cobra Mk III, laser firing, hit flashes, shield ripple effects,
+// and a retro vector HUD including the iconic 3D ellipse radar scanner.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── 3D-Hilfstypen ─────────────────────────────────────────────────────────────
 interface Vec3 { x: number; y: number; z: number }
-interface Edge  { a: number; b: number }  // Indizes in das Vertices-Array
-
-// ── Rotationsmatrix ──────────────────────────────────────────────────────────
-// Dreht einen 3D-Punkt um alle drei Achsen (Euler-Winkel in Radiant).
-function rotateVec3(v: Vec3, rx: number, ry: number, rz: number): Vec3 {
-  // ── Rotation um X-Achse ──
-  let y =  v.y * Math.cos(rx) - v.z * Math.sin(rx)
-  let z =  v.y * Math.sin(rx) + v.z * Math.cos(rx)
-  let x =  v.x
-
-  // ── Rotation um Y-Achse ──
-  const x2 =  x * Math.cos(ry) + z * Math.sin(ry)
-  const z2 = -x * Math.sin(ry) + z * Math.cos(ry)
-
-  // ── Rotation um Z-Achse ──
-  const x3 = x2 * Math.cos(rz) - y * Math.sin(rz)
-  const y3 = x2 * Math.sin(rz) + y * Math.cos(rz)
-
-  return { x: x3, y: y3, z: z2 }
-}
-
-// ── Orthografische Projektion ────────────────────────────────────────────────
-// Projiziert einen 3D-Punkt auf 2D-Schirmkoordinaten.
-// cx, cy = Bildschirmmittelpunkt; scale = Skalierungsfaktor.
-function project(v: Vec3, cx: number, cy: number, scale: number): { sx: number; sy: number } {
-  return { sx: cx + v.x * scale, sy: cy - v.y * scale }
-}
-
-// ── Cobra Mk III Wireframe-Definitionen ──────────────────────────────────────
-// Vereinfachtes Cobra Mk III — angelehnt an die originale Elite-Geometrie.
-// Alle Koordinaten normiert auf ca. ±1. Im Render wird mit scale skaliert.
-//
-// Das Cobra Mk III hat:
-//   - Einen breiten, flachen Hauptkörper (trapezförmig von vorne)
-//   - Zwei seitliche Flügel
-//   - Motordüsen hinten
-//   - Cockpit-Wölbung oben vorne
+interface Edge { a: number; b: number }
 
 const COBRA_VERTICES: Vec3[] = [
-  // ── Hauptkörper ──────────────────────────────────────────────────────
-  { x:  0.0,  y:  0.15, z:  1.0  },   //  0: Nase oben
-  { x:  0.0,  y: -0.10, z:  1.0  },   //  1: Nase unten
-  { x:  0.7,  y:  0.10, z:  0.0  },   //  2: Mitte rechts oben
-  { x:  0.7,  y: -0.15, z:  0.0  },   //  3: Mitte rechts unten
-  { x: -0.7,  y:  0.10, z:  0.0  },   //  4: Mitte links oben
-  { x: -0.7,  y: -0.15, z:  0.0  },   //  5: Mitte links unten
-  { x:  0.5,  y:  0.08, z: -1.0  },   //  6: Heck rechts oben
-  { x:  0.5,  y: -0.12, z: -1.0  },   //  7: Heck rechts unten
-  { x: -0.5,  y:  0.08, z: -1.0  },   //  8: Heck links oben
-  { x: -0.5,  y: -0.12, z: -1.0  },   //  9: Heck links unten
-  // ── Cockpit-Wölbung (oben vorne) ─────────────────────────────────────
-  { x:  0.0,  y:  0.35, z:  0.4  },   // 10: Cockpit-Top
-  { x:  0.25, y:  0.20, z:  0.1  },   // 11: Cockpit rechts
-  { x: -0.25, y:  0.20, z:  0.1  },   // 12: Cockpit links
-  // ── Linker Flügel (Außenkante) ────────────────────────────────────────
-  { x: -1.4,  y: -0.05, z:  0.2  },   // 13: Flügel links außen vorne
-  { x: -1.4,  y: -0.05, z: -0.5  },   // 14: Flügel links außen hinten
-  // ── Rechter Flügel (Außenkante) ───────────────────────────────────────
-  { x:  1.4,  y: -0.05, z:  0.2  },   // 15: Flügel rechts außen vorne
-  { x:  1.4,  y: -0.05, z: -0.5  },   // 16: Flügel rechts außen hinten
-  // ── Motordüsen (Kreis-Approximation durch 4 Punkte, hinten) ───────────
-  { x:  0.25, y:  0.0,  z: -1.15 },   // 17: Düse rechts
-  { x: -0.25, y:  0.0,  z: -1.15 },   // 18: Düse links
-  { x:  0.0,  y:  0.25, z: -1.15 },   // 19: Düse oben
-  { x:  0.0,  y: -0.25, z: -1.15 },   // 20: Düse unten
+  { x:  0.0,  y:  0.15, z:  1.0  },   // 0: Nose top
+  { x:  0.0,  y: -0.10, z:  1.0  },   // 1: Nose bottom
+  { x:  0.7,  y:  0.10, z:  0.0  },   // 2: Mid right top
+  { x:  0.7,  y: -0.15, z:  0.0  },   // 3: Mid right bottom
+  { x: -0.7,  y:  0.10, z:  0.0  },   // 4: Mid left top
+  { x: -0.7,  y: -0.15, z:  0.0  },   // 5: Mid left bottom
+  { x:  0.5,  y:  0.08, z: -1.0  },   // 6: Aft right top
+  { x:  0.5,  y: -0.12, z: -1.0  },   // 7: Aft right bottom
+  { x: -0.5,  y:  0.08, z: -1.0  },   // 8: Aft left top
+  { x: -0.5,  y: -0.12, z: -1.0  },   // 9: Aft left bottom
+  { x:  0.0,  y:  0.35, z:  0.4  },   // 10: Cockpit top
+  { x:  0.25, y:  0.20, z:  0.1  },   // 11: Cockpit right
+  { x: -0.25, y:  0.20, z:  0.1  },   // 12: Cockpit left
+  { x: -1.4,  y: -0.05, z:  0.2  },   // 13: Wing left front
+  { x: -1.4,  y: -0.05, z: -0.5  },   // 14: Wing left back
+  { x:  1.4,  y: -0.05, z:  0.2  },   // 15: Wing right front
+  { x:  1.4,  y: -0.05, z: -0.5  },   // 16: Wing right back
+  { x:  0.25, y:  0.0,  z: -1.15 },   // 17: Thruster right
+  { x: -0.25, y:  0.0,  z: -1.15 },   // 18: Thruster left
+  { x:  0.0,  y:  0.25, z: -1.15 },   // 19: Thruster top
+  { x:  0.0,  y: -0.25, z: -1.15 },   // 20: Thruster bottom
 ]
 
-// Kanten: Paare von Vertex-Indizes. Canvas zeichnet diese als Linien.
 const COBRA_EDGES: Edge[] = [
-  // ── Rumpf-Kontur ──────────────────────────────────────────────────────
-  { a:  0, b:  2 }, { a:  0, b:  4 },   // Nase → Mitte
+  { a:  0, b:  2 }, { a:  0, b:  4 },
   { a:  1, b:  3 }, { a:  1, b:  5 },
-  { a:  2, b:  6 }, { a:  4, b:  8 },   // Mitte → Heck
+  { a:  2, b:  6 }, { a:  4, b:  8 },
   { a:  3, b:  7 }, { a:  5, b:  9 },
-  { a:  6, b:  8 }, { a:  7, b:  9 },   // Heck-Querstreben
-  { a:  2, b:  3 }, { a:  4, b:  5 },   // Mitte senkrecht
-  { a:  0, b:  1 },                       // Nasenspitze senkrecht
-  { a:  6, b:  7 }, { a:  8, b:  9 },   // Heck senkrecht
-  // ── Cockpit ───────────────────────────────────────────────────────────
+  { a:  6, b:  8 }, { a:  7, b:  9 },
+  { a:  2, b:  3 }, { a:  4, b:  5 },
+  { a:  0, b:  1 },
+  { a:  6, b:  7 }, { a:  8, b:  9 },
   { a:  0, b: 10 }, { a: 10, b: 11 }, { a: 10, b: 12 },
   { a: 11, b:  2 }, { a: 12, b:  4 },
   { a: 11, b: 12 },
-  // ── Linker Flügel ─────────────────────────────────────────────────────
   { a:  4, b: 13 }, { a: 13, b: 14 }, { a: 14, b:  8 }, { a:  5, b: 13 },
-  // ── Rechter Flügel ────────────────────────────────────────────────────
   { a:  2, b: 15 }, { a: 15, b: 16 }, { a: 16, b:  6 }, { a:  3, b: 15 },
-  // ── Motordüsen ────────────────────────────────────────────────────────
   { a: 17, b: 19 }, { a: 19, b: 18 }, { a: 18, b: 20 }, { a: 20, b: 17 },
   { a:  6, b: 17 }, { a:  7, b: 20 }, { a:  8, b: 18 }, { a:  9, b: 20 },
 ]
 
-// ── Feindliches Schiff: vereinfachtes Viper-Wireframe ─────────────────────────
-// Das Viper ist schlanker als das Cobra: spitz, schnell.
-const VIPER_VERTICES: Vec3[] = [
-  { x:  0.0,  y:  0.0,  z:  0.9  },   // 0: Nase
-  { x:  0.4,  y:  0.1,  z: -0.3  },   // 1: Flügel rechts oben
-  { x:  0.4,  y: -0.1,  z: -0.3  },   // 2: Flügel rechts unten
-  { x: -0.4,  y:  0.1,  z: -0.3  },   // 3: Flügel links oben
-  { x: -0.4,  y: -0.1,  z: -0.3  },   // 4: Flügel links unten
-  { x:  0.2,  y:  0.0,  z: -0.9  },   // 5: Heck rechts
-  { x: -0.2,  y:  0.0,  z: -0.9  },   // 6: Heck links
-  { x:  0.0,  y:  0.25, z: -0.2  },   // 7: Rücken-Finne oben
-  { x:  0.0,  y: -0.1,  z: -0.7  },   // 8: Rücken-Finne unten hinten
-]
-
-const VIPER_EDGES: Edge[] = [
-  { a: 0, b: 1 }, { a: 0, b: 2 }, { a: 0, b: 3 }, { a: 0, b: 4 },
-  { a: 1, b: 5 }, { a: 2, b: 5 }, { a: 3, b: 6 }, { a: 4, b: 6 },
-  { a: 5, b: 6 }, { a: 1, b: 2 }, { a: 3, b: 4 },
-  { a: 0, b: 7 }, { a: 7, b: 8 }, { a: 3, b: 7 }, { a: 1, b: 7 },
-]
-
-// ── Gelegentliche Status-Meldungen ───────────────────────────────────────────
-const MESSAGES = [
-  'PIRATE DESTROYED',
-  'DOCKING COMPUTER ON',
-  'FUEL SCOOP ACTIVE',
-  'VIPER MISSILE LOCK!',
-  'CARGO JETTISONED',
-  'HYPERDRIVE READY',
-  'POLICE SCANNER ACTIVE',
-  'THARGOID SIGNAL',
-  'BOUNTY: 200 CR',
-  'ANACONDA DETECTED',
-]
-
-// ── Sternfeld ────────────────────────────────────────────────────────────────
-interface Star2D {
-  x: number    // normiert 0..1
-  y: number    // normiert 0..1
-  r: number    // Radius in Pixeln
+function rotateX(v: Vec3, angle: number): Vec3 {
+  const c = Math.cos(angle), s = Math.sin(angle)
+  return { x: v.x, y: v.y * c - v.z * s, z: v.y * s + v.z * c }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+function rotateY(v: Vec3, angle: number): Vec3 {
+  const c = Math.cos(angle), s = Math.sin(angle)
+  return { x: v.x * c + v.z * s, y: v.y, z: -v.x * s + v.z * c }
+}
+
+function rotateZ(v: Vec3, angle: number): Vec3 {
+  const c = Math.cos(angle), s = Math.sin(angle)
+  return { x: v.x * c - v.y * s, y: v.x * s + v.y * c, z: v.z }
+}
+
+interface Star3D { x: number; y: number; z: number }
+
+interface Debris3D {
+  x: number; y: number; z: number
+  vx: number; vy: number; vz: number
+  size: number
+}
+
 function ElitePanel() {
   const containerRef = useRef<HTMLDivElement>(null)
-  const canvasRef    = useRef<HTMLCanvasElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [hudMessage, setHudMessage] = useState('SYSTEM CHECK OK // NO TARGETS')
 
   useEffect(() => {
-    const _canvas   = canvasRef.current
-    const container = containerRef.current
-    if (!_canvas || !container) return
+    const _canvas = canvasRef.current
+    const _container = containerRef.current
+    if (!_canvas || !_container) return
     const _ctx = _canvas.getContext('2d')
     if (!_ctx) return
-    const canvas: HTMLCanvasElement        = _canvas
-    const ctx:    CanvasRenderingContext2D = _ctx
 
-    // unsubscribe-Funktion aus subscribe(); null wenn nicht angemeldet.
-    let unsubscribe: (() => void) | null = null
+    const canvas: HTMLCanvasElement = _canvas
+    const ctx: CanvasRenderingContext2D = _ctx
+    const container: HTMLDivElement = _container
+
     let alive = true
+    let unsubscribe: (() => void) | null = null
 
-    // ── Canvas-Größe dynamisch anpassen ─────────────────────────────────────
     const resize = () => {
-      canvas.width  = container.clientWidth
+      canvas.width = container.clientWidth
       canvas.height = container.clientHeight
     }
     resize()
     const ro = new ResizeObserver(resize)
     ro.observe(container)
 
-    // ── Statische Sterne ────────────────────────────────────────────────────
-    const STAR_COUNT = 80
-    const stars: Star2D[] = Array.from({ length: STAR_COUNT }, () => ({
-      x: Math.random(),
-      y: Math.random() * 0.80,   // nur im oberen 80% (HUD unten)
-      r: Math.random() > 0.85 ? 1.5 : 0.8,
+    // ── Simulation States ────────────────────────────────────────────────────
+    const stars: Star3D[] = Array.from({ length: 120 }, () => ({
+      x: (Math.random() - 0.5) * 8.0,
+      y: (Math.random() - 0.5) * 6.0,
+      z: Math.random() * 12.0 + 1.0
     }))
 
-    // ── Rotations-Zustand ────────────────────────────────────────────────────
-    // Das Cobra dreht sich langsam und führt gelegentlich Ausweichmanöver durch.
-    let cobraRx = 0.05  // Aktuelle Rotation Cobra um X-Achse
-    let cobraRy = 0.0   // Aktuelle Rotation Cobra um Y-Achse
-    let cobraRz = 0.0   // Aktuelle Rotation Cobra um Z-Achse
+    // Target (Cobra Mk III) state
+    let targetPos = { x: 0, y: 0, z: 8 }
+    let targetShield = 100
+    let targetStatus: 'NOMINAL' | 'SHIELDS_LOW' | 'DESTROYED' = 'NOMINAL'
+    let targetSpawnTimer = 0.0
 
-    // Dreh-Geschwindigkeiten (Radiant/Sekunde) — fix für die gesamte Session
-    const cobraDRy = 0.5   // langsame Y-Rotation (Haupt-Schaurotation)
-    const cobraDRx = 0.05  // minimale X-Schwankung
+    // Rotations of the target ship model itself
+    const targetRot = { x: 0, y: 0, z: 0 }
 
-    // Das feindliche Schiff (Viper) kreist außen herum.
-    // Seine Position wird in Polarkoordinaten gespeichert.
-    let viperOrbit    = 0     // Umlauf-Winkel in Radiant
-    const viperOrbitR = 0.4   // Orbit-Radius normiert (fix, kein Resize nötig)
-    let viperRy       = 0     // Eigene Y-Rotation des Vipers
+    // Debris for explosion effect
+    let debris: Debris3D[] = []
 
-    // ── Ausweichmanöver-Zustand ──────────────────────────────────────────────
-    let evadeTimer    = 0     // Countdown bis nächstes Manöver (ms)
-    let evadeActive   = false
-    let evadeDRx      = 0
-    let evadeDRz      = 0
+    // Lasers
+    let laserPulseActive = false
+    let laserTimer = 0.0
+    let hitFlashActive = false
+    let hitFlashTimer = 0.0
 
-    // ── HUD-Daten ────────────────────────────────────────────────────────────
-    let score  = 12450
-    let cash   = 1234.5   // Credits
-    const fuel      = 6.2     // Lichtjahre (fix für Demo)
-    const legal     = 'CLEAN'
+    // Player inputs/steering (simulated auto-tracking)
+    let steerPitch = 0.0
+    let steerYaw = 0.0
 
-    // ── Status-Nachricht-Overlay ─────────────────────────────────────────────
-    let msgText  = ''
-    let msgAlpha = 0
-    let msgTimer = 3000  // erstes Msg nach 3s
+    // Fuel & Cash
+    let cash = 3280.4
+    let score = 412
 
-    // ── Radar-Blip-Daten ─────────────────────────────────────────────────────
-    // Ein paar zufällige Objekte auf dem Radar.
-    const radarBlips = Array.from({ length: 5 }, () => ({
-      angle: Math.random() * Math.PI * 2,
-      r:     0.3 + Math.random() * 0.6,  // Entfernung vom Zentrum (0=Mitte, 1=Rand)
-      above: Math.random() > 0.5,        // Blip über (true) oder unter (false) der Radar-Ebene
-    }))
-
-    // ── Hilfsfunktion: Wireframe-Schiff zeichnen ──────────────────────────────
-    // vertices: Array mit 3D-Punkten
-    // edges: Kanten als Index-Paare
-    // rx/ry/rz: Rotation in Radiant
-    // cx/cy: Bildschirmmittelpunkt
-    // scale: Skalierungsfaktor (bestimmt, wie groß das Schiff erscheint)
-    // color: Linienfarbe
-    function drawWireframe(
-      vertices: Vec3[],
-      edges: Edge[],
-      rx: number, ry: number, rz: number,
-      cx: number, cy: number,
-      scale: number,
-      color: string
-    ) {
-      // Alle Vertices rotieren und projizieren
-      const projected = vertices.map(v => {
-        const rotated = rotateVec3(v, rx, ry, rz)
-        return project(rotated, cx, cy, scale)
-      })
-
-      // Kanten als Linien zeichnen
-      ctx.strokeStyle = color
-      ctx.lineWidth   = 1.2
-      ctx.beginPath()
-      for (const e of edges) {
-        ctx.moveTo(projected[e.a].sx, projected[e.a].sy)
-        ctx.lineTo(projected[e.b].sx, projected[e.b].sy)
-      }
-      ctx.stroke()
-    }
-
-    // ── Radar-Display ─────────────────────────────────────────────────────────
-    // Elliptischer Radar-Kreis (wie im Original), Blips als Punkte.
-    // Radar-Position: unten in der Mitte.
-    function drawRadar(cx: number, cy: number, rW: number, rH: number) {
-      // Ellipsen-Umriss (Radar-Schüssel)
-      ctx.strokeStyle = '#1a8a1a'
-      ctx.lineWidth   = 1
-      ctx.beginPath()
-      ctx.ellipse(cx, cy, rW, rH, 0, 0, Math.PI * 2)
-      ctx.stroke()
-
-      // Horizontale Mittellinie der Ellipse (trennt oben/unten)
-      ctx.beginPath()
-      ctx.moveTo(cx - rW, cy)
-      ctx.lineTo(cx + rW, cy)
-      ctx.stroke()
-
-      // Vertikale Hilfslinie
-      ctx.strokeStyle = '#0d4a0d'
-      ctx.lineWidth = 0.5
-      ctx.beginPath()
-      ctx.moveTo(cx, cy - rH)
-      ctx.lineTo(cx, cy + rH)
-      ctx.stroke()
-
-      // Spieler-Markierung (kleines Dreieck in der Mitte)
-      ctx.fillStyle = '#00ff60'
-      ctx.beginPath()
-      ctx.moveTo(cx, cy - 3)
-      ctx.lineTo(cx - 2.5, cy + 2)
-      ctx.lineTo(cx + 2.5, cy + 2)
-      ctx.closePath()
-      ctx.fill()
-
-      // Blips der Objekte
-      for (const blip of radarBlips) {
-        // Blip-Position innerhalb der Ellipse
-        const bx = cx + Math.cos(blip.angle + viperOrbit * 0.3) * blip.r * rW
-        const by = cy + Math.sin(blip.angle + viperOrbit * 0.3) * blip.r * rH * (blip.above ? -0.5 : 0.5)
-        // Blips, die über der Radar-Ebene sind, leuchten heller
-        ctx.fillStyle = blip.above ? '#00ff80' : '#006630'
-        ctx.fillRect(bx - 1, by - 1, 2, 2)
-      }
-
-      // Viper-Blip: blinkt wenn nahe
-      const viperBx = cx + Math.cos(viperOrbit) * 0.7 * rW
-      const viperBy = cy - 0.3 * rH
-      const viperBlink = Math.floor(Date.now() / 400) % 2 === 0
-      if (viperBlink) {
-        ctx.fillStyle = '#ff4444'
-        ctx.fillRect(viperBx - 1.5, viperBy - 1.5, 3, 3)
-      }
-    }
-
-    // ── Haupt-Loop ────────────────────────────────────────────────────────────
     let lastT = 0
-    let firstFrame = true
+    let messageTimer = 4.0
+
+    const messages = [
+      'PIRATE DETECTED // COBRA MK III',
+      'LASER TEMPERATURE NORMAL',
+      'ECM READY',
+      'SCANNING SYSTEM CARRIER',
+      'INCOMING BOUNTY UPDATE',
+      'TARGET LOCK ACTIVE',
+      'HYPERDRIVE CHARGE: 100%'
+    ]
 
     function loop(t: number) {
       if (!alive) return
-
-      // Beim ersten Frame lastT setzen, damit dt im ersten Tick 0 ist
-      // (entspricht dem alten Verhalten vor dem subscribe-Wrapper).
-      if (firstFrame) { lastT = t; firstFrame = false }
       const dt = Math.min((t - lastT) / 1000, 0.08)
       lastT = t
 
       const W = canvas.width
       const H = canvas.height
+      if (W === 0 || H === 0) return
 
-      // ── Rotationen aktualisieren ─────────────────────────────────────────
-      cobraRy += cobraDRy * dt
-      cobraRx += cobraDRx * dt
+      const viewH = H * 0.70 // upper 70% space view
+      const hudY = viewH
 
-      // Ausweichmanöver-Countdown
-      evadeTimer -= dt * 1000
-      if (evadeTimer <= 0 && !evadeActive) {
-        // Neues Manöver starten
-        evadeActive = true
-        evadeDRx    = (Math.random() - 0.5) * 2.5
-        evadeDRz    = (Math.random() - 0.5) * 2.0
-        evadeTimer  = 600 + Math.random() * 800  // Manöver dauert 0.6–1.4s
-      }
+      // ── Steering / AI Flight Calculations ──────────────────────────────────
+      if (targetStatus !== 'DESTROYED') {
+        const angle = t * 0.00075
+        // Maneuvering orbit flight path
+        targetPos.x = 4.8 * Math.sin(angle * 1.3) * Math.cos(angle * 0.4)
+        targetPos.y = 2.4 * Math.sin(angle * 1.8)
+        targetPos.z = 6.5 + 4.5 * Math.cos(angle * 0.7)
 
-      if (evadeActive) {
-        cobraRx += evadeDRx * dt
-        cobraRz += evadeDRz * dt
-        evadeTimer -= dt * 1000
-        if (evadeTimer <= 0) {
-          // Manöver beendet, nächstes in 4–10s
-          evadeActive = false
-          evadeDRx    = 0
-          evadeDRz    = 0
-          evadeTimer  = 4000 + Math.random() * 6000
-        }
+        // Slowly orient/rotate the enemy ship model based on its flight vector
+        targetRot.y += 1.4 * dt
+        targetRot.x = Math.sin(angle) * 0.4
+        targetRot.z = Math.cos(angle * 1.5) * 0.5
+
+        // Player auto-tracking yaw/pitch to follow the target slightly
+        const targetProjX = (targetPos.x / targetPos.z)
+        const targetProjY = (targetPos.y / targetPos.z)
+        steerYaw = targetProjX * 0.45
+        steerPitch = targetProjY * 0.45
       } else {
-        // Ohne Manöver: Z-Rotation langsam zurück auf 0 (Lerp)
-        cobraRz += (0 - cobraRz) * 2 * dt
-        cobraRx += (0.05 - cobraRx) * 0.5 * dt
+        // Center view slowly when target is dead
+        steerYaw += (0 - steerYaw) * 3 * dt
+        steerPitch += (0 - steerPitch) * 3 * dt
+
+        targetSpawnTimer -= dt
+        if (targetSpawnTimer <= 0) {
+          targetPos = { x: 0, y: 0, z: 10 }
+          targetShield = 100
+          targetStatus = 'NOMINAL'
+          setHudMessage('NEW BOUNTY INCOMING // COBRA MK III')
+        }
       }
 
-      // Viper umkreist das Cobra
-      viperOrbit += 0.4 * dt
-      viperRy    += 0.9 * dt
+      // Update 3D Stars (moving based on speed + player steering)
+      const flightSpeed = 3.8 * dt
+      for (const s of stars) {
+        s.z -= flightSpeed
+        // Yaw shift
+        s.x -= steerYaw * 12 * dt
+        // Pitch shift
+        s.y += steerPitch * 12 * dt
 
-      // HUD-Werte fluktuieren leicht
-      if (Math.random() > 0.97) { score += 10; cash += 0.3 }
-
-      // Status-Nachricht
-      msgTimer -= dt * 1000
-      if (msgTimer <= 0) {
-        msgText  = MESSAGES[Math.floor(Math.random() * MESSAGES.length)]
-        msgAlpha = 1.0
-        msgTimer = 5000 + Math.random() * 7000
+        if (s.z <= 0.1) {
+          s.z = 12.0
+          s.x = (Math.random() - 0.5) * 8.0
+          s.y = (Math.random() - 0.5) * 6.0
+        }
       }
-      if (msgAlpha > 0) msgAlpha = Math.max(0, msgAlpha - dt * 0.4)
 
-      // ── Rendering ─────────────────────────────────────────────────────────
+      // Update Debris Particles
+      for (let i = debris.length - 1; i >= 0; i--) {
+        const d = debris[i]
+        d.x += d.vx * dt
+        d.y += d.vy * dt
+        d.z += d.vz * dt
+        d.vx += (0 - d.vx) * 0.25 * dt
+        d.vy += (0 - d.vy) * 0.25 * dt
+        d.vz += (0 - d.vz) * 0.25 * dt
+        
+        // Offset relative to steering
+        d.x -= steerYaw * 12 * dt
+        d.y += steerPitch * 12 * dt
 
-      // Schritt 1: Hintergrund schwarz
+        if (d.z <= 0.1 || d.z > 14) {
+          debris.splice(i, 1)
+        }
+      }
+
+      // ── Laser Fire Logic ───────────────────────────────────────────────────
+      laserTimer -= dt
+      if (targetStatus !== 'DESTROYED') {
+        const dx = Math.abs(targetPos.x / targetPos.z)
+        const dy = Math.abs(targetPos.y / targetPos.z)
+        // If enemy is inside crosshair reticle, shoot lasers!
+        if (dx < 0.12 && dy < 0.12 && targetPos.z > 1.2 && targetPos.z < 10) {
+          if (laserTimer <= 0) {
+            laserPulseActive = true
+            laserTimer = 0.55 // fire rate
+            
+            // Apply damage
+            targetShield -= 20
+            if (targetShield <= 0) {
+              targetStatus = 'DESTROYED'
+              targetSpawnTimer = 4.0
+              score += 1
+              cash += 150.0
+              setHudMessage('TARGET DESTROYED // BOUNTY SECURED (+150.0 CR)')
+              
+              // Spawn explosion debris
+              debris = Array.from({ length: 48 }, () => {
+                const angle1 = Math.random() * Math.PI * 2
+                const angle2 = Math.random() * Math.PI * 2
+                const speed = 2.0 + Math.random() * 4.0
+                return {
+                  x: targetPos.x,
+                  y: targetPos.y,
+                  z: targetPos.z,
+                  vx: speed * Math.sin(angle1) * Math.cos(angle2),
+                  vy: speed * Math.sin(angle1) * Math.sin(angle2),
+                  vz: speed * Math.cos(angle1),
+                  size: 1 + Math.random() * 3
+                }
+              })
+            } else if (targetShield <= 40) {
+              targetStatus = 'SHIELDS_LOW'
+              setHudMessage('WARNING: TARGET SHIELDS CRITICAL')
+            }
+            
+            hitFlashActive = true
+            hitFlashTimer = 0.10
+          }
+        }
+      }
+
+      if (hitFlashActive) {
+        hitFlashTimer -= dt
+        if (hitFlashTimer <= 0) {
+          hitFlashActive = false
+        }
+      }
+
+      if (laserTimer < 0.35) {
+        laserPulseActive = false
+      }
+
+      // HUD messages cycling
+      messageTimer -= dt
+      if (messageTimer <= 0) {
+        if (targetStatus !== 'DESTROYED' && targetShield > 0) {
+          setHudMessage(messages[Math.floor(Math.random() * messages.length)])
+        }
+        messageTimer = 5.0 + Math.random() * 5.0
+      }
+
+      // ── RENDERING ──────────────────────────────────────────────────────────
       ctx.fillStyle = '#000000'
       ctx.fillRect(0, 0, W, H)
 
-      // Schritt 2: Sterne (statisch — nur Punkte, keine Bewegung)
+      // 1. Render Vector Stars
+      ctx.fillStyle = '#ffffff'
       for (const s of stars) {
-        ctx.fillStyle = 'rgba(255,255,255,0.85)'
+        if (s.z <= 0.1) continue
+        const sx = (s.x / s.z) * W * 0.65 + W / 2
+        const sy = (s.y / s.z) * viewH * 0.65 + viewH / 2
+        if (sx < 0 || sx >= W || sy < 0 || sy >= viewH) continue
+
+        const size = s.z < 3 ? 2 : 1
+        ctx.fillRect(Math.round(sx), Math.round(sy), size, size)
+      }
+
+      // 2. Render Target Ship (Cobra Mk III)
+      if (targetStatus !== 'DESTROYED') {
+        const ez = targetPos.z
+        if (ez > 0.1) {
+          // Scale based on depth
+          const scale = (W * 0.28) / ez
+          const cx = (targetPos.x / ez) * W * 0.65 + W / 2
+          const cy = (targetPos.y / ez) * viewH * 0.65 + viewH / 2
+
+          // Compute rotated ship vertices
+          const projVerts = COBRA_VERTICES.map(v => {
+            let rotated = rotateX(v, targetRot.x)
+            rotated = rotateY(rotated, targetRot.y)
+            rotated = rotateZ(rotated, targetRot.z)
+
+            return {
+              sx: cx + rotated.x * scale,
+              sy: cy - rotated.y * scale
+            }
+          })
+
+          // Draw wireframe edges in clean crisp white
+          ctx.strokeStyle = '#ffffff'
+          ctx.lineWidth = 1.2
+          ctx.beginPath()
+          for (const edge of COBRA_EDGES) {
+            const pA = projVerts[edge.a]
+            const pB = projVerts[edge.b]
+            ctx.moveTo(pA.sx, pA.sy)
+            ctx.lineTo(pB.sx, pB.sy)
+          }
+          ctx.stroke()
+
+          // Draw shield ripple if laser hit
+          if (hitFlashActive) {
+            ctx.strokeStyle = 'rgba(255, 110, 0, 0.45)'
+            ctx.lineWidth = 2.0
+            ctx.beginPath()
+            ctx.arc(cx, cy, scale * 1.8, 0, Math.PI * 2)
+            ctx.stroke()
+            
+            // Inner neon shield ripple
+            ctx.strokeStyle = 'rgba(255, 235, 120, 0.65)'
+            ctx.lineWidth = 1.0
+            ctx.beginPath()
+            ctx.arc(cx, cy, scale * 1.6, 0, Math.PI * 2)
+            ctx.stroke()
+          }
+
+          // Draw relative tag/scanner bracket around target
+          ctx.strokeStyle = 'rgba(255, 0, 0, 0.35)'
+          ctx.lineWidth = 1.0
+          const bSz = scale * 1.9
+          ctx.strokeRect(cx - bSz, cy - bSz, bSz * 2, bSz * 2)
+          
+          ctx.fillStyle = 'rgba(255, 0, 0, 0.6)'
+          ctx.font = '8px monospace'
+          ctx.textAlign = 'left'
+          ctx.fillText(`COBRA MK3 [${Math.round(ez * 100)}m]`, cx - bSz, cy - bSz - 4)
+        }
+      }
+
+      // 3. Render Explosion Debris Particles
+      ctx.fillStyle = '#ff6600'
+      for (const d of debris) {
+        if (d.z <= 0.1) continue
+        const sx = (d.x / d.z) * W * 0.65 + W / 2
+        const sy = (d.y / d.z) * viewH * 0.65 + viewH / 2
+        if (sx < 0 || sx >= W || sy < 0 || sy >= viewH) continue
+
+        const rad = (d.size * (W * 0.05)) / d.z
         ctx.beginPath()
-        ctx.arc(s.x * W, s.y * H, s.r, 0, Math.PI * 2)
+        ctx.arc(sx, sy, Math.max(1, rad), 0, Math.PI * 2)
         ctx.fill()
       }
 
-      // ── 3D-Bereich ────────────────────────────────────────────────────────
-      // Der 3D-Bereich füllt die oberen ~72% des Canvas.
-      // Der Rest gehört dem HUD.
-      const viewH  = H * 0.72
-      const cobCX  = W * 0.5   // Cobra zentriert
-      const cobCY  = viewH * 0.48
-      const cobScale = Math.min(W, viewH) * 0.3  // Skalierung am Panel-Inhalt orientiert
-
-      // Schritt 3: Cobra Mk III zeichnen
-      drawWireframe(
-        COBRA_VERTICES, COBRA_EDGES,
-        cobraRx, cobraRy, cobraRz,
-        cobCX, cobCY, cobScale,
-        '#00e860'  // helles Grün, wie Original-Elite-Phosphor
-      )
-
-      // Schritt 4: Viper zeichnen (kleiner, außen, kreisend)
-      // Viper-Position auf dem Bildschirm: Ellipsen-Orbit um das Cobra
-      const viperOrbitRpx = cobScale * viperOrbitR  // Orbit-Radius in Pixeln
-      const viperCX = cobCX + Math.cos(viperOrbit) * viperOrbitRpx * 2.2
-      const viperCY = cobCY + Math.sin(viperOrbit) * viperOrbitRpx * 0.8
-      // Nur zeichnen wenn im sichtbaren Bereich
-      if (viperCY > 10 && viperCY < viewH - 10) {
-        drawWireframe(
-          VIPER_VERTICES, VIPER_EDGES,
-          0, viperRy, 0,
-          viperCX, viperCY, cobScale * 0.3,
-          '#ff4444'  // Rot = feindliches Schiff
-        )
-      }
-
-      // ── HUD-Hintergrund ───────────────────────────────────────────────────
-      const hudY = viewH
-      const hudH = H - viewH
-
-      ctx.fillStyle = '#000500'
-      ctx.fillRect(0, hudY, W, hudH)
-      ctx.strokeStyle = '#1a5c1a'
-      ctx.lineWidth = 1
+      // 4. Draw Cockpit Reticle / Crosshair
+      const midX = W / 2
+      const midY = viewH / 2
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)'
+      ctx.lineWidth = 1.0
       ctx.beginPath()
-      ctx.moveTo(0, hudY)
-      ctx.lineTo(W, hudY)
+      // Center circle
+      ctx.arc(midX, midY, 20, 0, Math.PI * 2)
+      // Four crosshair ticks
+      ctx.moveTo(midX - 35, midY); ctx.lineTo(midX - 22, midY)
+      ctx.moveTo(midX + 22, midY); ctx.lineTo(midX + 35, midY)
+      ctx.moveTo(midX, midY - 35); ctx.lineTo(midX, midY - 22)
+      ctx.moveTo(midX, midY + 22); ctx.lineTo(midX, midY + 35)
       ctx.stroke()
 
-      // ── HUD-Text ─────────────────────────────────────────────────────────
-      const fSize = Math.max(7, Math.min(11, hudH * 0.28))
-      ctx.font = `${fSize}px monospace`
-      ctx.textBaseline = 'middle'
-      const ty = hudY + hudH * 0.3
+      // 5. Laser Fire Effect
+      if (laserPulseActive) {
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = 3.5
+        ctx.beginPath()
+        ctx.moveTo(W * 0.10, viewH)
+        ctx.lineTo(midX, midY)
+        ctx.moveTo(W * 0.90, viewH)
+        ctx.lineTo(midX, midY)
+        ctx.stroke()
 
-      ctx.fillStyle = '#33ff66'
-      ctx.fillText(`SCORE: ${score}`, W * 0.02, ty)
-      ctx.fillStyle = '#ccaa00'
-      ctx.fillText(`CASH: ${cash.toFixed(1)} CR`, W * 0.22, ty)
-      ctx.fillStyle = '#44aaff'
-      ctx.fillText(`FUEL: ${fuel} LY`, W * 0.48, ty)
-      ctx.fillStyle = '#aaffaa'
-      ctx.fillText(`LEGAL: ${legal}`, W * 0.70, ty)
-
-      // ── Radar ────────────────────────────────────────────────────────────
-      // Radar-Ellipse mittig im HUD-Bereich
-      const radarCX = W * 0.5
-      const radarCY = hudY + hudH * 0.72
-      const radarW  = Math.min(W * 0.18, hudH * 0.55)
-      const radarH  = radarW * 0.45  // Ellipse ist breiter als hoch
-
-      drawRadar(radarCX, radarCY, radarW, radarH)
-
-      // ── Status-Nachricht ──────────────────────────────────────────────────
-      if (msgAlpha > 0.01) {
-        const mFSize = Math.max(7, Math.min(12, W * 0.035))
-        ctx.font = `${mFSize}px monospace`
-        ctx.textBaseline = 'top'
-        ctx.fillStyle = `rgba(0,255,80,${msgAlpha})`
-        ctx.fillText('► ' + msgText, W * 0.02, viewH * 0.06)
+        ctx.strokeStyle = '#ff3300'
+        ctx.lineWidth = 1.5
+        ctx.beginPath()
+        ctx.moveTo(W * 0.10, viewH)
+        ctx.lineTo(midX, midY)
+        ctx.moveTo(W * 0.90, viewH)
+        ctx.lineTo(midX, midY)
+        ctx.stroke()
       }
 
-      // ── Schiff-Bezeichnung und Status oben ────────────────────────────────
-      ctx.font = `${Math.max(7, W * 0.022)}px monospace`
-      ctx.fillStyle = 'rgba(0,200,80,0.4)'
-      ctx.textBaseline = 'top'
-      ctx.fillText('COBRA MK III  //  CMDR JAMESON', W * 0.02, 4)
+      // 6. Laser Hit Flash overlay
+      if (hitFlashActive) {
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.08)'
+        ctx.fillRect(0, 0, W, viewH)
+      }
 
-      // Rekursiver rAF-Aufruf entfaellt: subscribe ruft loop() bei jedem Tick.
+      // ── HUD PANEL RENDERING (Lower 30% of screen) ──────────────────────────
+      ctx.fillStyle = '#050508'
+      ctx.fillRect(0, hudY, W, H - hudY)
+
+      ctx.strokeStyle = '#33333d'
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      ctx.moveTo(0, hudY); ctx.lineTo(W, hudY)
+      ctx.stroke()
+
+      const hudH = H - hudY
+      const rCX = W / 2
+      const rCY = hudY + hudH / 2
+      const rW = Math.min(W * 0.18, hudH * 0.6)
+      const rH = rW * 0.44
+
+      // Draw 3D Ellipse Radar Scanner Grid
+      ctx.strokeStyle = '#222230'
+      ctx.lineWidth = 1.0
+      ctx.beginPath()
+      ctx.ellipse(rCX, rCY, rW, rH, 0, 0, Math.PI * 2)
+      ctx.ellipse(rCX, rCY, rW * 0.6, rH * 0.6, 0, 0, Math.PI * 2)
+      ctx.ellipse(rCX, rCY, rW * 0.3, rH * 0.3, 0, 0, Math.PI * 2)
+      ctx.moveTo(rCX - rW, rCY); ctx.lineTo(rCX + rW, rCY)
+      ctx.moveTo(rCX, rCY - rH); ctx.lineTo(rCX, rCY + rH)
+      ctx.stroke()
+
+      // Plot target on 3D Ellipse Scanner
+      if (targetStatus !== 'DESTROYED') {
+        const maxRange = 10.0
+        // Scanner positions
+        const bx = rCX + (targetPos.x / maxRange) * rW
+        const by = rCY + (targetPos.z / maxRange) * rH
+
+        // Stem height representing vertical Y-offset
+        const stemLength = (targetPos.y / maxRange) * rH
+        const stemEndY = by - stemLength
+
+        // Draw vertical stem line to scanner plane
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)'
+        ctx.lineWidth = 0.8
+        ctx.beginPath()
+        ctx.moveTo(bx, by)
+        ctx.lineTo(bx, stemEndY)
+        ctx.stroke()
+
+        // Draw blip dot at the end of the stem (Red for enemy target)
+        ctx.fillStyle = '#ff3344'
+        ctx.beginPath()
+        ctx.arc(bx, stemEndY, 2.5, 0, Math.PI * 2)
+        ctx.fill()
+      }
+
+      // Draw HUD Vertical Status Bars (Shields, Target, Temp, Speed)
+      const drawVerticalBar = (val: number, label: string, cx: number, w: number, color: string) => {
+        const barH = hudH * 0.58
+        const topY = hudY + hudH * 0.16
+        ctx.fillStyle = '#111116'
+        ctx.fillRect(cx - w/2, topY, w, barH)
+
+        const filledH = barH * Math.max(0, Math.min(100, val)) / 100
+        ctx.fillStyle = color
+        ctx.fillRect(cx - w/2, topY + barH - filledH, w, filledH)
+
+        ctx.strokeStyle = '#333344'
+        ctx.lineWidth = 0.5
+        ctx.strokeRect(cx - w/2, topY, w, barH)
+
+        ctx.fillStyle = '#888899'
+        ctx.font = '7px monospace'
+        ctx.textAlign = 'center'
+        ctx.fillText(label, cx, topY + barH + 9)
+      };
+
+      // Player Speed pulse, Laser Temp
+      const speedVal = targetStatus === 'DESTROYED' ? 30 : 65 + 10 * Math.sin(t * 0.002)
+      const laserTemp = Math.max(10, Math.round(10 + 90 * (laserTimer / 0.55)))
+
+      drawVerticalBar(100, 'SHLD F', W * 0.05, 8, '#3b82f6')
+      drawVerticalBar(95, 'SHLD A', W * 0.10, 8, '#3b82f6')
+      drawVerticalBar(speedVal, 'SPEED', W * 0.15, 8, '#10b981')
+
+      // Target shield bar
+      const tShieldFill = targetStatus === 'DESTROYED' ? 0 : targetShield
+      drawVerticalBar(tShieldFill, 'T-SHLD', W * 0.85, 8, '#ef4444')
+      drawVerticalBar(laserTemp, 'TEMP', W * 0.90, 8, '#f59e0b')
+      drawVerticalBar(84, 'FUEL', W * 0.95, 8, '#a855f7')
+
+      // Text readouts (Score, Cash, Compass)
+      ctx.fillStyle = '#ffffff'
+      ctx.font = '8px monospace'
+      ctx.textAlign = 'left'
+      ctx.fillText(`CASH: ${cash.toFixed(1)} CR`, W * 0.22, hudY + hudH * 0.35)
+      ctx.fillText(`SCORE: ${score}`, W * 0.22, hudY + hudH * 0.65)
+
+      // Target Compass (Circle with direction dot)
+      const compCX = W * 0.76
+      const compCY = rCY
+      const compR = hudH * 0.24
+      ctx.strokeStyle = '#333344'
+      ctx.lineWidth = 1.0
+      ctx.beginPath()
+      ctx.arc(compCX, compCY, compR, 0, Math.PI * 2)
+      ctx.stroke()
+      
+      // Plot target direction on compass
+      if (targetStatus !== 'DESTROYED') {
+        const normAngle = Math.atan2(targetPos.y, targetPos.x)
+        const inFront = targetPos.z > 0
+        const dispR = inFront ? compR * 0.65 : compR * 0.3
+        
+        const dx = Math.cos(normAngle) * dispR
+        const dy = Math.sin(normAngle) * dispR
+        
+        ctx.fillStyle = inFront ? '#ef4444' : 'rgba(239, 68, 68, 0.35)'
+        ctx.beginPath()
+        ctx.arc(compCX + dx, compCY + dy, 2.0, 0, Math.PI * 2)
+        ctx.fill()
+      } else {
+        // Dot in center
+        ctx.fillStyle = '#555566'
+        ctx.beginPath()
+        ctx.arc(compCX, compCY, 1.5, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.fillStyle = '#888899'
+      ctx.font = '7px monospace'
+      ctx.textAlign = 'center'
+      ctx.fillText('COMPASS', compCX, hudY + hudH * 0.16 + hudH * 0.58 + 9)
+
+      // Header labels
+      ctx.fillStyle = 'rgba(255,255,255,0.2)'
+      ctx.font = '8px monospace'
+      ctx.textAlign = 'left'
+      ctx.fillText('FRONT VIEW', 12, 14)
+      ctx.textAlign = 'right'
+      ctx.fillText('COBRA MK III // STATUS DISPLAY', W - 12, 14)
     }
 
-    // Starten — Anmeldung am zentralen raf-coordinator.
     unsubscribe = subscribe(loop)
 
     return () => {
@@ -479,15 +578,22 @@ function ElitePanel() {
   }, [])
 
   return (
-    <Panel title="ELITE // COBRA MK III — JAMESON">
-      <div ref={containerRef} style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
-        <canvas
-          ref={canvasRef}
-          style={{ width: '100%', height: '100%', display: 'block' }}
-        />
+    <Panel title="ELITE // COBRA MK III VECTOR SCAN">
+      <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-black select-none flex flex-col">
+        <div className="flex-1 w-full relative">
+          <canvas
+            ref={canvasRef}
+            style={{ width: '100%', height: '100%', display: 'block' }}
+          />
+        </div>
+        {/* Ticker log for game messages */}
+        <div className="h-6 bg-[#040407] border-t border-[#1b1b22] px-3 flex items-center font-mono text-[8px] text-green-400 uppercase tracking-widest">
+          <span className="text-[#64748b] mr-2">SYS LOG:</span>
+          <span className="animate-pulse">{hudMessage}</span>
+        </div>
       </div>
     </Panel>
   )
 }
 
-export default memo(ElitePanel);
+export default memo(ElitePanel)

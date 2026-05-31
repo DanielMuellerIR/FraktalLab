@@ -636,6 +636,217 @@ const SCREENS: Screen[] = [
       ctx.fillRect(pad, H - Math.round(H * 0.08), W - pad * 2, 2)
     },
   },
+
+  // ── 11. Windows 10/11 BSOD ──────────────────────────────────────────────
+  {
+    duration: 8000,
+    render(ctx, W, H, t, _age) {
+      ctx.fillStyle = '#0078d7' // Modern Windows Blue
+      ctx.fillRect(0, 0, W, H)
+
+      const fs = Math.max(7, Math.min(11, W * 0.023))
+      const lineH = fs + 4
+      const pad = Math.round(W * 0.08)
+      ctx.textBaseline = 'top'
+
+      let y = Math.round(H * 0.12)
+
+      // Huge Sad Face :(
+      ctx.fillStyle = '#ffffff'
+      ctx.font = `${fs * 4}px system-ui, -apple-system, sans-serif`
+      ctx.fillText(':(', pad, y)
+      y += fs * 4.5
+
+      // Stop Message
+      ctx.font = `${fs + 2}px system-ui, -apple-system, sans-serif`
+      const text = "Your PC ran into a problem and needs to restart. We're just collecting some error info, and then we'll restart for you."
+      
+      // Wrap text helper for sans-serif
+      function wrapTextProportional(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxW: number, lineH: number) {
+        const words = text.split(' ')
+        let line = ''
+        let cy = y
+        for (const word of words) {
+          const test = line + word + ' '
+          if (ctx.measureText(test).width > maxW && line.length > 0) {
+            ctx.fillText(line, x, cy)
+            line = word + ' '
+            cy += lineH
+          } else {
+            line = test
+          }
+        }
+        if (line.trim().length > 0) { ctx.fillText(line, x, cy); cy += lineH }
+        return cy
+      }
+      
+      y = wrapTextProportional(ctx, text, pad, y, W - pad * 2, lineH * 1.3) + 15
+
+      // Percent
+      const pct = Math.min(100, Math.floor(((t % 8000) / 8000) * 100))
+      ctx.fillText(`${pct}% complete`, pad, y)
+      y += lineH * 2.2
+
+      // QR Code and Stop Info layout
+      const qrSize = Math.max(40, Math.min(75, H * 0.22))
+      
+      // Draw fake QR Code
+      const qx = pad
+      const qy = y
+      
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(qx - 4, qy - 4, qrSize + 8, qrSize + 8)
+      ctx.fillStyle = '#000000'
+      
+      const grid = 21
+      const cellSize = qrSize / grid
+      
+      // Draw noise
+      for (let r = 0; r < grid; r++) {
+        for (let c = 0; c < grid; c++) {
+          const isFinder = (r < 7 && c < 7) || (r < 7 && c >= grid - 7) || (r >= grid - 7 && c < 7)
+          if (!isFinder) {
+            // Pseudo-random noise seeded by row/col
+            const seed = Math.sin(r * 12.9898 + c * 78.233) * 43758.5453
+            if (seed - Math.floor(seed) > 0.45) {
+              ctx.fillRect(qx + c * cellSize, qy + r * cellSize, cellSize + 0.5, cellSize + 0.5)
+            }
+          }
+        }
+      }
+      
+      // Draw finders
+      const finders = [{ cx: 0, cy: 0 }, { cx: grid - 7, cy: 0 }, { cx: 0, cy: grid - 7 }]
+      for (const f of finders) {
+        ctx.fillStyle = '#000000'
+        ctx.fillRect(qx + f.cx * cellSize, qy + f.cy * cellSize, 7 * cellSize, 7 * cellSize)
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(qx + (f.cx + 1) * cellSize, qy + (f.cy + 1) * cellSize, 5 * cellSize, 5 * cellSize)
+        ctx.fillStyle = '#000000'
+        ctx.fillRect(qx + (f.cx + 2) * cellSize, qy + (f.cy + 2) * cellSize, 3 * cellSize, 3 * cellSize)
+      }
+
+      // Stop Info text
+      ctx.fillStyle = '#ffffff'
+      ctx.font = `${fs - 1}px system-ui, -apple-system, sans-serif`
+      let tx = qx + qrSize + 16
+      let ty = qy
+      
+      ctx.fillText('For more information about this issue and possible fixes, visit', tx, ty); ty += lineH
+      ctx.fillText('https://www.windows.com/stopcode', tx, ty); ty += lineH * 1.5
+      ctx.fillText('If you call a support person, give them this info:', tx, ty); ty += lineH
+      ctx.font = `bold ${fs - 1}px system-ui, -apple-system, sans-serif`
+      ctx.fillText('Stop Code: CRITICAL_PROCESS_DIED', tx, ty)
+    }
+  },
+  // ── 12. Modern macOS Kernel Panic ─────────────────────────────────────────
+  {
+    duration: 7000,
+    render(ctx, W, H, _t, _age) {
+      ctx.fillStyle = '#000000'
+      ctx.fillRect(0, 0, W, H)
+
+      // Apple Logo in the middle (white)
+      ctx.fillStyle = '#ffffff'
+      const lx = W / 2
+      const ly = H * 0.35
+      const size = Math.max(16, Math.min(32, H * 0.09))
+      
+      // Draw a simplified Apple logo using arc
+      ctx.beginPath()
+      ctx.arc(lx, ly, size * 0.7, 0, Math.PI * 2)
+      ctx.fill()
+      // Leaf
+      ctx.beginPath()
+      ctx.ellipse(lx + size * 0.3, ly - size * 0.8, size * 0.3, size * 0.15, Math.PI / 4, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Text in multiple languages
+      const fs = Math.max(8, Math.min(10, W * 0.02))
+      const lineH = fs + 4
+      ctx.font = `${fs}px system-ui, -apple-system, sans-serif`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'top'
+      ctx.fillStyle = '#dddddd'
+
+      let ty = H * 0.52
+      const panics = [
+        'Your computer restarted because of a problem. Press a key to continue.',
+        'Ihr Computer wurde aufgrund eines Problems neu gestartet. Bitte Taste drücken.',
+        'Votre ordinateur a redémarré en raison d’un problème. Appuyez sur une touche.',
+        'El ordenador se reinició debido a un problema. Pulse una tecla para continuar.'
+      ]
+      for (const line of panics) {
+        ctx.fillText(line, W / 2, ty, W * 0.85)
+        ty += lineH
+      }
+      ctx.textAlign = 'left'
+    }
+  },
+  // ── 13. Linux systemd Boot Abort ──────────────────────────────────────────
+  {
+    duration: 8000,
+    render(ctx, W, H, t, _age) {
+      ctx.fillStyle = '#000000'
+      ctx.fillRect(0, 0, W, H)
+
+      const fs = Math.max(7, Math.min(9.5, W * 0.022))
+      const lineH = fs + 3
+      ctx.font = `${fs}px monospace`
+      ctx.textBaseline = 'top'
+      const pad = 12
+      let y = 10
+
+      const bootLogs = [
+        { text: '[  OK  ] Started Show Plymouth Boot Screen.', success: true },
+        { text: '[  OK  ] Reached target Paths.', success: true },
+        { text: '[FAILED] Failed to start Load Kernel Modules.', fail: true },
+        { text: "See 'systemctl status systemd-modules-load.service' for details.", info: true },
+        { text: '[FAILED] Failed to mount /sysroot.', fail: true },
+        { text: "See 'systemctl status sysroot.mount' for details.", info: true },
+        { text: '[DEPEND] Dependency failed for Initrd Default Target.', warn: true },
+        { text: '[  OK  ] Reached target Basic System.', success: true },
+        { text: 'dracut-initqueue: Warning: /dev/disk/by-uuid/a3f4-b2c6 does not exist', warn: true },
+        { text: 'Starting Emergency Shell...', info: true },
+        { text: 'Generating "/run/initramfs/rdsosreport.txt"', info: true },
+        { text: 'Entering emergency mode. Exit shell to continue.', info: true },
+        { text: 'sh:grub2-editor$ ', prompt: true }
+      ]
+
+      for (const log of bootLogs) {
+        if (y + lineH > H) break;
+        
+        if (log.success) {
+          ctx.fillStyle = '#4ade80' // Green
+          ctx.fillText('[  OK  ]', pad, y)
+          ctx.fillStyle = '#ffffff'
+          ctx.fillText(log.text.substring(8), pad + ctx.measureText('[  OK  ] ').width, y)
+        } else if (log.fail) {
+          ctx.fillStyle = '#f87171' // Red
+          ctx.fillText('[FAILED]', pad, y)
+          ctx.fillStyle = '#ffffff'
+          ctx.fillText(log.text.substring(8), pad + ctx.measureText('[FAILED] ').width, y)
+        } else if (log.warn) {
+          ctx.fillStyle = '#fbbf24' // Yellow
+          ctx.fillText(log.text, pad, y)
+        } else if (log.prompt) {
+          ctx.fillStyle = '#ffffff'
+          ctx.fillText(log.text, pad, y)
+          
+          // Blinking cursor
+          const blink = Math.floor(t / 500) % 2 === 0
+          if (blink) {
+            ctx.fillStyle = '#ffffff'
+            ctx.fillRect(pad + ctx.measureText(log.text).width, y, 6, lineH - 2)
+          }
+        } else {
+          ctx.fillStyle = '#aaaaaa'
+          ctx.fillText(log.text, pad, y)
+        }
+        y += lineH
+      }
+    }
+  },
 ]
 
 function RetroErrorPanel() {

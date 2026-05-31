@@ -226,6 +226,29 @@ function AmiModPanel() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
+  // ResizeObserver für responsive Darstellung in kleinen Grid-Zellen
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dimensions, setDimensions] = useState({ width: 500, height: 350 });
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const obs = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setDimensions({
+          width: Math.round(entry.contentRect.width),
+          height: Math.round(entry.contentRect.height),
+        });
+      }
+    });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  const isNarrow = dimensions.width < 500;
+  const isUltraNarrow = dimensions.width < 365;
+  const isShort = dimensions.height < 320;
+
   // Defaults + User-Uploads in einer einzigen Liste. Reihenfolge: zuerst
   // Defaults (stabile Indizes), dann User-Uploads in Hinzufuege-Reihenfolge.
   const allTracks = useMemo<Track[]>(
@@ -656,6 +679,7 @@ function AmiModPanel() {
   return (
     <Panel title="AMIGA WORKBENCH // MOD PLAYER">
       <div
+        ref={containerRef}
         className="relative flex flex-col h-full overflow-hidden bg-[#c0c0c0] text-black border-2 border-t-white border-l-white border-b-[#404040] border-r-[#404040] font-mono text-xs select-none p-0.5"
         onDragEnter={onDragEnter}
         onDragOver={onDragOver}
@@ -681,7 +705,7 @@ function AmiModPanel() {
             <div className="w-3.5 h-3 bg-[#c0c0c0] border border-b-[#404040] border-r-[#404040] border-t-white border-l-white cursor-pointer active:border-t-black active:border-l-black flex items-center justify-center text-[7px] text-black select-none">
               ✕
             </div>
-            <span>ProTracker v2.3d // Workbench 3.0</span>
+            <span>{isUltraNarrow ? 'ProTracker' : isNarrow ? 'ProTracker v2.3d' : 'ProTracker v2.3d // Workbench 3.0'}</span>
           </div>
           <div className="text-white truncate max-w-[200px] font-bold text-[10px]">
             {mod?.name ? mod.name.trim() : 'UNTITLED'}
@@ -697,8 +721,8 @@ function AmiModPanel() {
         </div>
 
         {/* ─── Steuerung (Controls Bar) ────────────────────────────────── */}
-        <div className="flex items-center justify-between px-2 py-1 bg-[#c0c0c0] border-b border-[#808080] shrink-0">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-y-1 gap-x-2 px-2 py-1 bg-[#c0c0c0] border-b border-[#808080] shrink-0">
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
             <span className="text-neutral-800 text-[10px] font-bold">SONG:</span>
             <select
               value={trackIdx}
@@ -708,7 +732,9 @@ function AmiModPanel() {
                 shouldAutoPlayRef.current = true;
               }}
               disabled={loading}
-              className="bg-white border-2 border-t-neutral-600 border-l-neutral-600 border-b-white border-r-white text-black text-[10px] px-1 py-0.5 focus:outline-none cursor-pointer disabled:opacity-50"
+              className={`bg-white border-2 border-t-neutral-600 border-l-neutral-600 border-b-white border-r-white text-black text-[10px] px-1 py-0.5 focus:outline-none cursor-pointer disabled:opacity-50 truncate ${
+                isUltraNarrow ? 'max-w-[75px]' : isNarrow ? 'max-w-[100px]' : 'max-w-[150px]'
+              }`}
             >
               {/* Defaults zuerst (Indizes 0..DEFAULT_TRACKS.length-1). */}
               <optgroup label="Built-in">
@@ -744,48 +770,49 @@ function AmiModPanel() {
               onChange={onFilePickerChange}
               style={{ display: 'none' }}
             />
-            {/* Ordner-Picker. webkitdirectory ist nicht-standard, wird aber
-                von allen modernen Desktop-Browsern unterstuetzt. */}
-            <button
-              type="button"
-              title="Ganzen Ordner mit .mod-Dateien laden"
-              onClick={() => folderInputRef.current?.click()}
-              className="bg-[#c0c0c0] border-2 border-t-white border-l-white border-b-neutral-700 border-r-neutral-700 active:border-t-neutral-700 active:border-l-neutral-700 active:border-b-white active:border-r-white px-1.5 py-0.5 text-[10px] font-bold text-black cursor-pointer"
-            >
-              DIR…
-            </button>
-            <input
-              ref={folderInputRef}
-              type="file"
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              {...({ webkitdirectory: '', directory: '' } as any)}
-              multiple
-              onChange={onFolderPickerChange}
-              style={{ display: 'none' }}
-            />
+            {/* Ordner-Picker. Nur auf größeren Panel-Größen einblenden */}
+            {!isNarrow && (
+              <>
+                <button
+                  type="button"
+                  title="Ganzen Ordner mit .mod-Dateien laden"
+                  onClick={() => folderInputRef.current?.click()}
+                  className="bg-[#c0c0c0] border-2 border-t-white border-l-white border-b-neutral-700 border-r-neutral-700 active:border-t-neutral-700 active:border-l-neutral-700 active:border-b-white active:border-r-white px-1.5 py-0.5 text-[10px] font-bold text-black cursor-pointer"
+                >
+                  DIR…
+                </button>
+                <input
+                  ref={folderInputRef}
+                  type="file"
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  {...({ webkitdirectory: '', directory: '' } as any)}
+                  multiple
+                  onChange={onFolderPickerChange}
+                  style={{ display: 'none' }}
+                />
+              </>
+            )}
           </div>
-          <div className="flex items-center gap-2">
-            {mod && (
-              <span className="text-neutral-800 text-[10px] font-bold">
+          <div className="flex items-center gap-1.5">
+            {mod && !isUltraNarrow && (
+              <span className="text-neutral-800 text-[10px] font-bold whitespace-nowrap">
                 POS: {String(currentPosition + 1).padStart(2, '0')}/{String(mod.length).padStart(2, '0')}
               </span>
             )}
             <button
               onClick={handlePlayToggle}
               disabled={loading}
-              className="bg-[#c0c0c0] border-2 border-t-white border-l-white border-b-neutral-700 border-r-neutral-700 active:border-t-neutral-700 active:border-l-neutral-700 active:border-b-white active:border-r-white px-2 py-0.5 text-[10px] font-bold text-black transition-all disabled:opacity-50 cursor-pointer"
+              className="bg-[#c0c0c0] border-2 border-t-white border-l-white border-b-neutral-700 border-r-neutral-700 active:border-t-neutral-700 active:border-l-neutral-700 active:border-b-white active:border-r-white px-2 py-0.5 text-[10px] font-bold text-black transition-all disabled:opacity-50 cursor-pointer whitespace-nowrap"
             >
-              {loading ? 'LOADING...' : playing ? 'STOP' : 'PLAY AUDIO'}
+              {loading ? 'LOAD...' : playing ? 'STOP' : (isUltraNarrow ? 'PLAY' : 'PLAY AUDIO')}
             </button>
           </div>
         </div>
 
         {/* ─── Positionsregler (Scrubber) ─────────────────────────────────
             Range-Slider ueber die Pattern-Positionen des aktuellen Mods.
-            Springen via player.setRow(pos, 0). Hilfreich zum Debuggen
-            verdaechtiger Mods (Pattern-Wechsel reproduzierbar einzeln
-            anhoeren) und zum schnellen Navigieren. */}
-        {mod && mod.length > 1 && (
+            Versteckt bei kleinen Panel-Höhen um vertikalen Platz zu sparen. */}
+        {mod && mod.length > 1 && !isShort && (
           <div className="flex items-center gap-2 px-2 py-1 bg-[#c0c0c0] border-b border-[#808080] shrink-0">
             <style>{`
               /* Amiga-Workbench-Look fuer den Positionsregler. Tailwind kann
@@ -872,11 +899,6 @@ function AmiModPanel() {
               disabled={loading}
               onChange={(e) => {
                 const newPos = Number(e.target.value);
-                // Optimistisches UI-Update — der Worklet zieht via setRow
-                // beim naechsten Tick nach. justScrubbedRef verhindert,
-                // dass die folgende watchRows-Loop-Ende-Detektion das
-                // Rueckwaertsspringen mit dem natuerlichen Song-Wrap
-                // verwechselt und faelschlich stoppt.
                 justScrubbedRef.current = true;
                 lastPosRef.current = newPos;
                 setCurrentPosition(newPos);
@@ -884,13 +906,6 @@ function AmiModPanel() {
                 player.setRow(newPos, 0);
               }}
               onPointerDown={(e) => {
-                // Robuster Klick-zur-Position-Sprung: einige Browser-
-                // Varianten reagieren auf Track-Klicks ausserhalb des
-                // Thumbs nur mit einem kleinen Schritt statt einem
-                // direkten Sprung. Wir berechnen die Zielposition aus der
-                // Klick-X-Koordinate relativ zum Slider und triggern den
-                // Sprung manuell. Der native Drag-Pfad funktioniert
-                // anschliessend wie gewohnt (onChange feuert weiter).
                 if (loading) return;
                 const target = e.currentTarget;
                 const rect = target.getBoundingClientRect();
@@ -918,28 +933,30 @@ function AmiModPanel() {
         <div className="flex flex-1 overflow-hidden min-h-0 bg-[#808080] p-1 gap-1">
 
           {/* ── VU-Meter (links) ─────────────────────────────────────────── */}
-          <div className="flex flex-col justify-center gap-2 px-1 bg-[#c0c0c0] border-2 border-t-white border-l-white border-b-neutral-700 border-r-neutral-700 shrink-0 w-9 py-1 rounded-sm">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="flex flex-col items-center gap-0.5">
-                <span className="text-neutral-700 font-bold text-[8px]">
-                  CH{i + 1}
-                </span>
-                <div
-                  className="w-4 bg-black border border-neutral-600 relative overflow-hidden"
-                  style={{ height: '38px' }}
-                >
+          {!isUltraNarrow && (
+            <div className="flex flex-col justify-center gap-2 px-1 bg-[#c0c0c0] border-2 border-t-white border-l-white border-b-neutral-700 border-r-neutral-700 shrink-0 w-9 py-1 rounded-sm">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="flex flex-col items-center gap-0.5">
+                  <span className="text-neutral-700 font-bold text-[8px]">
+                    CH{i + 1}
+                  </span>
                   <div
-                    ref={(el) => { vuBarsRef.current[i] = el; }}
-                    className="absolute bottom-0 left-0 right-0"
-                    style={{
-                      height: '2%',
-                      background: 'linear-gradient(to top, #00aa00 0%, #00ff00 65%, #ffff00 65%, #ffaa00 85%, #ff0000 85%, #ff3333 100%)',
-                    }}
-                  />
+                    className="w-4 bg-black border border-neutral-600 relative overflow-hidden"
+                    style={{ height: '38px' }}
+                  >
+                    <div
+                      ref={(el) => { vuBarsRef.current[i] = el; }}
+                      className="absolute bottom-0 left-0 right-0"
+                      style={{
+                        height: '2%',
+                        background: 'linear-gradient(to top, #00aa00 0%, #00ff00 65%, #ffff00 65%, #ffaa00 85%, #ff0000 85%, #ff3333 100%)',
+                      }}
+                    />
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
 
           {/* ── Tracker-Tabelle (Mitte) ──────────────────────────────────── */}
           <div className="flex-1 overflow-hidden flex flex-col min-w-0 bg-[#000022] border-2 border-t-neutral-700 border-l-neutral-700 border-b-white border-r-white">
@@ -1101,108 +1118,112 @@ function AmiModPanel() {
           </div>
 
           {/* ── Sample-Liste (rechts) ────────────────────────────────────── */}
-          <div
-            className="bg-[#c0c0c0] border-2 border-t-white border-l-white border-b-neutral-700 border-r-neutral-700 shrink-0 flex flex-col overflow-hidden"
-            style={{ width: '185px' }}
-          >
+          {!isNarrow && (
             <div
-              className="border-b border-[#808080] px-1 py-0.5 text-neutral-800 font-bold text-[10px] text-center"
+              className="bg-[#c0c0c0] border-2 border-t-white border-l-white border-b-neutral-700 border-r-neutral-700 shrink-0 flex flex-col overflow-hidden"
+              style={{ width: '185px' }}
             >
-              INSTRUMENTS
-            </div>
-            
-            <div className="flex-1 overflow-y-auto scrollbar-thin p-1 bg-white border-b border-[#808080]">
-              {instrumentsToDisplay.length > 0 ? (
-                instrumentsToDisplay.map((inst, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-1"
-                    style={{
-                      fontSize: '9px',
-                      lineHeight: '1.3',
-                      color: inst.name ? '#000000' : '#888888',
-                    }}
-                  >
-                    <span className="text-[#0055aa] font-bold shrink-0">{inst.num}</span>
-                    <span className="truncate" title={inst.name}>{inst.name || "---"}</span>
-                  </div>
-                ))
-              ) : (
-                <div className="p-1 text-neutral-400 text-[9px] text-center">NO INST LOADED</div>
-              )}
-            </div>
+              <div
+                className="border-b border-[#808080] px-1 py-0.5 text-neutral-800 font-bold text-[10px] text-center"
+              >
+                INSTRUMENTS
+              </div>
+              
+              <div className="flex-1 overflow-y-auto scrollbar-thin p-1 bg-white border-b border-[#808080]">
+                {instrumentsToDisplay.length > 0 ? (
+                  instrumentsToDisplay.map((inst, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-1"
+                      style={{
+                        fontSize: '9px',
+                        lineHeight: '1.3',
+                        color: inst.name ? '#000000' : '#888888',
+                      }}
+                    >
+                      <span className="text-[#0055aa] font-bold shrink-0">{inst.num}</span>
+                      <span className="truncate" title={inst.name}>{inst.name || "---"}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-1 text-neutral-400 text-[9px] text-center">NO INST LOADED</div>
+                )}
+              </div>
 
-            {/* Status-Anzeige unten */}
-            <div
-              className="px-1 py-1 flex flex-col gap-0.5 bg-[#c0c0c0]"
-              style={{ fontSize: '9px' }}
-            >
-              <div className="flex justify-between text-neutral-700 font-bold">
-                <span>STATUS:</span>
-                <span className={playing ? 'text-[#008800] font-bold animate-pulse' : 'text-neutral-500'}>
-                  {playing ? 'PLAYING' : 'STOPPED'}
-                </span>
-              </div>
-              <div className="flex justify-between text-neutral-700 font-bold">
-                <span>ROW:</span>
-                <span ref={statusRowRef} className="text-black">
-                  {currentRowRef.current.toString().padStart(2, '0')}/63
-                </span>
-              </div>
-              <div className="flex justify-between text-neutral-700 font-bold">
-                <span>NAME:</span>
-                <span className="text-black truncate max-w-[100px]" title={mod?.name}>
-                  {mod?.name || '---'}
-                </span>
-              </div>
-              {/* Fuer User-Uploads gibt es keine Metadaten — Strich anzeigen.
-                  ARRANGER nur einblenden, wenn er sich vom Composer unter-
-                  scheidet (z. B. Speedball 2: Simon Rogers / Richard Joseph). */}
-              <div className="flex justify-between text-neutral-700 font-bold">
-                <span>COMPOSER:</span>
-                <span className="text-black truncate max-w-[100px]" title={allTracks[trackIdx]?.composer || ''}>
-                  {allTracks[trackIdx]?.composer || '—'}
-                </span>
-              </div>
-              {allTracks[trackIdx]?.arranger && allTracks[trackIdx]?.arranger !== allTracks[trackIdx]?.composer && (
+              {/* Status-Anzeige unten */}
+              <div
+                className="px-1 py-1 flex flex-col gap-0.5 bg-[#c0c0c0]"
+                style={{ fontSize: '9px' }}
+              >
                 <div className="flex justify-between text-neutral-700 font-bold">
-                  <span>ARRANGER:</span>
-                  <span className="text-black truncate max-w-[100px]" title={allTracks[trackIdx]?.arranger || ''}>
-                    {allTracks[trackIdx]?.arranger}
+                  <span>STATUS:</span>
+                  <span className={playing ? 'text-[#008800] font-bold animate-pulse' : 'text-neutral-500'}>
+                    {playing ? 'PLAYING' : 'STOPPED'}
                   </span>
                 </div>
-              )}
-              <div className="flex justify-between text-neutral-700 font-bold">
-                <span>PUBLISHER:</span>
-                <span className="text-black truncate max-w-[100px]" title={allTracks[trackIdx]?.publisher || ''}>
-                  {allTracks[trackIdx]?.publisher || '—'}
-                </span>
-              </div>
-              <div className="flex justify-between text-neutral-700 font-bold">
-                <span>YEAR:</span>
-                <span className="text-black">
-                  {allTracks[trackIdx]?.year || '—'}
-                </span>
+                <div className="flex justify-between text-neutral-700 font-bold">
+                  <span>ROW:</span>
+                  <span ref={statusRowRef} className="text-black">
+                    {currentRowRef.current.toString().padStart(2, '0')}/63
+                  </span>
+                </div>
+                <div className="flex justify-between text-neutral-700 font-bold">
+                  <span>NAME:</span>
+                  <span className="text-black truncate max-w-[100px]" title={mod?.name}>
+                    {mod?.name || '---'}
+                  </span>
+                </div>
+                {/* Fuer User-Uploads gibt es keine Metadaten — Strich anzeigen.
+                    ARRANGER nur einblenden, wenn er sich vom Composer unter-
+                    scheidet (z. B. Speedball 2: Simon Rogers / Richard Joseph). */}
+                <div className="flex justify-between text-neutral-700 font-bold">
+                  <span>COMPOSER:</span>
+                  <span className="text-black truncate max-w-[100px]" title={allTracks[trackIdx]?.composer || ''}>
+                    {allTracks[trackIdx]?.composer || '—'}
+                  </span>
+                </div>
+                {allTracks[trackIdx]?.arranger && allTracks[trackIdx]?.arranger !== allTracks[trackIdx]?.composer && (
+                  <div className="flex justify-between text-neutral-700 font-bold">
+                    <span>ARRANGER:</span>
+                    <span className="text-black truncate max-w-[100px]" title={allTracks[trackIdx]?.arranger || ''}>
+                      {allTracks[trackIdx]?.arranger}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between text-neutral-700 font-bold">
+                  <span>PUBLISHER:</span>
+                  <span className="text-black truncate max-w-[100px]" title={allTracks[trackIdx]?.publisher || ''}>
+                    {allTracks[trackIdx]?.publisher || '—'}
+                  </span>
+                </div>
+                <div className="flex justify-between text-neutral-700 font-bold">
+                  <span>YEAR:</span>
+                  <span className="text-black">
+                    {allTracks[trackIdx]?.year || '—'}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* ── Fußzeile ────────────────────────────────────────────────────── */}
-        <div
-          className="bg-[#c0c0c0] border-t border-neutral-500 px-2 py-0.5 shrink-0 flex items-center justify-between text-neutral-700 font-bold"
-          style={{ fontSize: '8px' }}
-        >
-          <span>♦ AMIGA PROTRACKER RENDERER ♦ TECH SHOWCASE — MUSIC © RESPECTIVE COMPOSERS &amp; PUBLISHERS</span>
-          <span>
-            {playing && (
-              <span className="text-[#008800] animate-pulse">▶ ACTIVE</span>
-            )}
-            {!playing && (
-              <span className="text-neutral-500">■ IDLE</span>
-            )}
-          </span>
-        </div>
+        {!isShort && (
+          <div
+            className="bg-[#c0c0c0] border-t border-neutral-500 px-2 py-0.5 shrink-0 flex items-center justify-between text-neutral-700 font-bold"
+            style={{ fontSize: '8px' }}
+          >
+            <span>♦ AMIGA PROTRACKER RENDERER ♦ TECH SHOWCASE — MUSIC © RESPECTIVE COMPOSERS &amp; PUBLISHERS</span>
+            <span>
+              {playing && (
+                <span className="text-[#008800] animate-pulse">▶ ACTIVE</span>
+              )}
+              {!playing && (
+                <span className="text-neutral-500">■ IDLE</span>
+              )}
+            </span>
+          </div>
+        )}
       </div>
     </Panel>
   );

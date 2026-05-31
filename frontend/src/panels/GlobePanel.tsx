@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from 'react'
 import ShaderPanel from '../ui/ShaderPanel'
 import Panel from '../ui/Panel'
+import { VECTOR_EARTH } from '../utils/vector-earth'
 
 const REAL_EARTH_SHADER = `
   precision highp float;
@@ -154,119 +155,133 @@ const REAL_EARTH_SHADER = `
   }
 `;
 
+const MEGACITIES = [
+  // North America
+  { lon: -74.00, lat: 40.71, r: 4.2 },   // New York
+  { lon: -118.24, lat: 34.05, r: 3.8 },  // Los Angeles
+  { lon: -87.62, lat: 41.87, r: 3.2 },   // Chicago
+  { lon: -99.13, lat: 19.43, r: 3.2 },   // Mexico City
+  { lon: -122.41, lat: 37.77, r: 2.8 },  // San Francisco
+  { lon: -73.56, lat: 45.50, r: 2.2 },   // Montreal
+  { lon: -95.36, lat: 29.76, r: 2.8 },   // Houston
+  { lon: -80.19, lat: 25.76, r: 2.2 },   // Miami
+  // South America
+  { lon: -46.63, lat: -23.55, r: 3.8 },  // Sao Paulo
+  { lon: -43.17, lat: -22.90, r: 2.8 },  // Rio de Janeiro
+  { lon: -58.38, lat: -34.60, r: 3.2 },  // Buenos Aires
+  { lon: -70.64, lat: -33.44, r: 2.2 },  // Santiago
+  { lon: -74.07, lat: 4.71, r: 2.2 },    // Bogota
+  // Europe
+  { lon: -0.12, lat: 51.50, r: 3.8 },    // London
+  { lon: 2.35, lat: 48.85, r: 3.2 },     // Paris
+  { lon: 37.61, lat: 55.75, r: 3.2 },    // Moscow
+  { lon: 12.49, lat: 41.90, r: 2.2 },    // Rome
+  { lon: 13.40, lat: 52.52, r: 2.2 },    // Berlin
+  { lon: -3.70, lat: 40.41, r: 2.2 },    // Madrid
+  { lon: 4.90, lat: 52.37, r: 2.2 },     // Amsterdam
+  { lon: 21.01, lat: 52.23, r: 1.8 },    // Warsaw
+  { lon: 29.00, lat: 41.00, r: 2.8 },    // Istanbul
+  // Africa
+  { lon: 31.23, lat: 30.04, r: 3.2 },    // Cairo
+  { lon: 28.04, lat: -26.20, r: 2.2 },   // Johannesburg
+  { lon: 3.37, lat: 6.52, r: 2.8 },      // Lagos
+  // Asia
+  { lon: 139.69, lat: 35.67, r: 4.8 },   // Tokyo
+  { lon: 121.47, lat: 31.23, r: 4.2 },   // Shanghai
+  { lon: 116.40, lat: 39.90, r: 3.8 },   // Beijing
+  { lon: 126.97, lat: 37.56, r: 3.8 },   // Seoul
+  { lon: 103.85, lat: 1.35, r: 3.2 },    // Singapore
+  { lon: 77.20, lat: 28.61, r: 3.8 },    // New Delhi
+  { lon: 72.87, lat: 19.07, r: 3.8 },    // Mumbai
+  { lon: 106.84, lat: -6.20, r: 3.2 },   // Jakarta
+  { lon: 120.98, lat: 14.59, r: 2.8 },   // Manila
+  { lon: 100.50, lat: 13.75, r: 2.8 },   // Bangkok
+  // Australia
+  { lon: 151.20, lat: -33.86, r: 2.8 },  // Sydney
+  { lon: 144.96, lat: -37.81, r: 2.2 },  // Melbourne
+]
+
 function GlobePanel() {
   const [earthCanvas, setEarthCanvas] = useState<HTMLCanvasElement | null>(null)
 
   useEffect(() => {
+    // Generate high-resolution 1024x512 texture canvas (absolute sharpness)
     const canvas = document.createElement('canvas')
-    canvas.width = 512
-    canvas.height = 256
+    canvas.width = 1024
+    canvas.height = 512
     const ctx = canvas.getContext('2d')
-    if (ctx) {
-      // Fill ocean (Red = 0, Green = 0)
-      ctx.fillStyle = 'rgb(0,0,0)'
-      ctx.fillRect(0, 0, 512, 256)
+    if (!ctx) return
 
-      let seed = 98765
-      const rnd = () => {
-        const x = Math.sin(seed++) * 10000
-        return x - Math.floor(x)
-      }
+    // 1. Fill ocean with solid black (R = 0, G = 0, B = 0)
+    ctx.fillStyle = '#000000'
+    ctx.fillRect(0, 0, 1024, 512)
 
-      // Draw seed-deterministic continent blobs (Red channel > 115 representing Land)
-      ctx.fillStyle = 'rgb(255, 0, 0)'
+    // 2. Draw landmasses in solid red (R = 255, G = 0, B = 0)
+    ctx.fillStyle = '#ff0000'
+    VECTOR_EARTH.forEach(poly => {
+      if (poly.length < 2) return
+      ctx.beginPath()
+      poly.forEach((pt, idx) => {
+        const px = (pt.lon + 180) * (1024 / 360)
+        const py = (90 - pt.lat) * (512 / 180)
+        if (idx === 0) ctx.moveTo(px, py)
+        else ctx.lineTo(px, py)
+      })
+      ctx.closePath()
+      ctx.fill()
+    })
+
+    // 3. Draw sharp golden megacity lights in Yellow (R = 255, G = 255, B = 0)
+    // Red = 255 keeps it classified as land, Green = 255 maps the light in the shader
+    MEGACITIES.forEach(c => {
+      const px = (c.lon + 180) * (1024 / 360)
+      const py = (90 - c.lat) * (512 / 180)
       
-      // Eurasia & Africa masses
-      ctx.beginPath()
-      ctx.arc(320, 90, 70, 0, Math.PI * 2) // Asia/Europe
-      ctx.arc(280, 140, 55, 0, Math.PI * 2) // Africa
-      ctx.arc(380, 110, 45, 0, Math.PI * 2) // East Asia
-      ctx.fill()
-
-      // Americas masses
-      ctx.beginPath()
-      ctx.arc(120, 80, 45, 0, Math.PI * 2) // North America
-      ctx.arc(150, 170, 48, 0, Math.PI * 2) // South America
-      ctx.fill()
+      const grad = ctx.createRadialGradient(px, py, 0, px, py, c.r * 1.8)
+      grad.addColorStop(0, 'rgba(255, 255, 0, 1.0)')      // core light
+      grad.addColorStop(0.3, 'rgba(255, 255, 0, 0.75)')    // metropolitan sprawl
+      grad.addColorStop(1, 'rgba(255, 255, 0, 0.0)')      // soft edge glow
       
-      // Central America bridge
-      ctx.lineWidth = 15
-      ctx.strokeStyle = 'rgb(255, 0, 0)'
+      ctx.fillStyle = grad
       ctx.beginPath()
-      ctx.moveTo(120, 100)
-      ctx.lineTo(140, 140)
-      ctx.stroke()
-
-      // Australia
-      ctx.beginPath()
-      ctx.arc(420, 180, 25, 0, Math.PI * 2)
+      ctx.arc(px, py, c.r * 1.8, 0, Math.PI * 2)
       ctx.fill()
+    })
 
-      // Antarctica
-      ctx.fillRect(0, 230, 512, 26)
+    // 4. Add subtle coastal light noise clusters for other populated regions
+    // (Eastern US, Europe, East Asia, Southeastern Brazil)
+    let seed = 98765
+    const rnd = () => {
+      const x = Math.sin(seed++) * 10000
+      return x - Math.floor(x)
+    }
 
-      // Add fractal land details on boundaries
-      ctx.fillStyle = 'rgb(255, 0, 0)'
-      for (let i = 0; i < 260; i++) {
-        let cx = 0, cy = 0
-        const group = rnd()
-        if (group < 0.35) {
-          cx = 260 + rnd() * 150
-          cy = 60 + rnd() * 120
-        } else if (group < 0.7) {
-          cx = 90 + rnd() * 80
-          cy = 50 + rnd() * 140
-        } else if (group < 0.85) {
-          cx = 390 + rnd() * 50
-          cy = 160 + rnd() * 40
-        } else {
-          cx = rnd() * 512
-          cy = rnd() * 256
-        }
-        const r = 4 + rnd() * 20
+    const drawLightSpeckle = (lon: number, lat: number, density: number, radius: number) => {
+      for (let i = 0; i < density; i++) {
+        const offsetLon = (rnd() - 0.5) * radius
+        const offsetLat = (rnd() - 0.5) * radius
+        const px = (lon + offsetLon + 180) * (1024 / 360)
+        const py = (90 - (lat + offsetLat)) * (512 / 180)
+
+        // Draw tiny light speckle
+        const grad = ctx.createRadialGradient(px, py, 0, px, py, 1.2 + rnd() * 1.5)
+        grad.addColorStop(0, 'rgba(255, 255, 0, 0.7)')
+        grad.addColorStop(1, 'rgba(255, 255, 0, 0.0)')
+
+        ctx.fillStyle = grad
         ctx.beginPath()
-        ctx.arc(cx, cy, r, 0, Math.PI * 2)
+        ctx.arc(px, py, 1.2 + rnd() * 1.5, 0, Math.PI * 2)
         ctx.fill()
       }
-
-      // Generate City lights strictly on land (Green channel)
-      const imgData = ctx.getImageData(0, 0, 512, 256)
-      const data = imgData.data
-      
-      for (let y = 0; y < 256; y++) {
-        for (let x = 0; x < 512; x++) {
-          const idx = (y * 512 + x) * 4
-          const isLandPixel = data[idx] > 115
-          
-          if (isLandPixel) {
-            const latFactor = Math.cos((y - 128) / 128 * Math.PI) // lower city density near polar/extreme latitudes
-            const cityProb = rnd()
-            
-            // Antarctica cutoff (no cities below lat 0.8)
-            if (y > 210) continue;
-
-            if (cityProb > 0.985 * (1.5 - latFactor)) {
-              const radius = Math.floor(1 + rnd() * 3)
-              for (let dy = -radius; dy <= radius; dy++) {
-                for (let dx = -radius; dx <= radius; dx++) {
-                  const ny = y + dy
-                  const nx = (x + dx + 512) % 512
-                  if (ny >= 0 && ny < 256) {
-                    const nidx = (ny * 512 + nx) * 4
-                    if (data[nidx] > 115) { // Confirm city light is on land
-                      const dist = Math.sqrt(dx * dx + dy * dy)
-                      const intens = Math.max(0, 255 * (1.0 - dist / radius))
-                      data[nidx + 1] = Math.max(data[nidx + 1], Math.floor(intens))
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-      ctx.putImageData(imgData, 0, 0)
     }
+
+    // Speckle high density areas
+    drawLightSpeckle(-95.0, 38.0, 50, 12.0)  // Eastern/Central USA
+    drawLightSpeckle(10.0, 50.0, 60, 10.0)   // Western & Central Europe
+    drawLightSpeckle(115.0, 30.0, 60, 10.0)  // Eastern China
+    drawLightSpeckle(135.0, 35.0, 25, 4.0)   // Japan islands
+    drawLightSpeckle(-48.0, -22.0, 20, 5.0)  // Southeastern Brazil (Rio/Sao Paulo region)
+
     setEarthCanvas(canvas)
   }, [])
 
@@ -285,7 +300,7 @@ function GlobePanel() {
       fragmentShader={REAL_EARTH_SHADER}
       title="GLOBAL SURVEILLANCE // PLANET WATCH"
       attribution="Procedural Real-World Globe Mapping"
-      textureData={{ data: earthCanvas, width: 512, height: 256 }}
+      textureData={{ data: earthCanvas, width: 1024, height: 512 }}
     />
   )
 }

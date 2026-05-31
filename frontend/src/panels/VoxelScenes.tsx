@@ -351,6 +351,7 @@ function makeVoxelScene(
       uCamPos: [0.0, 0.0],
       uAngle: 0.0,
       uCamH: 100.0,
+      uRoll: 0.0,
     })
 
     useEffect(() => {
@@ -395,25 +396,52 @@ function makeVoxelScene(
         const targetSpeed = Math.sqrt(c.targetVx*c.targetVx + c.targetVy*c.targetVy)
         if (targetSpeed < speedMin) { c.targetVx += (Math.random()-0.5)*1.0; c.targetVy += (Math.random()-0.5)*1.0 }
         if (targetSpeed > speedMax) { c.targetVx *= speedMax/targetSpeed; c.targetVy *= speedMax/targetSpeed }
+        let camH = 100
+        let roll = 0.0
 
-        c.x = ((c.x + c.vx * dt/16) % HMAP + HMAP) % HMAP
-        c.y = ((c.y + c.vy * dt/16) % HMAP + HMAP) % HMAP
-        c.angle += c.va * dt/16
+        if (title.includes('LAVA')) {
+          // Volcanic spiral orbit trajectory around map center (256, 256)
+          const centerX = 256.0
+          const centerY = 256.0
+          const orbitRadius = 150.0 + 85.0 * Math.sin(t * 0.00015)
+          const orbitAngle = t * 0.00022
+          
+          c.x = centerX + Math.cos(orbitAngle) * orbitRadius
+          c.y = centerY + Math.sin(orbitAngle) * orbitRadius
+          // Dynamic camera orientation looking inward with lead angle
+          c.angle = orbitAngle + Math.PI + 0.38 * Math.cos(t * 0.00025)
+          
+          const tx = Math.floor(c.x) & (HMAP - 1)
+          const ty = Math.floor(c.y) & (HMAP - 1)
+          let terrainAtCam = heightmap[ty * HMAP + tx]
+          if (waveGlsl) {
+            terrainAtCam += Math.sin(tx * 0.15 + t * 0.003) * 6.0
+          }
+          // Steep 3D dive/rise cycle
+          const heightCycle = Math.sin(t * 0.00035) * 0.5 + 0.5 // 0..1
+          camH = Math.max(terrainAtCam + camHFloor, camHBase + camHAmp * (heightCycle * 3.8 - 1.2))
+          roll = 0.55 * Math.sin(t * 0.0003) // Dynamic banking roll
+        } else {
+          c.x = ((c.x + c.vx * dt/16) % HMAP + HMAP) % HMAP
+          c.y = ((c.y + c.vy * dt/16) % HMAP + HMAP) % HMAP
+          c.angle += c.va * dt/16
 
-        const tx = Math.floor(c.x) & (HMAP - 1)
-        const ty = Math.floor(c.y) & (HMAP - 1)
-        let terrainAtCam = heightmap[ty * HMAP + tx]
-        if (waveGlsl) {
-          terrainAtCam += Math.sin(tx * 0.15 + t * 0.003) * 6.0
+          const tx = Math.floor(c.x) & (HMAP - 1)
+          const ty = Math.floor(c.y) & (HMAP - 1)
+          let terrainAtCam = heightmap[ty * HMAP + tx]
+          if (waveGlsl) {
+            terrainAtCam += Math.sin(tx * 0.15 + t * 0.003) * 6.0
+          }
+          camH = Math.max(terrainAtCam + camHFloor, camHBase + camHAmp * Math.sin(t * 0.0004))
+          roll = 0.0
         }
-        const camH = Math.max(terrainAtCam + camHFloor, camHBase + camHAmp * Math.sin(t * 0.0004))
 
         const u = uniformsRef.current
         u.uCamPos[0] = c.x
         u.uCamPos[1] = c.y
         u.uAngle = c.angle
         u.uCamH = camH
-
+        u.uRoll = roll
         // Rekursiver rAF-Aufruf entfaellt: subscribe ruft loop() jeden Tick.
       }
 
@@ -428,6 +456,7 @@ function makeVoxelScene(
       uniform vec2 uCamPos;
       uniform float uAngle;
       uniform float uCamH;
+      uniform float uRoll;
 
       ${colorGlsl}
 
@@ -440,45 +469,78 @@ function makeVoxelScene(
         vec3 horizonSkyCol = ${title.includes('LAVA') ? 'vec3(0.55, 0.11, 0.02)' : 'vec3(0.0, 0.35, 0.25)'};
         vec3 spaceCol = ${title.includes('LAVA') ? 'vec3(0.04, 0.005, 0.0)' : 'vec3(0.0, 0.02, 0.05)'};
 
-        float skyY = fragCoord.y - horizon;
-        if (skyY >= 0.0) {
-            float skyGlow = exp(-skyY * 0.03);
-            vec3 skyCol = horizonSkyCol * skyGlow + spaceCol;
+        // Rotate screen coordinates by uRoll to support rolling flight
+        vec2 screen = fragCoord - iResolution.xy * 0.5;
+        float cr = cos(uRoll);
+        float sr = sin(uRoll);
+        vec2 rotScreen = screen * mat2(cr, sr, -sr, cr);
+
+        float skyY = rotScreen.y;
+        float slope = skyY / scale;
+
+        // If the ray points upwards (slope > 0) and we start above the terrain, we might miss the terrain
+        if (slope > 0.0 && uCamH > 255.0) {
+            float skyGlow = exp(-skyY * 0.025);
+            vec3 skyCol = mix(spaceCol, horizonSkyCol, skyGlow);
             fragColor = vec4(skyCol, 1.0);
             return;
         }
 
-        float rayAngle = uAngle - fov/2.0 + (fragCoord.x / iResolution.x) * fov;
+        float rayAngle = uAngle - fov/2.0 + ((rotScreen.x + iResolution.x * 0.5) / iResolution.x) * fov;
         float rdx = cos(rayAngle);
         float rdy = sin(rayAngle);
 
         float hitZ = -1.0;
         float hitHeight = 0.0;
         float z = 1.0;
+        float prevZ = 1.0;
         for (int i = 0; i < 300; i++) {
             if (z >= 600.0) break;
             vec2 wpos = uCamPos + vec2(rdx * z, rdy * z);
-            float wz = uCamH + (fragCoord.y - horizon) * z / scale;
+            float wz = uCamH + slope * z;
             
             float th = texture2D(uHeightmap, wpos / 512.0).r * 255.0;
             ${waveGlsl ? `th += ${waveGlsl};` : ''}
             
             if (wz < th) {
+                // Refine intersection point via binary search
+                float t_refine = 0.5;
+                for (int j = 0; j < 4; j++) {
+                    float currZ = mix(prevZ, z, t_refine);
+                    vec2 wpos_c = uCamPos + vec2(rdx * currZ, rdy * currZ);
+                    float wz_c = uCamH + slope * currZ;
+                    float th_c = texture2D(uHeightmap, wpos_c / 512.0).r * 255.0;
+                    ${waveGlsl ? `th_c += ${waveGlsl.replace(/wpos\./g, 'wpos_c.')};` : ''}
+                    if (wz_c < th_c) {
+                        z = currZ;
+                        t_refine *= 0.5;
+                    } else {
+                        prevZ = currZ;
+                        t_refine = (t_refine + 1.0) * 0.5;
+                    }
+                }
                 hitZ = z;
                 hitHeight = th;
                 break;
             }
-            z += 1.0 + z * 0.015;
+            prevZ = z;
+            z += 1.0 + z * 0.012;
         }
 
+        vec3 skyCol = mix(spaceCol, horizonSkyCol, exp(-max(0.0, skyY) * 0.025));
+
+        // Soft vertical fade near the horizon/sky to prevent hard clipping border
+        float verticalFade = smoothstep(-35.0, -2.0, skyY);
+
         if (hitZ < 0.0) {
-            fragColor = vec4(horizonSkyCol + spaceCol, 1.0);
+            fragColor = vec4(skyCol, 1.0);
             return;
         }
 
         float fog = clamp(hitZ / far, 0.0, 1.0);
-        vec3 col = getTerrainColor(hitHeight, fog);
-        col = mix(col, horizonSkyCol + spaceCol, fog);
+        float totalFog = max(fog, verticalFade);
+        vec3 col = getTerrainColor(hitHeight, totalFog);
+        col = mix(col, skyCol, totalFog);
 
         ${brightBoost ? `
         float lum = max(col.r, max(col.g, col.b));
@@ -487,9 +549,9 @@ function makeVoxelScene(
         }
         ` : ''}
 
-        float wz_above = uCamH + ((fragCoord.y + 1.0) - horizon) * hitZ / scale;
+        float wz_above = uCamH + (skyY + 1.0) * hitZ / scale;
         bool isTop = (wz_above >= hitHeight);
-        float fade = 1.0 - fog;
+        float fade = 1.0 - totalFog;
         if (isTop) {
             col = mix(col, vec3(200.0/255.0 * fade + 55.0/255.0, fade, fade), 0.7);
         }
@@ -594,18 +656,56 @@ export const VoxelThermal = makeVoxelScene(
   },
 )
 
-// Lava: heightmap with extra high frequencies
-const hmLava = buildHeightmap([
-  { sx: 0.008, sy: 0.006, amp: 28 },
-  { sx: 0.022, sy: 0.017, amp: 52, px: 2.3, py: 1.1 },
-  { sx: 0.053, sy: 0.041, amp: 22, px: 0.9, py: 3.2 },
-  { sx: 0.11,  sy: 0.083, amp: 18, px: 1.5, py: 0.8 },
-  { sx: 0.22,  sy: 0.166, amp: 9,  px: 3.1, py: 2.4 },
-])
+// Lava: heightmap with extra high frequencies and ridged features
+const hmLava = (() => {
+  const hm = new Uint8Array(HMAP * HMAP)
+  for (let y = 0; y < HMAP; y++) {
+    for (let x = 0; x < HMAP; x++) {
+      let n1 = Math.sin(x * 0.008) * Math.cos(y * 0.006)
+      let n2 = Math.sin(x * 0.022 + 2.3) * Math.cos(y * 0.017 + 1.1)
+      let n3 = Math.sin(x * 0.053 + 0.9) * Math.cos(y * 0.041 + 3.2)
+      let n4 = Math.sin(x * 0.11 + 1.5) * Math.cos(y * 0.083 + 0.8)
+      
+      let r1 = 1.0 - Math.abs(n1)
+      let r2 = 1.0 - Math.abs(n2)
+      let r3 = 1.0 - Math.abs(n3)
+      let r4 = 1.0 - Math.abs(n4)
+      
+      let v = 45 + 115 * r1 + 65 * (r2 * r2) + 25 * r3 + 12 * r4
+      hm[y * HMAP + x] = Math.max(0, Math.min(255, Math.round(v)))
+    }
+  }
+  return hm
+})()
 
 // ── Variante: NEON GRID ───────────────────────────────────────────────────────
-import VectorHudPanel from './VectorHudPanel'
-export const VoxelNeon = VectorHudPanel
+const NEON_GLSL_COLOR = `
+  vec3 getTerrainColor(float th, float fog) {
+    float t = th / 255.0;
+    float f = 1.0 - fog * 0.65;
+    vec3 col = mix(vec3(0.95, 0.02, 0.65), vec3(0.0, 0.9, 0.95), sin(t * 10.0 + iTime * 1.5) * 0.5 + 0.5);
+    return col * f;
+  }
+`
+
+const hmNeon = buildHeightmap([
+  { sx: 0.012, sy: 0.012, amp: 40 },
+  { sx: 0.035, sy: 0.035, amp: 22, px: 0.8, py: 1.2 },
+])
+
+export const VoxelNeon = makeVoxelScene(
+  'VOXEL NEON // RETRO SYNTH',
+  480, 300,
+  hmNeon,
+  NEON_GLSL_COLOR,
+  { vx: 1.2, vy: 0.6, va: 0.0006, speedMin: 0.8, speedMax: 2.5 },
+  {
+    camHBase: 85, camHAmp: 20, camHFloor: 42,
+    brightBoost: 1.3,
+    brightThreshold: 160,
+    waveGlsl: 'sin(wpos.x * 0.09 + iTime * 2.2) * 10.0 + cos(wpos.y * 0.09 - iTime * 1.8) * 10.0',
+  }
+)
 
 // ── Variante: LAVA FLOW ───────────────────────────────────────────────────────
 const LAVA_GLSL_COLOR = `
@@ -648,5 +748,5 @@ export const VoxelLava = makeVoxelScene(
 )
 
 // ── Variante: PHOSPHOR TERRAIN ────────────────────────────────────────────────
-import NeuralNetPanel from './NeuralNetPanel'
-export const VoxelMatrix = NeuralNetPanel
+import { MengerSpongeScene } from './DEFractalScenes'
+export const VoxelMatrix = MengerSpongeScene
