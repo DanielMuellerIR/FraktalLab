@@ -6,7 +6,17 @@ let paused = false
 function tick(t: number) {
   if (!paused) {
     for (const cb of callbacks) {
-      cb(t)
+      // WICHTIG: jeden Panel-Callback isoliert ausführen. Würde ein einzelner
+      // Callback eine Exception werfen, bräche sonst die for-Schleife ab UND die
+      // Exception verließe tick() — das abschließende requestAnimationFrame(tick)
+      // würde nie erreicht, die GESAMTE geteilte rAF-Schleife stürbe und ALLE
+      // Panels würden einfrieren. Mit try/catch betrifft ein Fehler nur das
+      // betroffene Panel; alle anderen laufen weiter.
+      try {
+        cb(t)
+      } catch (e) {
+        console.error('[raf-coordinator] Panel-Callback hat geworfen (übersprungen):', e)
+      }
     }
   }
   if (callbacks.size > 0) {
