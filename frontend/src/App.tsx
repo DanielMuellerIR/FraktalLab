@@ -516,6 +516,10 @@ function generateLayout(id: number, reviews: ReviewEntry[], targetCellCount?: nu
   // nur auf Zellen mit passendem Seitenverhältnis.
   let textPtr = 0
   const usedGfxAs = new Set<number>()
+  // Anzahl bereits platzierter WebGL-Panels — gegen das Browser-Kontextlimit
+  // gedeckelt (s. GL_PANELS / MAX_GL_PANELS_PER_LAYOUT). Ist das Kontingent voll,
+  // werden nur noch Canvas-2D-/DOM-Panels eingesetzt → kein "SLOT EVICTED" mehr.
+  let glCount = 0
 
   cells.forEach(cell => {
     if (cell.type === 'text') {
@@ -524,24 +528,25 @@ function generateLayout(id: number, reviews: ReviewEntry[], targetCellCount?: nu
       }
     } else if (cell.type === 'gfx') {
       const cellA = cellAspect(cell)
+      const glBudgetFull = glCount >= MAX_GL_PANELS_PER_LAYOUT
+
+      // Kandidat ist gültig, wenn Aspect passt UND (GL-Budget frei ODER Panel
+      // braucht keinen GL-Kontext).
+      const candidateOk = (idx: number): boolean => {
+        if (usedGfxAs.has(idx)) return false
+        const name = getCompName(gfxPool[idx])
+        const pA = PANEL_ASPECT[name] ?? 'ANY'
+        if (!aspectMatches(pA, cellA)) return false
+        if (glBudgetFull && isGLPanel(name)) return false
+        return true
+      }
 
       function findGfx(candidates: number[], fallback: number[]): number | undefined {
-        for (let i = 0; i < candidates.length; i++) {
-          const idx = candidates[i]
-          if (usedGfxAs.has(idx)) continue
-          const name = getCompName(gfxPool[idx])
-          const pA = PANEL_ASPECT[name] ?? 'ANY'
-          if (aspectMatches(pA, cellA)) return idx
-        }
-        // Fallback (andere Größenklasse) — aber WEITERHIN nur aspect-konform.
-        // Sonst landet z.B. ein SQUARE-Panel (C64) in einer WIDE-Zelle und wird
-        // breitgezogen. Lieber Zelle leer lassen als Seitenverhältnis brechen.
-        for (const idx of fallback) {
-          if (usedGfxAs.has(idx)) continue
-          const name = getCompName(gfxPool[idx])
-          const pA = PANEL_ASPECT[name] ?? 'ANY'
-          if (aspectMatches(pA, cellA)) return idx
-        }
+        for (const idx of candidates) if (candidateOk(idx)) return idx
+        // Fallback (andere Größenklasse) — weiterhin aspect- UND GL-budget-konform.
+        // Lieber Zelle leer lassen als Seitenverhältnis brechen oder Kontext-Limit
+        // sprengen.
+        for (const idx of fallback) if (candidateOk(idx)) return idx
         return undefined
       }
 
@@ -559,6 +564,7 @@ function generateLayout(id: number, reviews: ReviewEntry[], targetCellCount?: nu
       if (idx != null) {
         cell.panelIdx = idx
         usedGfxAs.add(idx)
+        if (isGLPanel(getCompName(gfxPool[idx]))) glCount++
       }
     }
   })
@@ -1960,5 +1966,43 @@ function panelMayBeLarge(name: string): boolean {
   if (NO_LARGE_PANELS.has(name)) return false
   if (LARGE_PANELS.has(name)) return true
   return PANEL_ASPECT[name] !== 'TEXT'
+}
+
+// ── WebGL-Kontingent (Fix "SLOT EVICTED") ───────────────────────────────────
+// Browser deckeln aktive WebGL-Kontexte (~8–16/Tab). Bei hoher Auslastung
+// (Proxima ~30 Kacheln) übersteigt die Zahl der GL-Panels den Pool (siehe
+// utils/webgl-pool.ts, MAX_GL_CONTEXTS=12) → der Pool verdrängt überzählige
+// Kontexte und die betroffenen Panels zeigen dauerhaft "SLOT EVICTED TO CONSERVE
+// POWER" (sie reaktivieren nur bei Sichtbarkeitswechsel — in einer statischen
+// Galerie nie). Lösung: schon im Layout NIE mehr GL-Panels platzieren als der
+// Pool fasst. Überzählige Zellen bekommen Canvas-2D-/DOM-Panels. Diese Liste
+// nennt alle Komponenten, die einen WebGL-Kontext belegen (three.js, Shadertoy-
+// /ShaderPanel-basiert, FractalGL).
+const GL_PANELS = new Set<string>([
+  // Fraktal-Shader
+  'FractalSeahorse', 'FractalSpiral', 'FractalLightning', 'FractalElephant',
+  'FractalMini', 'FractalSatellite', 'FractalTendril', 'FractalDragon',
+  'FractalDendrite', 'FractalSwirl', 'FractalJulia',
+  'MandelbulbScene', 'ApollonianGasketScene', 'MengerSpongeScene',
+  // Demo-Szenen (three.js / GL)
+  'TunnelScene', 'RotozoomScene', 'FireScene', 'MetaballsScene',
+  'LissajousScene', 'StarfieldScene', 'ThreeBodyScene', 'DotCloudScene',
+  // Voxel-Renderer
+  'VoxelDemoColor', 'VoxelDemoBW', 'VoxelThermal', 'VoxelLava',
+  'VoxelNeon', 'VoxelNeonGrid', 'VoxelMatrix',
+  // Shadertoy-/ShaderPanel-basiert
+  'ShaderHackingCore', 'ShaderRetroWave', 'ShaderMandelbox',
+  'IQSmoothMin', 'IQDigitalStorm', 'PlasmaDemo', 'LovebyteShowcasePanel',
+  // Einzelne GL-Panels
+  'GlobePanel', 'MoonPanel', 'NuclearExplosionPanel',
+  'NeuralLinkDecoderPanel', 'CADRobotPanel',
+])
+
+// Sicherheitspuffer unter MAX_GL_CONTEXTS (12): das Fraktal-Hintergrundbild
+// (FractalView) belegt selbst einen Kontext, daher max. 11 GL-Panels im Grid.
+const MAX_GL_PANELS_PER_LAYOUT = 11
+
+function isGLPanel(name: string): boolean {
+  return GL_PANELS.has(name)
 }
 
