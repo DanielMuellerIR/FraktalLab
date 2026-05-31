@@ -13,7 +13,41 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 > - Lizenz jsSID = WTFPL (Attribution im Worklet-Header + unten dokumentiert). Emulation ist treu zu jsSID; verbleibende Mini-Klangunterschiede (6581-Filter, Combined Waveforms) sind jsSID-inhärent, kein Bug — gegen 2016-Sidplay verifiziert.
 > - Automatisierter Audio-Test: `frontend/test-sid-audio.mjs` (rendert echtes PCM, prüft Oszillation + Song-Fortschritt, Strukturguard gegen den Plain-Class-Bug).
 >
-> **Nächste Schritte — Panel-Rework Phase 2 (priorisiert nach Kritik-Intensität):**
+## Relaunch-Session (2026-05-31) — laufend auf `feat/relaunch-2026-05-31`
+
+**Getroffene Entscheidungen (User):**
+- **Präsentation:** Weg vom dichten Auto-Switch-Dashboard → **kuratierte Galerie** (weniger Panels gleichzeitig, mehr Weißraum, kein automatischer Komplett-Layout-Wechsel mehr, Nutzer erkundet selbst). Senkt auch Last (schwächere Hardware ruckelte).
+- **Name:** FraktalLab passt nicht mehr. Neuer Name wird festgelegt, **wenn das neue Layout steht** (Kandidaten: Wunderkammer / Phosphor / Cathode).
+- **Audio:** Auto-Play beim ersten Klick irgendwo → genau EINES von {AllYourBase, SID, Protracker}. Tippgeräusche (`AmbientSound.tsx`) raus + archivieren. AUDIO-Button → Mute/Play-Toggle. Player wechseln nie mittendrin (`LOCKED_PANELS`), AllYourBase nur nach Videoende.
+- **Inventar:** `frontend/src/panels/registry.ts` als Status-Quelle (ARCHIVED_PANELS, LOCKED_PANELS). Vollständige Code-Registry (Pools, Kategorien, Asset-Größen) wandert beim Layout-Redesign dorthin.
+
+**Erledigt in dieser Session:**
+- [x] **Fake-Text-Panels deaktiviert + archiviert** (Code bleibt, via `registry.ts`/Git wiederholbar): `NeuralLinkDecoderPanel`, `BitcoinMinerPanel`, `SocialEngineering`, `TrafficMonitor`, `NuclearTargets`, `PwdCracker`. Aus Pools + `ALL_PANELS` entfernt.
+
+**Offene Todos (aus User-Brief 2026-05-31):**
+- [ ] Audio-Konzept umsetzen (Auto-Play 1. Klick, Tippgeräusche raus+archiv, AUDIO-Button = Mute, Player locked, AllYourBase→Sid/Protracker nach Video, immer nur 1 von 3, random song)
+- [ ] Doppel-Panel-Bug (Menger 2×): Dedup in `generateLayout` + Fallback in `handleSkipSlot` (Z. ~943 picks random ohne Dedup)
+- [ ] Galerie-Layout entwerfen + umsetzen, Auto-Komplett-Wechsel raus, Panels größer/weniger, Perf
+- [ ] Dateigröße-Anzeige pro Panel im Reviewmodus (+ Gesamtgröße inkl. Songs bei Playern)
+- [ ] Oppenheimer (`NuclearExplosionPanel`): Sequenz Terrain→Blitz(3-5s)→Pilz; Nacht erhellen; Nacht entschärft verschwommen, Pilz kontrastreicher; krumme Säule + Kontaktverlust zum Schirm fixen; zufällige Varianz; Wolke bleibt stehen bis Variant-Wechsel; Name/Variant-Mismatch (Oppenheimer Day zeigt Nacht) fixen; Terrain+Himmel komplexer (Tag+Nacht)
+- [ ] `ThermonuclearWarPanel`: niemand überlebt, mehr Standorte (Pakistan/Indien/Nordkorea?), "Siberia" statt "Siberia Military Base", lesbarere Schrift, kein ALLCAPS
+- [ ] `SolarSystemPanel`: maßstabsgetreu (Min-Pixelgröße 1-2px), korrekte Abstände, Umlaufbahnen nur für Planeten (nicht Monde)
+- [ ] `StarfieldScene`: cyan-Raumschiff weg, Ego-Perspektive, Schüsse von uns zum Feind
+- [ ] `RotozoomScene`: mehr Random
+- [ ] `DNAHelix`: zufällige Start-Spezies statt immer Mensch
+- [ ] `MandelbulbScene` / `MengerSpongeScene`: zufällige Start-Farbe; `ApollonianGasketScene` Feintuning (Kontrast/Tempo)
+- [ ] Quantum Gravity (`PhysicsSandboxPanel`?): Energie aufbauen wenn Kugeln eng, nach Sekunden entladen (wegschleudern)
+- [ ] `C64Panel`: Font-Regression (c64_font.png wird geladen, erscheint aber nicht) + BASIC-Screen realistisch (exakte Zeilen/Spalten 40×25, korrekte Boot-Textposition — im Web recherchieren)
+- [ ] `RetroErrorPanel`: optional DOM-Text-Overlay für markier-/kopierbaren Text (System-Monospace, keine MB-Fonts)
+- [ ] `GlobePanel`: im Reviewmodus nicht rot umrandet + nie im Hauptbereich gesehen → prüfen/fixen
+- [ ] Nach Deaktivierung: Panelanzahl/Layout anpassen, Panels vergrößern (hängt am Galerie-Redesign)
+
+**Fakten/Notizen:**
+- AllYourBase-Video: extern gestreamt (`archive.org/download/youtube-dIQ53t0gv_4/dIQ53t0gv_4.mp4`), 0 Byte lokal → Seite ohne Assets ~1 MB.
+- `c64_font.png` (`public/`) wird in `C64Panel.tsx:140` aktiv geladen (nicht obsolet).
+- `RetroErrorPanel` ist bereits voll prozedural (Canvas2D), keine statischen Bilder.
+
+> **Nächste Schritte — Panel-Rework Phase 2 (priorisiert nach Kritik-Intensität, ABGESCHLOSSEN):**
 >
 > ### Tier 1 — Kritische Ausfälle
 > - [x] **RW-01 `NuclearExplosionPanel`** — Shader noch matschig: fBm auf 6 Oktaven, schärfere Turbulenz, Curl-Noise für rollende Kanten, Toroid-Billows, Self-Shadowing

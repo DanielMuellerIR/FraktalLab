@@ -11,17 +11,14 @@ import { setPaused } from './utils/raf-coordinator'
 import SystemLog         from './panels/SystemLog'
 import Vitals            from './panels/Vitals'
 import DataStream        from './panels/DataStream'
-import TrafficMonitor    from './panels/TrafficMonitor'
-import SocialEngineering from './panels/SocialEngineering'
-import NuclearTargets    from './panels/NuclearTargets'
-import PwdCracker        from './panels/PwdCracker'
 import PortScanner       from './panels/PortScanner'
 import PseudoCode        from './panels/PseudoCode'
 import AgentCodePanel    from './panels/AgentCodePanel'
 import VisitorProfilePanel from './panels/VisitorProfilePanel'
 import ICQChatPanel      from './panels/ICQChatPanel'
-import BitcoinMinerPanel from './panels/BitcoinMinerPanel'
 import DiskCleanupPanel  from './panels/DiskCleanupPanel'
+// Archiviert 2026-05-31 (siehe panels/registry.ts ARCHIVED_PANELS):
+// TrafficMonitor, SocialEngineering, NuclearTargets, PwdCracker, BitcoinMinerPanel
 import StockTickerPanel  from './panels/StockTickerPanel'
 import SatellitePanel    from './panels/SatellitePanel'
 import ClassifiedPanel   from './panels/ClassifiedPanel'
@@ -38,7 +35,7 @@ import AllYourBase       from './panels/AllYourBase'
 import GlobePanel        from './panels/GlobePanel'
 import DaggerfallPanel   from './panels/DaggerfallPanel'
 import LidarScanPanel    from './panels/LidarScanPanel'
-import NeuralLinkDecoderPanel from './panels/NeuralLinkDecoderPanel'
+// NeuralLinkDecoderPanel archiviert 2026-05-31 (siehe panels/registry.ts)
 import DNAHelix          from './panels/DNAHelix'
 import OscilloscopePanel from './panels/OscilloscopePanel'
 import {
@@ -73,9 +70,8 @@ import { MandelbulbScene, ApollonianGasketScene, MengerSpongeScene } from './pan
 
 // ── Panel-Pools ───────────────────────────────────────────────────────────────
 const POOL_TEXT: React.ComponentType[] = [
-  SystemLog, DataStream, SocialEngineering, Vitals, TrafficMonitor,
-  NuclearTargets, PwdCracker, PortScanner, PseudoCode,
-  AgentCodePanel, VisitorProfilePanel, ICQChatPanel, BitcoinMinerPanel, DiskCleanupPanel,
+  SystemLog, DataStream, Vitals, PortScanner, PseudoCode,
+  AgentCodePanel, VisitorProfilePanel, ICQChatPanel, DiskCleanupPanel,
   StockTickerPanel, SatellitePanel, ClassifiedPanel, MetaAgentPanel,
 ]
 
@@ -92,7 +88,7 @@ const POOL_GFX: React.ComponentType[] = [
   FractalDendrite, FractalSwirl,
   FractalJulia, RadarSweepPanel,
   ShaderHackingCore, ShaderMandelbox, ShaderRetroWave,
-  DaggerfallPanel, LidarScanPanel, NeuralLinkDecoderPanel,
+  DaggerfallPanel, LidarScanPanel,
   TixyPanel, IQSmoothMin, IQDigitalStorm, LovebyteShowcasePanel,
   MoonPanel, PhysicsSandboxPanel, NuclearExplosionPanel,
   ThermonuclearWarPanel, SupervolcanoPanel,
@@ -574,7 +570,6 @@ const ALL_PANELS: { name: string; Component: React.ComponentType }[] = [
   { name: 'ShaderRetroWave',    Component: ShaderRetroWave },
   { name: 'DaggerfallPanel',    Component: DaggerfallPanel },
   { name: 'LidarScanPanel',     Component: LidarScanPanel },
-  { name: 'NeuralLinkDecoderPanel', Component: NeuralLinkDecoderPanel },
   { name: 'TixyPanel',          Component: TixyPanel },
   { name: 'IQSmoothMin',        Component: IQSmoothMin },
   { name: 'IQDigitalStorm',     Component: IQDigitalStorm },
@@ -592,14 +587,9 @@ const ALL_PANELS: { name: string; Component: React.ComponentType }[] = [
   { name: 'ICQChatPanel',       Component: ICQChatPanel },
   { name: 'VisitorProfilePanel',Component: VisitorProfilePanel },
   { name: 'SatellitePanel',     Component: SatellitePanel },
-  { name: 'BitcoinMinerPanel',  Component: BitcoinMinerPanel },
   { name: 'SystemLog',          Component: SystemLog },
   { name: 'DataStream',         Component: DataStream },
-  { name: 'SocialEngineering',  Component: SocialEngineering },
   { name: 'Vitals',             Component: Vitals },
-  { name: 'TrafficMonitor',     Component: TrafficMonitor },
-  { name: 'NuclearTargets',     Component: NuclearTargets },
-  { name: 'PwdCracker',         Component: PwdCracker },
   { name: 'PortScanner',        Component: PortScanner },
   { name: 'PseudoCode',         Component: PseudoCode },
   { name: 'AgentCodePanel',     Component: AgentCodePanel },
