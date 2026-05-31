@@ -3,7 +3,15 @@
 Universelle Referenz für alle Coding-Agents und KI-Modelle.
 Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 
-> **Status (Stand 2026-05-30): Panel-Rework Phase 1–5 läuft auf `feat/panel-rework-2026-05-30`.** Bisherige Erfolge der Session (App-Version **v1.7.8**): 32 Panels erfolgreich überarbeitet, C64 SID Player integriert, DNAHelix split-layout fertig, alle Grafik-Panels weg vom Standard-Hackergrün auf farbige CSS-Paletten migriert. 120 FPS Rendering-Performance auf Apple GPU nachgewiesen und Playwright-Verifikation erfolgreich durchgelaufen.
+> **Status (Stand 2026-05-31): Panel-Rework abgeschlossen + SID-Player-Session abgeschlossen (App-Version **v1.9.0**). Branch `feat/panel-rework-2026-05-30` wird nach `main` gemergt.** Panel-Rework (RW-01..29) komplett durch, 32 Panels überarbeitet, alle Grafik-Panels auf farbige Paletten migriert, 120 FPS auf Apple GPU nachgewiesen.
+>
+> **SID-Player-Session (2026-05-31) — `OscilloscopePanel`:** Der C64-SID-Player war stumm (kein Ton, keine Visualizer-Animation). Ursachen gefunden + behoben:
+> - 6502-CPU-Emulation: implied-Opcode-Switch nutzte `IR & 0xC0` statt `IR & 0xF0` → INX/TAY/PHP/PLP kaputt → Song-Position fror ein (Drone/Stille).
+> - `SidPlayerProcessor extends AudioWorkletProcessor` + manuelles `new` → Browser wirft im Konstruktor → Prozessor tot → totale Stille. Engine ist jetzt Plain-Class.
+> - Noise-Waveform-Term + ENV3-Readback an jsSID-Referenz angeglichen.
+> - Neue Features: Drag&drop (Datei + Ordner, rekursiv), Ordner-Button (`webkitdirectory`), Position-Scrubber (frame-stepping Seek, ~28 ms statt ~1 s), Null-Linie bei Pause, echte Waveform-Darstellung pro Stimme (TRI/SAW/PUL/NOI).
+> - Lizenz jsSID = WTFPL (Attribution im Worklet-Header + unten dokumentiert). Emulation ist treu zu jsSID; verbleibende Mini-Klangunterschiede (6581-Filter, Combined Waveforms) sind jsSID-inhärent, kein Bug — gegen 2016-Sidplay verifiziert.
+> - Automatisierter Audio-Test: `frontend/test-sid-audio.mjs` (rendert echtes PCM, prüft Oszillation + Song-Fortschritt, Strukturguard gegen den Plain-Class-Bug).
 >
 > **Nächste Schritte — Panel-Rework Phase 2 (priorisiert nach Kritik-Intensität):**
 >
@@ -333,7 +341,7 @@ POOL_GFX        VoxelDemoColor, VoxelDemoBW, VoxelThermal, VoxelLava, VoxelNeon,
                 FractalDendrite, FractalSwirl, FractalJulia
 ```
 
-Aktueller Stand siehe `App.tsx` Z. 68–79. (Hinweis: `GlobePanel`, `VoxelMatrix` via `NeuralNetPanel`-Re-Export, `LissajousScene` in `DemoScenes.tsx` und `OscilloscopePanel` als `SpectrogramPanel` sind aktiv — frühere „temporär entfernt"-Notiz hier war veraltet.)
+Aktueller Stand siehe `App.tsx` (`POOL_GFX`/`POOL_TEXT`) — die obige Liste ist nicht vollständig (viele neuere Panels wie `Shader*`, `Lidar`, `Tixy`, `IQ*`, `Lovebyte`, `Moon`, `Physics`, `Nuclear*`, `Supervolcano`, `Mandelbulb`, `Apollonian`, `Menger` fehlen hier). `OscilloscopePanel` (C64-SID-Player) ist seit der SID-Session wieder in `POOL_GFX` aktiv (war zuvor auskommentiert, weil stumm). `GlobePanel`, `VoxelMatrix` (via `NeuralNetPanel`-Re-Export) und `LissajousScene` sind ebenfalls aktiv.
 
 ---
 
