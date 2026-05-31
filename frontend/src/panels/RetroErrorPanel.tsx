@@ -1,4 +1,4 @@
-import { memo,  useEffect, useRef } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import Panel from '../ui/Panel'
 import { subscribe } from '../utils/raf-coordinator'
 
@@ -9,6 +9,12 @@ import { subscribe } from '../utils/raf-coordinator'
 type Screen = {
   duration: number
   render: (ctx: CanvasRenderingContext2D, W: number, H: number, t: number, age: number) => void
+  // Klartext-Fassung des im Canvas gezeichneten Fehlertextes.
+  // Wird zusaetzlich als unsichtbares DOM-Overlay ueber den Canvas gelegt,
+  // damit der Text mit der Maus markiert und kopiert werden kann (Canvas-Pixel
+  // sind nicht selektierbar). Inhalt deckt sich Zeile fuer Zeile mit dem,
+  // was render() malt — bei Aenderungen am Canvas-Text bitte hier mitpflegen.
+  text: string
 }
 
 // Hilfsfunktion: Rechteck mit abgerundeten Ecken zeichnen
@@ -55,6 +61,13 @@ const SCREENS: Screen[] = [
   // ── 1. Mac System 7 Bomb ──────────────────────────────────────────────────
   {
     duration: 7000,
+    text:
+      'Sorry, a system error occurred.\n' +
+      'Error Type: ID=28  Stack Overflow\n' +
+      'The application "HyperCard 2.0"\n' +
+      'has unexpectedly quit.\n' +
+      '\n' +
+      'Resume    Restart',
     render(ctx, W, H, _t, _age) {
       // Weiß-grauer Hintergrund
       ctx.fillStyle = '#aaaaaa'
@@ -163,6 +176,19 @@ const SCREENS: Screen[] = [
   // ── 2. Windows 95 BSOD ───────────────────────────────────────────────────
   {
     duration: 8000,
+    text:
+      '  Windows\n' +
+      '\n' +
+      'A fatal exception 0E has occurred at 0028:C001F34D in\n' +
+      'VXD VPICD(01) + 000012A0. The current application will\n' +
+      'be terminated.\n' +
+      '\n' +
+      '*  Press any key to terminate the current application.\n' +
+      '*  Press CTRL+ALT+DEL to restart your computer. You\n' +
+      '   will lose any unsaved information in all applications.\n' +
+      '\n' +
+      '\n' +
+      '   Press any key to continue _',
     render(ctx, W, H, t, _age) {
       ctx.fillStyle = '#0000aa'
       ctx.fillRect(0, 0, W, H)
@@ -226,6 +252,9 @@ const SCREENS: Screen[] = [
   // ── 3. Amiga Guru Meditation ──────────────────────────────────────────────
   {
     duration: 6000,
+    text:
+      'Software Failure. Press left mouse button to continue.\n' +
+      'Guru Meditation #00000003.00C01F04',
     render(ctx, W, H, t, _age) {
       // Grauer Workbench-Hintergrund
       ctx.fillStyle = '#aaaaaa'
@@ -267,6 +296,24 @@ const SCREENS: Screen[] = [
   // ── 4. Windows XP BSOD ───────────────────────────────────────────────────
   {
     duration: 8000,
+    text:
+      'A problem has been detected and Windows has been shut\n' +
+      'down to prevent damage to your computer.\n' +
+      '\n' +
+      'IRQL_NOT_LESS_OR_EQUAL\n' +
+      '\n' +
+      "If this is the first time you've seen this stop error screen, restart your computer. If this screen appears again, follow these steps:\n" +
+      '\n' +
+      'Check to make sure any new hardware or software is properly\n' +
+      'installed. If this is a new installation, ask your hardware\n' +
+      'or software manufacturer for any Windows updates you might need.\n' +
+      '\n' +
+      'Technical information:\n' +
+      '*** STOP: 0x0000000A (0x00000014, 0x00000002, 0x00000000,\n' +
+      '0x804E7B03)\n' +
+      '\n' +
+      'Collecting data for crash dump ...\n' +
+      'Initializing disk for crash dump ...',
     render(ctx, W, H, t, _age) {
       ctx.fillStyle = '#1A3A6A'
       ctx.fillRect(0, 0, W, H)
@@ -316,6 +363,15 @@ const SCREENS: Screen[] = [
   // ── 5. MS-DOS "Abort, Retry, Fail?" ──────────────────────────────────────
   {
     duration: 6000,
+    text:
+      'C:\\>DIR A:\n' +
+      'Not ready reading drive A\n' +
+      'Abort, Retry, Fail?\n' +
+      '\n' +
+      'Not ready reading drive A\n' +
+      'Abort, Retry, Fail? F\n' +
+      '\n' +
+      'C:\\>_',
     render(ctx, W, H, t, _age) {
       ctx.fillStyle = '#000000'
       ctx.fillRect(0, 0, W, H)
@@ -350,6 +406,16 @@ const SCREENS: Screen[] = [
   // ── 6. Mac OS X Kernel Panic ──────────────────────────────────────────────
   {
     duration: 7000,
+    text:
+      'You need to restart your computer.\n' +
+      'Hold down the Power button for several seconds\n' +
+      'or press the Restart button.\n' +
+      '\n' +
+      'Si vous voyez ce message, maintenez le bouton de réinitialisation.\n' +
+      'Wenn Sie diese Meldung sehen, halten Sie den Ein/Aus-Schalter.\n' +
+      'Als u dit bericht ziet, houdt u de aan/uit-knop ingedrukt.\n' +
+      '\n' +
+      'panic(cpu 0): Unresolved kernel trap (CPU 0)',
     render(ctx, W, H, _t, _age) {
       ctx.fillStyle = '#888888'
       ctx.fillRect(0, 0, W, H)
@@ -410,6 +476,15 @@ const SCREENS: Screen[] = [
   // ── 7. Windows 3.1 GPF ───────────────────────────────────────────────────
   {
     duration: 7000,
+    text:
+      'Application Error\n' +
+      '\n' +
+      'WINWORD caused a General Protection Fault\n' +
+      'in module KERNEL.EXE at 0001:4A2F.\n' +
+      'Choose Close. You will need to restart one\n' +
+      'or more applications.\n' +
+      '\n' +
+      'Close    Details >>',
     render(ctx, W, H, _t, _age) {
       // Windows 3.1 Hintergrundmuster (Teal-Grün)
       ctx.fillStyle = '#008080'
@@ -501,6 +576,19 @@ const SCREENS: Screen[] = [
   // ── 8. Linux Kernel Panic ─────────────────────────────────────────────────
   {
     duration: 7000,
+    text:
+      'BUG: unable to handle kernel paging request at ffff88000000000\n' +
+      'IP: [<ffffffff811234ab>] kmalloc+0x1b/0x130\n' +
+      'PGD 1a0b067 PUD 1a0c067 PMD 0\n' +
+      'Oops: 0000 [#1] SMP\n' +
+      '\n' +
+      'CPU: 0 PID: 1234 Comm: systemd Tainted: G   O 3.10.0-1160\n' +
+      'RIP: 0010:[<ffffffff811234ab>] [<ffffffff811234ab>]\n' +
+      '\n' +
+      'Kernel panic - not syncing: Fatal exception in interrupt\n' +
+      '\n' +
+      'CPU 0 is now offline\n' +
+      '---[ end Kernel panic - not syncing: Fatal exception ]---',
     render(ctx, W, H, _t, _age) {
       ctx.fillStyle = '#000000'
       ctx.fillRect(0, 0, W, H)
@@ -539,6 +627,20 @@ const SCREENS: Screen[] = [
   // ── 9. BeOS Kernel Crash ──────────────────────────────────────────────────
   {
     duration: 6000,
+    text:
+      'BeOS Kernel Debugger\n' +
+      'PANIC: vm_page_fault: vm_soft_fault returned error "Bad address"\n' +
+      '       for address 0xef202018, ip 0x00000000\n' +
+      '\n' +
+      'int frame at 0x80f3e980:\n' +
+      ' eip: 001e:00000000  flags: 0x00200246\n' +
+      ' eax: 00000000  ecx: 003ec074  edx: 003ec064\n' +
+      ' cr2: ef202018  cr3: 01e42000\n' +
+      '\n' +
+      'Stack (0x80f3ea38):\n' +
+      '  8011f5d4 003ec000 003ec000 00000000 8011f5c0\n' +
+      '\n' +
+      'kdebug> _',
     render(ctx, W, H, _t, _age) {
       ctx.fillStyle = '#1a1a2e'
       ctx.fillRect(0, 0, W, H)
@@ -583,6 +685,19 @@ const SCREENS: Screen[] = [
   // ── 10. Windows 98 BSOD (andere Farbe/Layout als 95) ─────────────────────
   {
     duration: 7000,
+    text:
+      'Windows\n' +
+      '\n' +
+      'A fatal exception 0D has occurred at 0028:BFF9B8B0 in VXD\n' +
+      'VMM(01) + 00009FA6. The current application will be\n' +
+      'terminated.\n' +
+      '\n' +
+      '*  Press any key to terminate the current application.\n' +
+      '\n' +
+      '*  Press CTRL+ALT+DEL again to restart your computer.\n' +
+      '   You will lose any unsaved information.\n' +
+      '\n' +
+      'Press any key to continue _',
     render(ctx, W, H, t, _age) {
       ctx.fillStyle = '#000080'
       ctx.fillRect(0, 0, W, H)
@@ -640,6 +755,16 @@ const SCREENS: Screen[] = [
   // ── 11. Windows 10/11 BSOD ──────────────────────────────────────────────
   {
     duration: 8000,
+    text:
+      ':(\n' +
+      '\n' +
+      "Your PC ran into a problem and needs to restart. We're just collecting some error info, and then we'll restart for you.\n" +
+      '\n' +
+      'For more information about this issue and possible fixes, visit\n' +
+      'https://www.windows.com/stopcode\n' +
+      '\n' +
+      'If you call a support person, give them this info:\n' +
+      'Stop Code: CRITICAL_PROCESS_DIED',
     render(ctx, W, H, t, _age) {
       ctx.fillStyle = '#0078d7' // Modern Windows Blue
       ctx.fillRect(0, 0, W, H)
@@ -742,6 +867,11 @@ const SCREENS: Screen[] = [
   // ── 12. Modern macOS Kernel Panic ─────────────────────────────────────────
   {
     duration: 7000,
+    text:
+      'Your computer restarted because of a problem. Press a key to continue.\n' +
+      'Ihr Computer wurde aufgrund eines Problems neu gestartet. Bitte Taste drücken.\n' +
+      'Votre ordinateur a redémarré en raison d’un problème. Appuyez sur une touche.\n' +
+      'El ordenador se reinició debido a un problema. Pulse una tecla para continuar.',
     render(ctx, W, H, _t, _age) {
       ctx.fillStyle = '#000000'
       ctx.fillRect(0, 0, W, H)
@@ -786,6 +916,20 @@ const SCREENS: Screen[] = [
   // ── 13. Linux systemd Boot Abort ──────────────────────────────────────────
   {
     duration: 8000,
+    text:
+      '[  OK  ] Started Show Plymouth Boot Screen.\n' +
+      '[  OK  ] Reached target Paths.\n' +
+      '[FAILED] Failed to start Load Kernel Modules.\n' +
+      "See 'systemctl status systemd-modules-load.service' for details.\n" +
+      '[FAILED] Failed to mount /sysroot.\n' +
+      "See 'systemctl status sysroot.mount' for details.\n" +
+      '[DEPEND] Dependency failed for Initrd Default Target.\n' +
+      '[  OK  ] Reached target Basic System.\n' +
+      'dracut-initqueue: Warning: /dev/disk/by-uuid/a3f4-b2c6 does not exist\n' +
+      'Starting Emergency Shell...\n' +
+      'Generating "/run/initramfs/rdsosreport.txt"\n' +
+      'Entering emergency mode. Exit shell to continue.\n' +
+      'sh:grub2-editor$ ',
     render(ctx, W, H, t, _age) {
       ctx.fillStyle = '#000000'
       ctx.fillRect(0, 0, W, H)
@@ -853,6 +997,11 @@ function RetroErrorPanel() {
   const canvasRef    = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
+  // Index der aktuell sichtbaren Fehlermeldung — als React-State, damit das
+  // unsichtbare Text-Overlay (siehe JSX unten) bei jedem Slide-Wechsel neu
+  // gerendert wird und immer den passenden, markierbaren Text zeigt.
+  const [visibleIdx, setVisibleIdx] = useState(0)
+
   useEffect(() => {
     const _canvas = canvasRef.current
     const container = containerRef.current
@@ -871,6 +1020,10 @@ function RetroErrorPanel() {
     let screenStart = 0
     let transitioning = false
     let transitionStart = 0
+    // Merkt sich, welcher Index zuletzt an React gemeldet wurde, damit wir
+    // setVisibleIdx() nur beim tatsaechlichen Slide-Wechsel aufrufen und nicht
+    // in jedem einzelnen Animationsframe (das wuerde unnoetig re-rendern).
+    let reportedIdx = -1
 
     function resize() {
       canvas.width  = cont.clientWidth
@@ -907,6 +1060,12 @@ function RetroErrorPanel() {
         ctx.fillRect(0, 0, W, H)
       } else {
         screen.render(ctx, W, H, now, age)
+        // Sichtbaren Slide an React melden — nur wenn er sich geaendert hat,
+        // damit das Text-Overlay synchron zum Canvas bleibt.
+        if (reportedIdx !== screenIdx) {
+          reportedIdx = screenIdx
+          setVisibleIdx(screenIdx)
+        }
       }
     }
 
@@ -925,8 +1084,46 @@ function RetroErrorPanel() {
 
   return (
     <Panel title="SYSTEM FAILURE LOG // INCIDENT ARCHIVE">
-      <div ref={containerRef} className="w-full h-full min-h-0">
+      {/* relative: dient als Positionierungs-Anker fuer das absolut platzierte
+          Text-Overlay, das ueber dem Canvas liegt. */}
+      <div ref={containerRef} className="relative w-full h-full min-h-0">
         <canvas ref={canvasRef} className="block w-full h-full" />
+
+        {/* Unsichtbares, aber markier- und kopierbares Text-Overlay.
+            Der eigentliche Fehlertext wird weiterhin pixelig auf den Canvas
+            gemalt (authentischer Retro-Look). Da Canvas-Pixel nicht mit der
+            Maus selektierbar sind, legen wir denselben Text zusaetzlich als
+            echtes HTML darueber.
+
+            - color: 'transparent' -> der Text ist unsichtbar und stoert den
+              Canvas-Look nicht, bleibt aber auswaehlbar; beim Markieren zeigt
+              der Browser die uebliche Selektions-Hervorhebung.
+            - System-Monospace (ui-monospace, Menlo, Consolas, monospace) statt
+              einer geladenen Custom-Font -> kein MB-grosser Font-Download.
+            - whiteSpace: 'pre-wrap' -> Zeilenumbrueche aus dem text-Feld bleiben
+              erhalten, lange Zeilen brechen am Rand um.
+            - pointerEvents: 'auto' nur hier, damit Markieren funktioniert; der
+              uebrige Panel-Bereich bleibt unberuehrt. */}
+        <pre
+          aria-label="Fehlermeldung als Text"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            margin: 0,
+            padding: '6%',
+            fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
+            fontSize: 'clamp(7px, 2.2vw, 12px)',
+            lineHeight: 1.35,
+            color: 'transparent',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            overflow: 'hidden',
+            userSelect: 'text',
+            cursor: 'text',
+          }}
+        >
+          {SCREENS[visibleIdx].text}
+        </pre>
       </div>
     </Panel>
   )

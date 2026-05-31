@@ -34,21 +34,26 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
   - **Handoff:** MOD-Loop-Ende + Video-`onEnded` rufen `notifyAudioEnded` → anderer Player übernimmt (AllYourBase→SID/MOD nach Video). SID loopt endlos (kein Handoff von dort).
   - **Random song:** SID/MOD wählen beim Mount einen zufälligen Default-Track; `start()` spielt ihn.
   - Verifiziert im Browser (Desktop 1440px + Mobile 375px): Garantie, Erst-Klick-Start, Mute-Toggle — keine Konsolen-Fehler.
-- [ ] Doppel-Panel-Bug (Menger 2×): Dedup in `generateLayout` + Fallback in `handleSkipSlot` (Z. ~943 picks random ohne Dedup)
-- [ ] Galerie-Layout entwerfen + umsetzen, Auto-Komplett-Wechsel raus, Panels größer/weniger, Perf
-- [ ] Dateigröße-Anzeige pro Panel im Reviewmodus (+ Gesamtgröße inkl. Songs bei Playern)
-- [ ] Oppenheimer (`NuclearExplosionPanel`): Sequenz Terrain→Blitz(3-5s)→Pilz; Nacht erhellen; Nacht entschärft verschwommen, Pilz kontrastreicher; krumme Säule + Kontaktverlust zum Schirm fixen; zufällige Varianz; Wolke bleibt stehen bis Variant-Wechsel; Name/Variant-Mismatch (Oppenheimer Day zeigt Nacht) fixen; Terrain+Himmel komplexer (Tag+Nacht)
-- [ ] `ThermonuclearWarPanel`: niemand überlebt, mehr Standorte (Pakistan/Indien/Nordkorea?), "Siberia" statt "Siberia Military Base", lesbarere Schrift, kein ALLCAPS
-- [ ] `SolarSystemPanel`: maßstabsgetreu (Min-Pixelgröße 1-2px), korrekte Abstände, Umlaufbahnen nur für Planeten (nicht Monde)
-- [ ] `StarfieldScene`: cyan-Raumschiff weg, Ego-Perspektive, Schüsse von uns zum Feind
-- [ ] `RotozoomScene`: mehr Random
-- [ ] `DNAHelix`: zufällige Start-Spezies statt immer Mensch
-- [ ] `MandelbulbScene` / `MengerSpongeScene`: zufällige Start-Farbe; `ApollonianGasketScene` Feintuning (Kontrast/Tempo)
-- [ ] Quantum Gravity (`PhysicsSandboxPanel`?): Energie aufbauen wenn Kugeln eng, nach Sekunden entladen (wegschleudern)
-- [ ] `C64Panel`: Font-Regression (c64_font.png wird geladen, erscheint aber nicht) + BASIC-Screen realistisch (exakte Zeilen/Spalten 40×25, korrekte Boot-Textposition — im Web recherchieren)
-- [ ] `RetroErrorPanel`: optional DOM-Text-Overlay für markier-/kopierbaren Text (System-Monospace, keine MB-Fonts)
-- [ ] `GlobePanel`: im Reviewmodus nicht rot umrandet + nie im Hauptbereich gesehen → prüfen/fixen
-- [ ] Nach Deaktivierung: Panelanzahl/Layout anpassen, Panels vergrößern (hängt am Galerie-Redesign)
+> **Batch-Abarbeitung 2026-05-31 (App-Version v1.11.0): alle untenstehenden Todos
+> erledigt, via Parallel-Subagents (Panel-Fixes) + Haupt-Thread (App.tsx-Logik).
+> tsc + build grün, im Browser verifiziert (Desktop 1440px + Review-Modus), keine
+> Konsolen-Fehler. Visuelles Feintuning bleibt Geschmackssache des Nutzers.**
+
+- [x] **Doppel-Panel-Bug (Menger 2×)** behoben: Dedup-Pass in `generateLayout` prüft jetzt nach **Komponenten-NAME** (`getCompName`) statt nur `panelIdx`. Ursache: manche Pool-Einträge lösen über Alias/Re-Export auf denselben sichtbaren Namen auf → reines Index-Dedup ließ Menger 2× zu. `handleSkipSlot` dedupt ohnehin nach Komponenten-Referenz.
+- [x] **Galerie-Layout**: Grid-Dichte grob halbiert (weniger, größere Panels), `gap` 4→10px + Padding (mehr Weißraum), **automatischer Komplett-Layout-Wechsel entfernt** (kein periodisches Neu-Mounten → weniger Last). Manueller Wechsel (⟳-Button/Leertaste) bleibt. Mobile + Desktop. Hinweis: Namens-Wechsel (Wunderkammer/Phosphor/Cathode) steht jetzt an, da Layout steht.
+- [x] **Dateigröße-Anzeige im Reviewmodus**: `PANEL_ASSET_KB`-Map + `panelAssetLabel()`, am Review-Marker angezeigt. Prozedurale Panels = "0 KB · prozedural", Player zeigen Song-Gesamtgröße (MOD ~1,2 MB, SID 30 KB), C64 7 KB, AllYourBase 0 KB (extern gestreamt).
+- [x] **Oppenheimer (`NuclearExplosionPanel`)**: ist ein GLSL-Shader (nicht Canvas2D). Sequenz Terrain→Blitz(3–5s)→Pilz, Nacht-Blitz erhellt + danach weichgezeichnet, Pilz kontrastreicher, **gerade durchgehende Säule** (krumm/Kontaktverlust gefixt), Per-Mount-Varianz, Pilz bleibt stehen, **Name/Variant-Mismatch gefixt** (uMode statt zweier Uhren), Terrain+Himmel (Tag+Nacht) schöner. Im Browser verifiziert: Tag-Pilz korrekt, Shader kompiliert.
+- [x] **`ThermonuclearWarPanel`**: Endzustand "no survivors" (alle Standorte ausgelöscht), neue Ziele (Pyongyang/Islamabad/New Delhi), Labels gekürzt ("Siberia"), Schrift größer + shadow, kein ALLCAPS.
+- [x] **`SolarSystemPanel`**: Wurzel-komprimierte realistische Größen (Floor 1,5px), Potenz-komprimierte Bahnabstände, Orbit-Ringe nur für Planeten (Mond-Bahnen entfernt).
+- [x] **`StarfieldScene`**: cyan-Verfolgerschiff entfernt, Ego-Cockpit-Perspektive, Schüsse von vorne (uns) in die Tiefe zum Feind.
+- [x] **`RotozoomScene`**: Per-Mount-Varianz (Seed + 4 Muster + Drehrichtung/Zoom/Farbe), Hue-Drift.
+- [x] **`DNAHelix`** + **`MandelbulbScene`/`MengerSpongeScene`** zufällige Start-Spezies/Farbe: bereits in Commit `6b270df` erledigt.
+- [x] **`ApollonianGasketScene`** Feintuning: Kontrast/AO/Fresnel/Gamma + Drei-Farben-Palette, ruhigeres Tempo (`de-fractals-shaders.ts`, nur Apollonian-Abschnitt).
+- [x] **Quantum Gravity (`PhysicsSandboxPanel`)**: Energieaufbau bei dichten Kugeln (Spannungsfeld + Glühen + HUD "CLUSTER CHARGE"), schlagartige Entladung (radiales Wegschleudern + Schockwelle/Funken), zyklisch.
+- [x] **`C64Panel`** Font-Regression: Ursache war **Farb-Snapping** (Wunschfarbe `#a2a2ff` ist keine C64-Palettenfarbe → rastete auf kontrastarmes Cyan/Lila). Fix: Alpha-Maske aus PNG + `source-in`-Tint in exakte Farbe. BASIC-Screen auf exaktes 40×25-Raster mit recherchiertem Original-Bootscreen. Bonus: `mixColors`-Grün-Bug + `imageSmoothingEnabled=false`.
+- [x] **`RetroErrorPanel`**: DOM-Text-Overlay (`<pre>`, System-Monospace, `color:transparent`+`userSelect:text`) → Fehlertext markier-/kopierbar, ohne den Canvas-Look zu stören. Im Browser verifiziert.
+- [x] **`GlobePanel`**: Der rote Rahmen im Reviewmodus ist **korrektes generisches Down-Rating-Highlight** (aktives + 👎-Panel = rot), kein Bug. "Nie im Hauptbereich" = niedrige Pool-Wahrscheinlichkeit (49 GFX-Panels), kein Code-Defekt. Kein Fix nötig.
+- [x] **Panelanzahl/Layout nach Deaktivierung angepasst** — Teil des Galerie-Redesigns (weniger, größere Panels).
 
 **Fakten/Notizen:**
 - AllYourBase-Video: extern gestreamt (`archive.org/download/youtube-dIQ53t0gv_4/dIQ53t0gv_4.mp4`), 0 Byte lokal → Seite ohne Assets ~1 MB.

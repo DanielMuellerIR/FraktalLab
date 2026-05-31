@@ -49,19 +49,30 @@ interface Particle {
   color: string
 }
 
+// ── Ziel-Standorte auf der Weltkarte ──────────────────────────────────────
+// x/y sind prozentuale Positionen (0..1) auf der Karte (Plate-Carrée / lineare lon/lat-Projektion).
+// 'side' teilt die Standorte in zwei verfeindete Blöcke ('west'/'east') für den Schlagabtausch.
+// Labels bewusst KURZ und in normaler Groß-/Kleinschreibung (kein ALLCAPS), damit sie gut lesbar bleiben.
 const CITIES: City[] = [
-  { name: 'WASHINGTON D.C.', x: 0.286, y: 0.284, side: 'west', isDestroyed: false, destroyedTime: 0 },
-  { name: 'NEW YORK', x: 0.294, y: 0.274, side: 'west', isDestroyed: false, destroyedTime: 0 },
-  { name: 'CHICAGO', x: 0.257, y: 0.267, side: 'west', isDestroyed: false, destroyedTime: 0 },
-  { name: 'SAN FRANCISCO', x: 0.160, y: 0.290, side: 'west', isDestroyed: false, destroyedTime: 0 },
-  { name: 'LONDON', x: 0.499, y: 0.214, side: 'west', isDestroyed: false, destroyedTime: 0 },
-  { name: 'PARIS', x: 0.506, y: 0.229, side: 'west', isDestroyed: false, destroyedTime: 0 },
-  { name: 'MOSCOW', x: 0.604, y: 0.190, side: 'east', isDestroyed: false, destroyedTime: 0 },
-  { name: 'BEIJING', x: 0.823, y: 0.278, side: 'east', isDestroyed: false, destroyedTime: 0 },
-  { name: 'TOKYO', x: 0.888, y: 0.302, side: 'east', isDestroyed: false, destroyedTime: 0 },
-  { name: 'SIBERIA MILITARY BASE', x: 0.790, y: 0.209, side: 'east', isDestroyed: false, destroyedTime: 0 },
-  { name: 'MONTANA SILO COMPLEX', x: 0.193, y: 0.240, side: 'west', isDestroyed: false, destroyedTime: 0 },
-  { name: 'URAL LAUNCH COMPLEX', x: 0.668, y: 0.184, side: 'east', isDestroyed: false, destroyedTime: 0 },
+  // Westlicher Block
+  { name: 'Washington', x: 0.286, y: 0.284, side: 'west', isDestroyed: false, destroyedTime: 0 },
+  { name: 'New York', x: 0.294, y: 0.274, side: 'west', isDestroyed: false, destroyedTime: 0 },
+  { name: 'Chicago', x: 0.257, y: 0.267, side: 'west', isDestroyed: false, destroyedTime: 0 },
+  { name: 'San Francisco', x: 0.160, y: 0.290, side: 'west', isDestroyed: false, destroyedTime: 0 },
+  { name: 'London', x: 0.499, y: 0.214, side: 'west', isDestroyed: false, destroyedTime: 0 },
+  { name: 'Paris', x: 0.506, y: 0.229, side: 'west', isDestroyed: false, destroyedTime: 0 },
+  { name: 'Montana', x: 0.193, y: 0.240, side: 'west', isDestroyed: false, destroyedTime: 0 },
+  // Indien sitzt geografisch zwischen den Blöcken, hier dem Westen zugeschlagen
+  { name: 'New Delhi', x: 0.700, y: 0.330, side: 'west', isDestroyed: false, destroyedTime: 0 },
+  // Östlicher Block
+  { name: 'Moscow', x: 0.604, y: 0.190, side: 'east', isDestroyed: false, destroyedTime: 0 },
+  { name: 'Beijing', x: 0.823, y: 0.278, side: 'east', isDestroyed: false, destroyedTime: 0 },
+  { name: 'Tokyo', x: 0.888, y: 0.302, side: 'east', isDestroyed: false, destroyedTime: 0 },
+  { name: 'Siberia', x: 0.790, y: 0.209, side: 'east', isDestroyed: false, destroyedTime: 0 },
+  { name: 'Ural', x: 0.668, y: 0.184, side: 'east', isDestroyed: false, destroyedTime: 0 },
+  // Neue Atommächte
+  { name: 'Pyongyang', x: 0.852, y: 0.290, side: 'east', isDestroyed: false, destroyedTime: 0 },
+  { name: 'Islamabad', x: 0.690, y: 0.300, side: 'east', isDestroyed: false, destroyedTime: 0 },
 ]
 
 function ThermonuclearWarPanel() {
@@ -123,14 +134,14 @@ function ThermonuclearWarPanel() {
       simTime = 0.0
       setDefcon(5)
       setCasualties(0)
-      setStageName('TACTICAL DRILL')
+      setStageName('Tactical drill')
       CITIES.forEach(c => {
         c.isDestroyed = false
         c.destroyedTime = 0
       })
       setLogs([
-        `[${new Date().toTimeString().split(' ')[0]}] GLOBAL THERMONUCLEAR WAR SIMULATION REINITIALIZED.`,
-        `[${new Date().toTimeString().split(' ')[0]}] RADAR FEED ACTIVE. DEFCON 5 SECURE.`
+        `[${new Date().toTimeString().split(' ')[0]}] Global thermonuclear war simulation reinitialized.`,
+        `[${new Date().toTimeString().split(' ')[0]}] Radar feed active. DEFCON 5 secure.`
       ])
     }
 
@@ -230,9 +241,9 @@ function ThermonuclearWarPanel() {
         } else if (simStage === 1) {
           // FIRST STRIKE
           setDefcon(3)
-          setStageName('FIRST STRIKE DETECTED')
+          setStageName('First strike detected')
           nextStageTimer = 4.0
-          addLog('WARNING: THERMAL SENSORS DETECT MULTIPLE SILO IGNITIONS (EAST SQUADRONS).')
+          addLog('Warning: thermal sensors detect multiple silo ignitions (east squadrons).')
           
           const eastLaunchers = CITIES.filter(c => c.side === 'east')
           const westTargets = CITIES.filter(c => c.side === 'west')
@@ -259,9 +270,9 @@ function ThermonuclearWarPanel() {
         } else if (simStage === 2) {
           // RETALIATION
           setDefcon(2)
-          setStageName('MASS RETALIATION STAGE')
+          setStageName('Mass retaliation')
           nextStageTimer = 6.0
-          addLog('ALERT: DEFCON 2 ENFORCED. DEPLOYING FULL RETALIATORY RESPONSE VECTOR.')
+          addLog('Alert: DEFCON 2 enforced. Deploying full retaliatory response vector.')
           
           const east = CITIES.filter(c => c.side === 'east' && !c.isDestroyed)
           const west = CITIES.filter(c => c.side === 'west' && !c.isDestroyed)
@@ -286,9 +297,9 @@ function ThermonuclearWarPanel() {
         } else if (simStage === 3) {
           // DEFENSIVE ENGAGEMENT (Launch interceptors)
           setDefcon(1)
-          setStageName('DEFENSIVE ENGAGEMENT')
+          setStageName('Defensive engagement')
           nextStageTimer = 5.0
-          addLog('ABM SHIELD: THREAT LEVEL CRITICAL. DISPATCHING ALL REMAINING SYSTEM ABMS.')
+          addLog('ABM shield: threat level critical. Dispatching all remaining interceptors.')
 
           // Find active ICBMs in air
           const activeICBMs = missilesRef.current.filter(m => m.type === 'icbm' && m.progress > 0 && m.progress < 0.8)
@@ -307,15 +318,38 @@ function ThermonuclearWarPanel() {
           })
         } else if (simStage === 4) {
           // CONFLICT DEVASTATION
-          setStageName('TERMINAL IMPACTS')
+          setStageName('Terminal impacts')
           nextStageTimer = 6.0
-          addLog('TACTICAL DATA: EXTENSIVE WARHEAD ENTRIES AND CRATERING DETECTED.')
+          addLog('Tactical data: extensive warhead entries and cratering detected.')
         } else if (simStage === 5) {
-          // NUCLEAR WINTER
-          setStageName('EXTINCTION STATE')
+          // NUCLEAR WINTER / Aussterben — am Ende überlebt niemand.
+          setStageName('Extinction')
           nextStageTimer = 8.0
-          addLog('CRITICAL CLIMATE MODEL: GLOBAL PARTICULATE INTRUSION EXCEEDS 95%. TEMP -35C.')
-          addLog('SYSTEM CONCLUSION: NO WINNERS DETECTED. SIMULATION ENDED.')
+          addLog('Climate model: global particulate intrusion exceeds 95%. Temp -35C.')
+
+          // Endzustand: ALLE noch verbliebenen Standorte werden ausgelöscht,
+          // damit es keinen "Gewinner" gibt — beide Seiten sind komplett zerstört.
+          CITIES.forEach(c => {
+            if (!c.isDestroyed) {
+              c.isDestroyed = true
+              c.destroyedTime = simTime * 1000 // grobe Zeitmarke (ms), nur fürs Blinken relevant
+              // Kleine Resteinschläge auf der Karte sichtbar machen
+              spawnExplosion(c.x * W, c.y * H, 30, '#e11d48')
+              // ripplesRef.current direkt verwenden — die lokale Konstante `ripples`
+              // wird erst weiter unten im Loop deklariert und ist hier noch nicht im Scope.
+              ripplesRef.current.push({
+                x: c.x * W,
+                y: c.y * H,
+                r: 0,
+                maxR: 55,
+                alpha: 1.0,
+                color: 'rgba(244, 63, 94, 0.85)',
+                yieldText: undefined,
+              })
+              currentCasualties += Math.floor(15 + Math.random() * 45)
+            }
+          })
+          addLog('Conclusion: no survivors on either side. Simulation ended.')
         }
       }
 
@@ -343,7 +377,7 @@ function ThermonuclearWarPanel() {
               if (defenders.length > 0) {
                 const launcher = defenders[Math.floor(Math.random() * defenders.length)]
                 triggerABMLaunch(launcher, target, W, H)
-                addLog(`SHIELD INTERCEPT: INTERCEPTOR FIRED FROM ${launcher.name}.`)
+                addLog(`Shield intercept: interceptor fired from ${launcher.name}.`)
               }
             }
           }
@@ -412,9 +446,9 @@ function ThermonuclearWarPanel() {
                 maxR: 35,
                 alpha: 1.0,
                 color: 'rgba(148, 163, 184, 0.8)',
-                yieldText: 'INTERCEPT'
+                yieldText: 'Intercept'
               })
-              addLog(`INTERCEPT: ICBM THREAT NEUTRALIZED BY SHIELD OVER SECTOR.`)
+              addLog('Intercept: ICBM threat neutralized by shield over sector.')
               
               // Remove both
               missiles.splice(i, 1)
@@ -435,7 +469,7 @@ function ThermonuclearWarPanel() {
             if (targetCity) {
               targetCity.isDestroyed = true
               targetCity.destroyedTime = t
-              addLog(`IMPACT: DETONATION CONFIRMED OVER ${targetCity.name}.`)
+              addLog(`Impact: detonation confirmed over ${targetCity.name}.`)
             }
 
             // Spawn destructive explosion
@@ -552,7 +586,7 @@ function ThermonuclearWarPanel() {
         // Yield/Intercept Labels
         if (r.yieldText) {
           ctx.fillStyle = r.color
-          ctx.font = '7px monospace'
+          ctx.font = 'bold 10px monospace' // groesser + fett fuer bessere Lesbarkeit
           ctx.textAlign = 'center'
           ctx.fillText(r.yieldText, r.x, r.y - r.r - 4)
         }
@@ -603,17 +637,27 @@ function ThermonuclearWarPanel() {
         const cy = c.y * H
 
         if (c.isDestroyed) {
-          // Blinking nuclear target bracket for destroyed cities
+          // Blinkende Ziel-Markierung (rotes Kreuz im Kasten) fuer zerstoerte Standorte
           const blk = Math.floor(t / 250) % 2 === 0
           if (blk) {
-            ctx.strokeStyle = 'rgba(244, 63, 94, 0.75)'
-            ctx.lineWidth = 1.0
+            ctx.strokeStyle = 'rgba(244, 63, 94, 0.85)'
+            ctx.lineWidth = 1.2
             ctx.strokeRect(cx - 5, cy - 5, 10, 10)
-            
-            ctx.fillStyle = '#f43f5e'
-            ctx.font = 'bold 8px monospace'
+            // Diagonales Kreuz im Kasten — markiert deutlich "ausgeloescht"
+            ctx.beginPath()
+            ctx.moveTo(cx - 5, cy - 5); ctx.lineTo(cx + 5, cy + 5)
+            ctx.moveTo(cx + 5, cy - 5); ctx.lineTo(cx - 5, cy + 5)
+            ctx.stroke()
+
+            // Status-Text in normaler Schreibweise + dunkler Schatten fuer Kontrast
+            ctx.font = 'bold 11px monospace'
             ctx.textAlign = cx > W / 2 ? 'right' : 'left'
-            ctx.fillText('TERMINATED', cx > W / 2 ? cx - 8 : cx + 8, cy - 3)
+            const tx = cx > W / 2 ? cx - 8 : cx + 8
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.9)'
+            ctx.shadowBlur = 3
+            ctx.fillStyle = '#fb7185'
+            ctx.fillText('Lost', tx, cy - 3)
+            ctx.shadowBlur = 0
           }
         } else {
           // Normal active city dot
@@ -630,11 +674,15 @@ function ThermonuclearWarPanel() {
           ctx.fill()
         }
 
-        // Draw names
-        ctx.fillStyle = c.isDestroyed ? 'rgba(244, 63, 94, 0.45)' : 'rgba(203, 213, 225, 0.65)'
-        ctx.font = '8px monospace'
+        // Ortsnamen zeichnen — groesser, mit dunklem Schatten fuer guten Kontrast auf der Karte
+        ctx.save()
+        ctx.font = 'bold 11px monospace'
         ctx.textAlign = cx > W / 2 ? 'right' : 'left'
-        ctx.fillText(c.name, cx > W / 2 ? cx - 8 : cx + 8, cy + 8)
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.9)'
+        ctx.shadowBlur = 3
+        ctx.fillStyle = c.isDestroyed ? 'rgba(248, 113, 113, 0.85)' : 'rgba(226, 232, 240, 0.95)'
+        ctx.fillText(c.name, cx > W / 2 ? cx - 8 : cx + 8, cy + 9)
+        ctx.restore()
       })
 
       // 7. Apocalypse Overlay (Static noise and frosty overlay in Stage 5)
@@ -660,33 +708,41 @@ function ThermonuclearWarPanel() {
         const blink = Math.floor(t / 400) % 2 === 0
         if (blink) {
           ctx.save()
-          ctx.fillStyle = 'rgba(244, 63, 94, 0.9)'
-          ctx.font = 'bold 14px monospace'
           ctx.textAlign = 'center'
-          ctx.fillText('NO WINNERS // EXTINCTION THRESHOLD REACHED', W / 2, H * 0.48)
-          ctx.font = 'bold 9px monospace'
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.95)'
+          ctx.shadowBlur = 4
+          // Kernbotschaft: niemand hat ueberlebt, es gibt keinen Gewinner
+          ctx.fillStyle = 'rgba(251, 113, 133, 0.95)'
+          ctx.font = 'bold 16px monospace'
+          ctx.fillText('No winners — extinction threshold reached', W / 2, H * 0.48)
+          // WarGames-Zitat
+          ctx.font = 'bold 11px monospace'
           ctx.fillStyle = '#6ee7b7'
-          ctx.fillText('A STRANGE GAME. THE ONLY WINNING MOVE IS NOT TO PLAY.', W / 2, H * 0.53)
+          ctx.fillText('A strange game. The only winning move is not to play.', W / 2, H * 0.53)
           ctx.restore()
         }
       }
 
-      // 8. Draw Title HUD
-      ctx.fillStyle = 'rgba(244, 63, 94, 0.85)'
-      ctx.font = 'bold 10px monospace'
+      // 8. Titel-HUD zeichnen — groessere, fette Schrift mit dunklem Schatten fuer Kontrast.
+      ctx.save()
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.9)'
+      ctx.shadowBlur = 3
       ctx.textAlign = 'left'
-      ctx.fillText(`TACTICAL ALERT: DEFCON ${defcon}`, 12, 22)
 
-      ctx.fillStyle = 'rgba(203, 213, 225, 0.65)'
-      ctx.font = '9px monospace'
-      ctx.fillText(`STATUS LEVEL   : ${stageName}`, 12, 36)
-      ctx.fillText(`AIRBORNE ICBMS : ${activeMissilesCount}`, 12, 48)
-      ctx.fillText(`EST. CASUALTIES: ${casualties} MILLION`, 12, 60)
+      ctx.fillStyle = 'rgba(251, 113, 133, 0.95)'
+      ctx.font = 'bold 13px monospace'
+      ctx.fillText(`Tactical alert: DEFCON ${defcon}`, 12, 24)
+
+      ctx.fillStyle = 'rgba(226, 232, 240, 0.92)'
+      ctx.font = 'bold 11px monospace'
+      ctx.fillText(`Status   : ${stageName}`, 12, 42)
+      ctx.fillText(`Airborne : ${activeMissilesCount} ICBM`, 12, 57)
+      ctx.fillText(`Casualties: ${casualties} million`, 12, 72)
 
       ctx.textAlign = 'right'
-      ctx.fillText('GLOBAL DEFENSE MAINBOARD // WOPR', W - 12, 22)
-      ctx.fillText('MAP SECTOR: PLANAR CYLINDRICAL (BOUNDARY)', W - 12, 36)
-      ctx.fillText(`SIMULATOR TIME: ${simTime.toFixed(1)}S`, W - 12, 48)
+      ctx.fillText('Global defense // WOPR', W - 12, 24)
+      ctx.fillText(`Sim time : ${simTime.toFixed(1)}s`, W - 12, 42)
+      ctx.restore()
     }
 
     // Beim zentralen raf-coordinator anmelden
@@ -711,9 +767,9 @@ function ThermonuclearWarPanel() {
         </div>
         
         {/* Unterer fiktiver Ticker (DEFCON / Kriegsverlauf) */}
-        <div className="h-24 bg-slate-950/20 border-t border-slate-900/60 p-2 font-mono text-[8px] text-slate-400 overflow-y-auto leading-relaxed flex flex-col-reverse select-none">
+        <div className="h-24 bg-slate-950/20 border-t border-slate-900/60 p-2 font-mono text-[10px] text-slate-300 overflow-y-auto leading-relaxed flex flex-col-reverse select-none">
           {logs.map((log, idx) => (
-            <div key={idx} className={idx === 0 ? 'text-rose-400 font-bold animate-pulse' : 'text-slate-600'}>
+            <div key={idx} className={idx === 0 ? 'text-rose-400 font-bold animate-pulse' : 'text-slate-400'}>
               {log}
             </div>
           ))}

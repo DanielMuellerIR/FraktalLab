@@ -231,6 +231,26 @@ const AUDIO_PANELS = new Set<string>([
   'AmiModPanel',       // ProTracker MOD-Player
 ])
 
+// Geschätzte Asset-Größe pro Panel in KB (im Reviewmodus angezeigt). Die meisten
+// Panels sind rein prozedural (Canvas/Shader, KEIN Asset) → 0 KB. Nur die
+// Medien-Panels laden Dateien. Werte von der Platte gemessen (frontend/public/),
+// Stand 2026-05-31 — bei Asset-Änderungen hier aktualisieren.
+const PANEL_ASSET_KB: Record<string, number> = {
+  AmiModPanel:       1253, // 12 ProTracker-MOD-Module
+  OscilloscopePanel:   30, // 3 SID-Tunes (C64)
+  EnhanceView:        344, // urbane Stadtfotos
+  C64Panel:             7, // c64_font.png
+  AllYourBase:          0, // Video extern gestreamt (archive.org) → 0 lokal
+}
+
+/** Menschlich lesbares Größen-Label fürs Review-Panel. */
+function panelAssetLabel(name: string): string {
+  const kb = PANEL_ASSET_KB[name] ?? 0
+  if (kb === 0) return '0 KB · prozedural'
+  if (kb >= 1024) return `${(kb / 1024).toFixed(1)} MB`
+  return `${kb} KB`
+}
+
 const COMPONENT_NAMES = new Map<any, string>()
 
 function getBaseComponent(Comp: any): any {
@@ -280,24 +300,28 @@ function generateLayout(id: number, reviews: ReviewEntry[]): GeneratedLayout {
   const width = typeof window !== 'undefined' ? window.innerWidth : 1200
   let sizes: [number, number][]
 
+  // Galerie-Dichte (Relaunch 2026-05-31): bewusst WENIGER, dafür GRÖSSERE Panels
+  // mit mehr Weißraum. Früher war das Dashboard sehr dicht (bis 32 Panels) und
+  // ruckelte auf schwächerer Hardware (schwächere Hardware). Die Kachelzahl ist jetzt grob
+  // halbiert — der Nutzer erkundet eine kuratierte Galerie statt einer Wand.
   if (width >= 3440) {
-    // Ultra-wide / massive developer screens: noch mehr Panels zeigen!
-    sizes = [[6, 4], [7, 4], [8, 4]]
+    // Ultra-wide / sehr große Entwickler-Bildschirme
+    sizes = [[5, 3], [5, 4], [6, 4]]
   } else if (width >= 2560) {
     // QHD / 4K Bildschirme
-    sizes = [[5, 4], [6, 3], [6, 4]]
+    sizes = [[4, 3], [4, 4]]
   } else if (width >= 1920) {
     // Full HD / größere Monitore
-    sizes = [[4, 3], [4, 4], [5, 3]]
+    sizes = [[3, 3], [4, 3]]
   } else if (width >= 1440) {
     // QHD Laptop / mittlere Monitore
-    sizes = [[3, 3], [4, 3]]
+    sizes = [[3, 2], [3, 3]]
   } else if (width >= 1024) {
     // Standard Desktop / Tablet im Querformat
-    sizes = [[3, 2], [3, 3]]
+    sizes = [[2, 2], [3, 2]]
   } else {
     // Kleine Desktops / Tablet im Hochformat (ab 768px)
-    sizes = [[2, 2], [3, 2]]
+    sizes = [[2, 2]]
   }
   const [cols, rows] = sizes[Math.floor(Math.random() * sizes.length)]
 
@@ -510,29 +534,38 @@ function generateLayout(id: number, reviews: ReviewEntry[]): GeneratedLayout {
     }
   })
 
-  // ── Dedup-Pass: Sicherstellen, dass kein panelIdx doppelt vergeben ist ──────
-  // Getrennt für text und gfx prüfen
+  // ── Dedup-Pass: kein Panel (nach Komponenten-NAME) doppelt im Layout ────────
+  // Wichtig: NICHT nur nach panelIdx prüfen. Manche Pool-Einträge sind Aliase/
+  // Re-Exports (z.B. VoxelMatrix = NeuralNetPanel), und verschiedene Indizes
+  // können auf denselben sichtbaren Namen auflösen. Reines Index-Dedup ließ
+  // dadurch z.B. Menger 2× gleichzeitig erscheinen. Daher hier nach Name dedupen.
   for (const poolType of ['text', 'gfx'] as const) {
+    const pool = poolType === 'text' ? textPool : gfxPool
+    const poolIndices = poolType === 'text' ? textIndices : gfxIndices
+    const usedNames = new Set<string>()
     const usedIndices = new Set<number>()
-    const allPoolIndices = new Set(
-      poolType === 'text' ? textIndices : gfxIndices
-    )
 
     cells.forEach(cell => {
       if (cell.type !== poolType || cell.panelIdx == null) return
+      const name = getCompName(pool[cell.panelIdx])
 
-      if (usedIndices.has(cell.panelIdx)) {
-        // Duplikat! Ersetze durch unbenutzten Index
-        for (const candidate of allPoolIndices) {
-          if (!usedIndices.has(candidate)) {
-            cell.panelIdx = candidate
-            usedIndices.add(candidate)
-            return
-          }
+      if (usedNames.has(name)) {
+        // Duplikat-Name → ersten unbenutzten Index mit unbenutztem Namen suchen
+        let replaced = false
+        for (const candidate of poolIndices) {
+          if (usedIndices.has(candidate)) continue
+          const candName = getCompName(pool[candidate])
+          if (usedNames.has(candName)) continue
+          cell.panelIdx = candidate
+          usedIndices.add(candidate)
+          usedNames.add(candName)
+          replaced = true
+          break
         }
-        // Kein unbenutzter Index mehr → Zelle deaktivieren
-        cell.panelIdx = undefined
+        // Kein unbenutzter Name mehr verfügbar → Zelle deaktivieren
+        if (!replaced) cell.panelIdx = undefined
       } else {
+        usedNames.add(name)
         usedIndices.add(cell.panelIdx)
       }
     })
@@ -869,7 +902,9 @@ function LayoutContent({
         display:             'grid',
         gridTemplateColumns: layout.gridTemplateColumns,
         gridTemplateRows:    layout.gridTemplateRows,
-        gap:                 '4px',
+        // Galerie: mehr Weißraum zwischen den Kacheln (vorher 4px).
+        gap:                 '10px',
+        padding:             '6px',
         height:              '100%',
         width:               '100%',
       }}
@@ -1282,11 +1317,12 @@ export default function App() {
     autoTimerRef.current = setTimeout(trySwitch, delay)
   }, [trySwitch])
 
-  // Immer wenn sich layout ändert, neuen Auto-Switch-Timer setzen
-  useEffect(() => {
-    scheduleNext()
-    return () => { if (autoTimerRef.current) clearTimeout(autoTimerRef.current) }
-  }, [layout, scheduleNext])
+  // Galerie (Relaunch 2026-05-31): KEIN automatischer Komplett-Layout-Wechsel mehr.
+  // Der Nutzer erkundet selbst — Layout wechselt nur manuell (⟳-Button / Leertaste).
+  // Senkt zusätzlich die Last (kein periodisches Neu-Mounten aller Panels).
+  // `scheduleNext`/`trySwitch` bleiben für den manuellen Pfad erhalten, werden hier
+  // aber nicht mehr automatisch angestoßen.
+  void scheduleNext
 
   // Leertaste → sofortiger Layout-Wechsel (nicht im Review-Modus oder in Textfeldern)
   useEffect(() => {
@@ -1473,6 +1509,9 @@ export default function App() {
                               <span className="text-green-500 font-bold">#{idx + 1}</span>
                               <span className="text-green-700">·</span>
                               <span className="text-green-300">{panel.name}</span>
+                              <span className="text-green-700">·</span>
+                              {/* Asset-Größe des Panels (prozedurale Panels: 0 KB). */}
+                              <span className="text-green-600">{panelAssetLabel(panel.name)}</span>
                               {isUp && <span className="ml-1 text-green-400">👍</span>}
                               {isDown && <span className="ml-1 text-red-500">👎</span>}
                             </div>

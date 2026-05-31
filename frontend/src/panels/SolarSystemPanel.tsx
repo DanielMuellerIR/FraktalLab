@@ -13,17 +13,38 @@ interface PlanetData {
   radius: number
 }
 
+// Die Planeten-Stammdaten. Wichtig fuer die optische Korrektheit:
+//   `radius` ist KEIN Pixelwert, sondern ein relativer Groessen-Index, der bewusst
+//   an die echten Planetendurchmesser angelehnt ist (Erde als Referenz mit Index 5).
+//   Um die realen Verhaeltnisse darzustellen, ohne dass Jupiter das ganze Panel
+//   sprengt, sind die Werte mit einer Wurzel-Kompression (Exponent 0.5) berechnet:
+//     index = sqrt(durchmesser_planet / durchmesser_erde) * 5
+//   Dadurch bleiben die echten Groessen-VERHAELTNISSE sichtbar (Gasriesen klar
+//   groesser als Gesteinsplaneten, Merkur kleiner als Erde), die absolute Spanne
+//   wird aber so gestaucht, dass alles ins Panel passt. Eine Mindest-Pixelgroesse
+//   beim Zeichnen sorgt zusaetzlich dafuer, dass winzige Koerper (Ceres, Pluto)
+//   nicht verschwinden.
 const PLANET_DATA: PlanetData[] = [
-  { name: 'Mercury', au: 0.387, period: 87.97, mass: 0.055, moons: 0, type: 'Rocky Planet', color: '#b5b5b5', radius: 3 },
-  { name: 'Venus', au: 0.723, period: 224.70, mass: 0.815, moons: 0, type: 'Terrestrial Planet', color: '#e8cda0', radius: 5 },
-  { name: 'Earth', au: 1.000, period: 365.25, mass: 1.000, moons: 1, type: 'Habitable Planet', color: '#4b9cd3', radius: 5 },
-  { name: 'Mars', au: 1.524, period: 686.97, mass: 0.107, moons: 2, type: 'Rocky Planet', color: '#c1440e', radius: 4 },
-  { name: 'Ceres', au: 2.767, period: 1681.63, mass: 0.00015, moons: 0, type: 'Dwarf Planet', color: '#8d99ae', radius: 1.8 },
-  { name: 'Jupiter', au: 5.203, period: 4332.59, mass: 317.8, moons: 95, type: 'Gas Giant', color: '#c88b3a', radius: 11 },
-  { name: 'Saturn', au: 9.537, period: 10759.22, mass: 95.2, moons: 146, type: 'Gas Giant', color: '#e4d191', radius: 9 },
-  { name: 'Uranus', au: 19.190, period: 30688.50, mass: 14.5, moons: 28, type: 'Ice Giant', color: '#7de8e8', radius: 7 },
-  { name: 'Neptune', au: 30.070, period: 60195.00, mass: 17.1, moons: 16, type: 'Ice Giant', color: '#3f54ba', radius: 7 },
-  { name: 'Pluto', au: 39.482, period: 90560.00, mass: 0.0022, moons: 5, type: 'Dwarf Planet', color: '#cfa68b', radius: 1.5 }
+  // Merkur: realer Durchmesser 4.879 km -> deutlich kleiner als die Erde.
+  { name: 'Mercury', au: 0.387, period: 87.97, mass: 0.055, moons: 0, type: 'Rocky Planet', color: '#b5b5b5', radius: 3.1 },
+  // Venus: 12.104 km -> fast erdgross.
+  { name: 'Venus', au: 0.723, period: 224.70, mass: 0.815, moons: 0, type: 'Terrestrial Planet', color: '#e8cda0', radius: 4.9 },
+  // Erde: 12.742 km -> Referenzkoerper mit Index 5.
+  { name: 'Earth', au: 1.000, period: 365.25, mass: 1.000, moons: 1, type: 'Habitable Planet', color: '#4b9cd3', radius: 5.0 },
+  // Mars: 6.779 km -> etwa halb so gross wie die Erde.
+  { name: 'Mars', au: 1.524, period: 686.97, mass: 0.107, moons: 2, type: 'Rocky Planet', color: '#c1440e', radius: 3.6 },
+  // Ceres (Zwergplanet): nur 940 km -> sehr klein, faengt die Mindestgroesse ab.
+  { name: 'Ceres', au: 2.767, period: 1681.63, mass: 0.00015, moons: 0, type: 'Dwarf Planet', color: '#8d99ae', radius: 1.4 },
+  // Jupiter: 139.820 km -> mit Abstand groesster Planet, hier ~3,3x Erddurchmesser.
+  { name: 'Jupiter', au: 5.203, period: 4332.59, mass: 317.8, moons: 95, type: 'Gas Giant', color: '#c88b3a', radius: 16.6 },
+  // Saturn: 116.460 km -> knapp kleiner als Jupiter.
+  { name: 'Saturn', au: 9.537, period: 10759.22, mass: 95.2, moons: 146, type: 'Gas Giant', color: '#e4d191', radius: 15.1 },
+  // Uranus: 50.724 km -> Eisriese, rund halb so gross wie Jupiter.
+  { name: 'Uranus', au: 19.190, period: 30688.50, mass: 14.5, moons: 28, type: 'Ice Giant', color: '#7de8e8', radius: 10.0 },
+  // Neptun: 49.244 km -> nahezu gleich gross wie Uranus.
+  { name: 'Neptune', au: 30.070, period: 60195.00, mass: 17.1, moons: 16, type: 'Ice Giant', color: '#3f54ba', radius: 9.8 },
+  // Pluto (Zwergplanet): 2.376 km -> sehr klein, dicht an der Mindestgroesse.
+  { name: 'Pluto', au: 39.482, period: 90560.00, mass: 0.0022, moons: 5, type: 'Dwarf Planet', color: '#cfa68b', radius: 2.2 }
 ]
 
 interface ZoomTarget {
@@ -756,10 +777,27 @@ const ZOOM_TARGETS: ZoomTarget[] = [
 ]
 
 const DAYS_PER_MS = 365.25 / (14 * 1000) // Slightly slower simulation
-const MAX_AU = 39.482
+const MAX_AU = 39.482 // groesste Bahn im Datensatz (Pluto) als Skalierungs-Obergrenze
+const MIN_AU = 0.387 // kleinste Bahn im Datensatz (Merkur) als Skalierungs-Untergrenze
 
+// Wandelt den Bahnradius eines Planeten (in Astronomischen Einheiten, AU) in einen
+// Pixel-Radius um. Die echten AU-Abstaende sind extrem gespreizt (Merkur 0,387 AU,
+// Pluto 39,5 AU -> Faktor ~100). Eine 1:1-Darstellung wuerde die inneren Planeten
+// alle an der Sonne zusammendraengen. Deshalb wird mit einer Potenz-Kompression
+// (Exponent 0.55) gestaucht: nahe an linear genug, dass die ECHTEN Verhaeltnisse
+// und die Reihenfolge erhalten bleiben, aber gestaucht genug, dass alle zehn Bahnen
+// gut sichtbar zwischen `minOrbit` und `maxOrbit` Platz finden.
+//
+// Damit Merkur (kleinster Wert) genau auf `minOrbit` und Pluto (groesster Wert)
+// genau auf `maxOrbit` landet, wird der komprimierte Wert auf das Intervall
+// [MIN_AU..MAX_AU] normiert (0 = Merkur-Bahn, 1 = Pluto-Bahn).
+const ORBIT_COMPRESSION = 0.55
 function orbitRadius(au: number, minOrbit: number, maxOrbit: number): number {
-  return minOrbit + (maxOrbit - minOrbit) * Math.sqrt(au / MAX_AU)
+  const minC = Math.pow(MIN_AU, ORBIT_COMPRESSION)
+  const maxC = Math.pow(MAX_AU, ORBIT_COMPRESSION)
+  // normierter Wert 0..1 entlang der komprimierten Skala
+  const t = (Math.pow(au, ORBIT_COMPRESSION) - minC) / (maxC - minC)
+  return minOrbit + (maxOrbit - minOrbit) * t
 }
 
 const STARS: { x: number; y: number }[] = Array.from({ length: 200 }, () => ({
@@ -1269,7 +1307,12 @@ function SolarSystemPanel() {
       PLANET_DATA.forEach((planet, i) => {
         const { wx, wy } = planetPositions[i]
         const [px, py] = toScreen(wx, wy)
-        const scaledRadius = Math.max(1.8, planet.radius * Math.sqrt(viewZoom) * 0.7)
+        // Pixelradius des Planeten: relativer Groessen-Index mal Zoom-Faktor.
+        // `Math.sqrt(viewZoom)` daempft das Mitwachsen beim Hineinzoomen, damit ein
+        // fokussierter Planet nicht das ganze Bild ausfuellt. Das `Math.max(1.5, ...)`
+        // erzwingt eine Mindestgroesse von 1,5 px, sodass winzige Koerper wie Ceres
+        // oder Pluto trotz der realistischen Groessenverhaeltnisse sichtbar bleiben.
+        const scaledRadius = Math.max(1.5, planet.radius * Math.sqrt(viewZoom) * 0.7)
 
         // Draw Saturn Rings
         if (planet.name === 'Saturn') {
@@ -1305,17 +1348,11 @@ function SolarSystemPanel() {
             const mwx = wx + Math.cos(moonAngle) * (target.moonOrbitRadius || 12)
             const mwy = wy + Math.sin(moonAngle) * (target.moonOrbitRadius || 12)
             const [mx, my] = toScreen(mwx, mwy)
-            
-            const scaledMoonOrbitR = (target.moonOrbitRadius || 12) * viewZoom
 
-            // Draw moon orbit path (when zoomed in on parent or moon)
-            if (viewZoom > 2.0) {
-              ctx.strokeStyle = 'rgba(74, 85, 104, 0.12)'
-              ctx.lineWidth = 0.5
-              ctx.beginPath()
-              ctx.arc(px, py, scaledMoonOrbitR, 0, Math.PI * 2)
-              ctx.stroke()
-            }
+            // Hinweis: Fuer Monde werden bewusst KEINE Umlaufbahn-Kreise gezeichnet.
+            // Orbit-Ringe gibt es ausschliesslich fuer die Planeten (siehe weiter oben
+            // in der "Render Planetary Orbits"-Schleife). Der Mond selbst kreist
+            // weiterhin um seinen Planeten, nur seine Bahnlinie wird nicht dargestellt.
 
             // Draw Moon body
             ctx.fillStyle = target.color

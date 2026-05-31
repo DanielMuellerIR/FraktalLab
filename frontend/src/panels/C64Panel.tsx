@@ -38,7 +38,9 @@ function mixColors(a: string, b: string, t: number): string {
   const [ar, ag, ab] = hexRgb(a)
   const [br, bg, bb] = hexRgb(b)
   const r = Math.round(ar + (br - ar) * t)
-  const g = Math.round(ag + (bg - ar) * t) // mix colors correctly
+  // Bugfix: der Gruen-Kanal muss zwischen ag und bg interpolieren (vorher
+  // stand hier faelschlich "bg - ar", was die Rasterbar-Farben verfaelschte).
+  const g = Math.round(ag + (bg - ag) * t)
   const bl = Math.round(ab + (bb - ab) * t)
   return `rgb(${r},${g},${bl})`
 }
@@ -79,6 +81,10 @@ function C64Panel() {
     if (!_ctx) return
     const ctx: CanvasRenderingContext2D  = _ctx
 
+    // Pixel-Quality Kategorie A: authentisch grobpixelig. Kein Glaetten beim
+    // Skalieren der Bitmap-Glyphen — harte Pixelkanten sind hier gewollt.
+    ctx.imageSmoothingEnabled = false
+
     let active = true
     // unsubscribe-Funktion aus subscribe(); null wenn nicht angemeldet.
     let unsubscribe: (() => void) | null = null
@@ -94,6 +100,10 @@ function C64Panel() {
         canvas.width  = cW
         canvas.height = Math.round(cW * (3 / 4))
       }
+      // Wichtig: Beim Setzen von canvas.width/height wird der 2D-Kontext
+      // zurueckgesetzt — also auch imageSmoothingEnabled. Deshalb hier erneut
+      // deaktivieren, damit die Glyphen weiterhin hart-pixelig bleiben.
+      ctx.imageSmoothingEnabled = false
     }
     resize()
     const ro = new ResizeObserver(resize)
@@ -135,116 +145,168 @@ function C64Panel() {
       for (let y = 0; y < H; y += 2) ctx.fillRect(0, y, W, 1)
     }
 
-    // ── Bitmap Font setup ────────────────────────────────────────────────────
+    // ── Bitmap-Font Setup ──────────────────────────────────────────────────────
+    //
+    // FONT-FIX (Regression behoben):
+    //
+    // Der alte Code baute fuer JEDE der 16 C64-Palettenfarben ein eigenes,
+    // eingefaerbtes Font-Sheet und waehlte beim Zeichnen per "naechste
+    // Palettenfarbe" (getPaletteIndex) das passende aus. Das hatte zwei Fehler,
+    // die zusammen dafuer sorgten, dass der Boot-/BASIC-Text praktisch unsichtbar
+    // bzw. falschfarbig war:
+    //
+    //   1) Die gewuenschte Schriftfarbe TEXT_CLR = '#a2a2ff' (helles Periwinkle)
+    //      ist KEINE der 16 C64-Palettenfarben. getPaletteIndex() rastete sie
+    //      deshalb auf die naechstliegende Palettenfarbe ein — das war hier das
+    //      cyan-/lila-stichige PAL[3] bzw. PAL[14]. Auf dem royalblauen
+    //      Hintergrund (#3a3aff) ergab das extrem kontrastarmen, "verschwundenen"
+    //      Text in der falschen Farbe.
+    //   2) Die Helligkeits-Schwelle (val > 80) zum Trennen von Glyphe und
+    //      Hintergrund war fragil: Vorder- und Hintergrund des PNG sind beide
+    //      blaeulich, die Werte liegen nah beieinander.
+    //
+    // Neue Loesung: Wir erzeugen aus dem PNG GENAU EINE Alpha-Maske
+    //   (weisse Glyphen auf transparentem Grund). Diese Maske faerben wir beim
+    //   Zeichnen on-the-fly in die EXAKT gewuenschte Farbe ein (auch Nicht-
+    //   Palettenfarben wie #a2a2ff). Das ist farbtreu, kontraststark und kommt
+    //   ohne das verlustbehaftete Palette-Einrasten aus.
     const fontImg = new Image()
     fontImg.src = '/c64_font.png'
     let fontLoaded = false
-    const colorSheets: HTMLCanvasElement[] = []
+
+    // Die Alpha-Maske: weisse Glyphen (RGB 255,255,255) mit Alpha aus der
+    // Glyphen-Helligkeit, Hintergrund vollstaendig transparent.
+    let maskSheet: HTMLCanvasElement | null = null
+    // Wiederverwendbarer Tint-Puffer: hier faerben wir pro Frame um, statt 16
+    // Sheets vorzuhalten. Vermeidet teures Neu-Allozieren.
+    let tintCanvas: HTMLCanvasElement | null = null
+
+    // ── Zellen-Geometrie des Font-Sheets ───────────────────────────────────────
+    // Das c64_font.png hat einen schmalen Aussenrand und duenne Gitterlinien
+    // zwischen den Zellen. Die hier verwendeten Werte (Rand 6 px, Zellabstand
+    // 26 px, Glyphe 24 px) entsprechen exakt dem urspruenglich funktionierenden
+    // Sampling — sie waren NICHT die Ursache der Font-Regression (das war die
+    // Farb-Einrastung, s. o.). Wir behalten sie deshalb bei und ergaenzen nur
+    // einen kleinen Inset, der etwaige Gitterlinien-Reste wegschneidet.
+    const SHEET_BORDER = 6   // Aussenrand des Sheets bis zur ersten Zelle (px)
+    const CELL_PITCH   = 26  // Abstand Zellanfang zu Zellanfang (px)
+    const GLYPH_SIZE   = 24  // belegte Glyphen-Flaeche je Zelle (px)
+    const glyphInset   = 1   // zusaetzliches Inset gegen Gitterlinien (px)
 
     fontImg.onload = () => {
+      const fw = fontImg.width
+      const fh = fontImg.height
+
+      // PNG in einen Off-Screen-Canvas zeichnen, um an die Pixeldaten zu kommen.
       const tempCanvas = document.createElement('canvas')
-      tempCanvas.width = fontImg.width
-      tempCanvas.height = fontImg.height
+      tempCanvas.width = fw
+      tempCanvas.height = fh
       const tempCtx = tempCanvas.getContext('2d')
       if (!tempCtx) return
       tempCtx.drawImage(fontImg, 0, 0)
-      
-      const imgData = tempCtx.getImageData(0, 0, fontImg.width, fontImg.height)
+
+      const imgData = tempCtx.getImageData(0, 0, fw, fh)
       const data = imgData.data
-      
-      for (let cIdx = 0; cIdx < PAL.length; cIdx++) {
-        const hex = PAL[cIdx]
-        const [tr, tg, tb] = hexRgb(hex)
-        
-        const sheetCanvas = document.createElement('canvas')
-        sheetCanvas.width = fontImg.width
-        sheetCanvas.height = fontImg.height
-        const sheetCtx = sheetCanvas.getContext('2d')
-        if (!sheetCtx) continue
-        
-        const sheetData = new ImageData(fontImg.width, fontImg.height)
-        const sData = sheetData.data
-        
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i]
-          const g = data[i+1]
-          const b = data[i+2]
-          
-          const val = 0.299 * r + 0.587 * g + 0.114 * b
-          if (val > 80) {
-            sData[i]   = tr
-            sData[i+1] = tg
-            sData[i+2] = tb
-            sData[i+3] = 255
-          } else {
-            sData[i]   = 0
-            sData[i+1] = 0
-            sData[i+2] = 0
-            sData[i+3] = 0
-          }
+
+      // Alpha-Maske aufbauen: Glyphe -> weiss/opak, Hintergrund -> transparent.
+      const mask = document.createElement('canvas')
+      mask.width = fw
+      mask.height = fh
+      const maskCtx = mask.getContext('2d')
+      if (!maskCtx) return
+
+      const maskData = new ImageData(fw, fh)
+      const m = maskData.data
+
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i]
+        const g = data[i + 1]
+        const b = data[i + 2]
+        // Wahrnehmungs-Helligkeit (Luma). Die hellen Periwinkle-Glyphen liegen
+        // klar ueber dem dunkelblauen Hintergrund (~66) und unter den Glyphen
+        // (~159). Schwelle 95 trennt zuverlaessig; die mittelhellen Gitterlinien
+        // werden zusaetzlich durch den glyphInset (siehe drawGlyphTinted)
+        // weggeschnitten, liegen also gar nicht erst im Glyphen-Ausschnitt.
+        const val = 0.299 * r + 0.587 * g + 0.114 * b
+        if (val > 95) {
+          m[i] = 255
+          m[i + 1] = 255
+          m[i + 2] = 255
+          m[i + 3] = 255
+        } else {
+          m[i] = 0
+          m[i + 1] = 0
+          m[i + 2] = 0
+          m[i + 3] = 0
         }
-        sheetCtx.putImageData(sheetData, 0, 0)
-        colorSheets[cIdx] = sheetCanvas
       }
+      maskCtx.putImageData(maskData, 0, 0)
+      maskSheet = mask
+
+      // Tint-Puffer fuer EINE Glyphe vorbereiten (wird beim Zeichnen genutzt).
+      tintCanvas = document.createElement('canvas')
+
       fontLoaded = true
     }
 
-    function getPaletteIndex(colorHex: string): number {
-      const hexUpper = colorHex.toUpperCase()
-      const idx = PAL.indexOf(hexUpper)
-      if (idx !== -1) return idx
-      
-      let bestIdx = 14
-      let bestDist = Infinity
-      
-      let tr = 160, tg = 162, tb = 255
-      if (colorHex.startsWith('#')) {
-        const n = parseInt(colorHex.slice(1), 16)
-        tr = (n >> 16) & 0xff
-        tg = (n >> 8) & 0xff
-        tb = n & 0xff
-      } else if (colorHex.startsWith('rgb')) {
-        const matches = colorHex.match(/\d+/g)
-        if (matches && matches.length >= 3) {
-          tr = parseInt(matches[0])
-          tg = parseInt(matches[1])
-          tb = parseInt(matches[2])
-        }
+    // Eine einzelne Glyphe in beliebiger Farbe zeichnen.
+    // Vorgehen: Glyphen-Ausschnitt aus der weissen Maske in einen kleinen
+    // Tint-Puffer kopieren, dort per 'source-in'-Komposition mit der Zielfarbe
+    // einfaerben und das Ergebnis aufs Haupt-Canvas skalieren.
+    function drawGlyphTinted(
+      coords: { col: number; row: number },
+      destX: number,
+      destY: number,
+      destSize: number,
+      color: string,
+    ) {
+      if (!maskSheet || !tintCanvas) return
+      // Quell-Rechteck im Sheet: Aussenrand + Spalte/Zeile * Zellabstand, plus
+      // kleines Inset gegen Gitterlinien. Breite/Hoehe = Glyphe minus Inset.
+      const srcX = SHEET_BORDER + coords.col * CELL_PITCH + glyphInset
+      const srcY = SHEET_BORDER + coords.row * CELL_PITCH + glyphInset
+      const srcW = GLYPH_SIZE - glyphInset * 2
+      const srcH = GLYPH_SIZE - glyphInset * 2
+
+      // Tint-Puffer auf Glyphen-Quellgroesse bringen und leeren.
+      const tc = tintCanvas
+      if (tc.width !== srcW || tc.height !== srcH) {
+        tc.width = srcW
+        tc.height = srcH
       }
-      
-      for (let i = 0; i < PAL.length; i++) {
-        const [pr, pg, pb] = hexRgb(PAL[i])
-        const dist = Math.pow(pr - tr, 2) + Math.pow(pg - tg, 2) + Math.pow(pb - tb, 2)
-        if (dist < bestDist) {
-          bestDist = dist
-          bestIdx = i
-        }
-      }
-      
-      return bestIdx
+      const tctx = tc.getContext('2d')
+      if (!tctx) return
+      tctx.clearRect(0, 0, srcW, srcH)
+      // 1) Weisse Glyphenmaske in den Puffer kopieren.
+      tctx.globalCompositeOperation = 'source-over'
+      tctx.drawImage(maskSheet, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH)
+      // 2) Mit der Zielfarbe einfaerben: 'source-in' faerbt nur dort, wo die
+      //    Maske opak ist — der transparente Hintergrund bleibt transparent.
+      tctx.globalCompositeOperation = 'source-in'
+      tctx.fillStyle = color
+      tctx.fillRect(0, 0, srcW, srcH)
+      tctx.globalCompositeOperation = 'source-over'
+
+      // 3) Eingefaerbte Glyphe aufs Haupt-Canvas skalieren (grobpixelig, gewollt).
+      ctx.drawImage(tc, 0, 0, srcW, srcH, destX, destY, destSize, destSize)
     }
 
     function drawChar(text: string, col: number, row: number, color = TEXT_CLR) {
       const { bx, by, cs } = layout()
-      
+
       if (fontLoaded) {
-        const cIdx = getPaletteIndex(color)
-        const sheet = colorSheets[cIdx]
-        
         for (let i = 0; i < text.length; i++) {
           const char = text[i]
           const coords = getCharCoords(char)
           if (!coords) continue
-          
-          const srcX = 6 + coords.col * 26
-          const srcY = 6 + coords.row * 26
-          
+
           const destX = bx + col * cs + i * cs
           const destY = by + row * cs
-          
-          ctx.drawImage(sheet, srcX, srcY, 24, 24, destX, destY, cs, cs)
+          // Glyphe in der EXAKT gewuenschten Farbe zeichnen (kein Palette-Snap).
+          drawGlyphTinted(coords, destX, destY, cs, color)
         }
       } else {
+        // Fallback, solange das PNG noch laedt: System-Monospace.
         const adjustedFs = Math.max(6, cs * 0.80)
         ctx.font         = `${adjustedFs}px monospace`
         ctx.fillStyle    = color
@@ -296,11 +358,28 @@ function C64Panel() {
     let demoScene = 0
     let scrollX   = 0
 
+    // ── Authentischer C64-Bootscreen (40×25 Zeichen) ───────────────────────────
+    //
+    // Originalgetreuer KERNAL-Startbildschirm (PAL/NTSC, wie in VICE und auf echter
+    // Hardware). Wichtige Details, recherchiert (siehe Report-Quellen):
+    //   - Eine Leerzeile ganz oben (Zeile 0).
+    //   - Kopfzeile  '**** COMMODORE 64 BASIC V2 ****'  mit 4 fuehrenden
+    //     Leerzeichen, dadurch nahezu mittig im 40-Spalten-Raster.
+    //   - Eine Leerzeile.
+    //   - RAM-Zeile  ' 64K RAM SYSTEM  38911 BASIC BYTES FREE'  mit EINEM
+    //     fuehrenden Leerzeichen und ZWEI Leerzeichen zwischen "SYSTEM" und
+    //     "38911" — exakt wie im Original.
+    //   - Eine Leerzeile.
+    //   - 'READY.' linksbuendig.
+    //   - Blinkender Cursor in der Folgezeile.
+    // Schrift hell-blau (Periwinkle) auf dunkelblauem Grund mit hellblauem Rand.
     const bootLines: string[] = Array(ROWS).fill('')
-    bootLines[1] = '    **** COMMODORE 64 BASIC V2 ****'
-    bootLines[2] = ' 64K RAM SYSTEM  38911 BASIC BYTES FREE'
-    bootLines[3] = ''
-    bootLines[4] = 'READY.'
+    bootLines[0] = ''                                            // Leerzeile oben
+    bootLines[1] = '    **** COMMODORE 64 BASIC V2 ****'         // 4 Leerzeichen Einzug
+    bootLines[2] = ''                                            // Leerzeile
+    bootLines[3] = ' 64K RAM SYSTEM  38911 BASIC BYTES FREE'     // 1 + 2 Leerzeichen
+    bootLines[4] = ''                                            // Leerzeile
+    bootLines[5] = 'READY.'                                      // linksbuendig
 
     let screenLines: string[] = [...bootLines]
 
@@ -326,14 +405,11 @@ function C64Panel() {
         const cColor = PAL[Math.max(1, palIdx)]
         
         if (fontLoaded) {
-          const cIdx = getPaletteIndex(cColor)
-          const sheet = colorSheets[cIdx]
           const char = SCROLL_TXT[i]
           const coords = getCharCoords(char)
           if (coords) {
-            const srcX = 6 + coords.col * 26
-            const srcY = 6 + coords.row * 26
-            ctx.drawImage(sheet, srcX, srcY, 24, 24, cx2, cy2, charW, charW)
+            // Eingefaerbte Glyphe ueber den gemeinsamen Tint-Pfad zeichnen.
+            drawGlyphTinted(coords, cx2, cy2, charW, cColor)
           }
         } else {
           ctx.font = `${charW}px monospace`
@@ -446,7 +522,8 @@ function C64Panel() {
       const blinkOn = Math.floor(now / 530) % 2 === 0
 
       if (phase === 'boot') {
-        renderScreen(screenLines, 5, 0, blinkOn)
+        // READY. steht in Zeile 5, der Cursor blinkt darunter in Zeile 6.
+        renderScreen(screenLines, 6, 0, blinkOn)
         if (elapsed > 2000) {
           phase = 'type_load'
           phaseStart = now
@@ -454,23 +531,24 @@ function C64Panel() {
         }
 
       } else if (phase === 'type_load') {
+        // LOAD-Befehl wird in Zeile 6 (unter READY.) Zeichen fuer Zeichen getippt.
         const charsToType = Math.floor((now - phaseStart) / 180)
         typedSoFar = LOAD_CMD.slice(0, Math.min(charsToType, LOAD_CMD.length))
         const lines = [...screenLines]
-        lines[5] = typedSoFar
-        renderScreen(lines, 5, typedSoFar.length, blinkOn)
+        lines[6] = typedSoFar
+        renderScreen(lines, 6, typedSoFar.length, blinkOn)
 
         if (typedSoFar.length >= LOAD_CMD.length && elapsed > LOAD_CMD.length * 180 + 400) {
           phase = 'searching'
           phaseStart = now
-          screenLines[5] = LOAD_CMD
-          screenLines[6] = ''
-          screenLines[7] = 'SEARCHING FOR *'
-          screenLines[8] = 'LOADING'
+          screenLines[6] = LOAD_CMD
+          screenLines[7] = ''
+          screenLines[8] = 'SEARCHING FOR *'
+          screenLines[9] = 'LOADING'
         }
 
       } else if (phase === 'searching') {
-        renderScreen(screenLines, 9, 0, false)
+        renderScreen(screenLines, 10, 0, false)
         if (elapsed > 2000) {
           phase = 'type_run'
           phaseStart = now
@@ -478,11 +556,12 @@ function C64Panel() {
         }
 
       } else if (phase === 'type_run') {
+        // RUN-Befehl wird in Zeile 10 getippt.
         const charsToType = Math.floor((now - phaseStart) / 180)
         typedSoFar = RUN_CMD.slice(0, Math.min(charsToType, RUN_CMD.length))
         const lines = [...screenLines]
-        lines[9] = typedSoFar
-        renderScreen(lines, 9, typedSoFar.length, blinkOn)
+        lines[10] = typedSoFar
+        renderScreen(lines, 10, typedSoFar.length, blinkOn)
 
         if (typedSoFar.length >= RUN_CMD.length && elapsed > RUN_CMD.length * 180 + 400) {
           phase = 'demo'
@@ -525,13 +604,16 @@ function C64Panel() {
         if (elapsed > totalDur + 500) {
           phase = 'ready'
           phaseStart = now
+          // Nach dem Demo-RUN kehrt der C64 mit einem weiteren READY. zurueck.
+          // bootLines[5] ist bereits 'READY.'; wir setzen ein zweites READY.
+          // in Zeile 7, der Cursor blinkt darunter in Zeile 8.
           screenLines = [...bootLines]
-          screenLines[5] = ''
-          screenLines[6] = 'READY.'
+          screenLines[6] = ''
+          screenLines[7] = 'READY.'
         }
 
       } else if (phase === 'ready') {
-        renderScreen(screenLines, 7, 0, blinkOn)
+        renderScreen(screenLines, 8, 0, blinkOn)
         if (elapsed > 2000) {
           phase = 'boot'
           phaseStart = now
@@ -555,7 +637,8 @@ function C64Panel() {
   return (
     <Panel title="C64 // SYSTEM INTRUDE MODE">
       <div ref={containerRef} className="w-full h-full min-h-0 flex items-center justify-center bg-black overflow-hidden">
-        <canvas ref={canvasRef} className="block" />
+        {/* imageRendering: pixelated => authentisch grobpixelige Skalierung (Kategorie A) */}
+        <canvas ref={canvasRef} className="block" style={{ imageRendering: 'pixelated' }} />
       </div>
     </Panel>
   )
