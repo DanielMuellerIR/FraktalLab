@@ -52,7 +52,9 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 - [ ] **Repo:** https://github.com/DanielMuellerIR/FraktalLab.git
 - [ ] **Erst privat** veröffentlichen — wegen mitgelieferter MOD- und SID-Dateien (urheberrechtlich geschützt, nicht für öffentliches Repo). Vor späterem Public-Schalten klären: Assets entfernen / extern laden / Lizenzlage.
 - [ ] **Deutsches README** erzeugen: alle **aktiven** Panels auflisten + technische Vorzüge (z.B. eigene GPU-Fraktal-Engine mit double-single-Präzision, eigener ProTracker-MOD-Player + C64-SID-Player als AudioWorklet, prozedurale Panels, kleine Bundle-Größe ~1 MB ohne Assets). **Nüchtern/technisch, nichts erfinden**, so formuliert als wäre es public (Umstellung auf public evtl. bald).
-- [ ] **Claude NICHT als Contributor/Autor angeben.** README-Autor = Daniel. Künftige Commits ohne `Co-Authored-By: Claude`-Trailer. Bestehende History enthält den Trailer noch — vor Public ggf. entscheiden, ob umgeschrieben wird (History-Rewrite ist riskant, nicht ungefragt machen).
+- [ ] **Claude NICHT als Contributor/Autor angeben.** README-Autor = Daniel. Künftige Commits ohne `Co-Authored-By: Claude`-Trailer (ab Commit `f13a2e5` weggelassen).
+  - Befund: git-Autor/Committer ist bei **allen 142 Commits** `DanielMuellerIR <<email>>` (sauber). KI-Spur **nur** im Message-Body als `Co-Authored-By: Claude …`-Trailer in **57 Commits** (Varianten Opus 4.7/4.8, Sonnet 4.6). Andere genutzte KIs haben keinen Trailer hinterlassen.
+  - Entfernen vor Public = History-Rewrite (`git filter-repo --message-callback` o.ä., strippt die Trailer-Zeilen). Alle Hashes ändern sich → nur direkt vor dem ersten Push, nicht ungefragt.
 
 > **Nächste Schritte — Panel-Rework Phase 2 (priorisiert nach Kritik-Intensität, ABGESCHLOSSEN):**
 >
