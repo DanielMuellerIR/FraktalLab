@@ -55,6 +55,57 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 - [x] **`GlobePanel`**: Der rote Rahmen im Reviewmodus ist **korrektes generisches Down-Rating-Highlight** (aktives + 👎-Panel = rot), kein Bug. "Nie im Hauptbereich" = niedrige Pool-Wahrscheinlichkeit (49 GFX-Panels), kein Code-Defekt. Kein Fix nötig.
 - [x] **Panelanzahl/Layout nach Deaktivierung angepasst** — Teil des Galerie-Redesigns (weniger, größere Panels).
 
+### Layout-V2 — Aspect-Matching + Auslastungs-Wähler (geplant, 2026-05-31, noch NICHT gebaut)
+
+User-Entscheidungen festgehalten; Umsetzung in eigener Session. Reihenfolge:
+1. Supervolcano archivieren + WOPR/Größen-Caps, 2. Aspect-Matching im Generator,
+3. Auslastungs-Wähler + Benchmark. Jeweils Browser-Verifikation + Commit.
+
+**(a) `SupervolcanoPanel` archivieren** — gilt als schlechtes Panel. In
+`ARCHIVED_PANELS` (registry.ts), raus aus `POOL_GFX` + `LARGE_PANELS`.
+
+**(b) Aspect-Ratio-Gruppen.** Layout-Generator gibt jeder Zelle ein Seitenverhältnis
+(aus col/row-Span × fr-Gewichten) und setzt nur passende Panels ein. ANY passt
+überall; Fallback ANY, wenn kein Match. Einordnung:
+- **WIDE** (≥16:10 — Karte/Horizont/Cockpit/Panorama): `VoxelDemoColor`,
+  `VoxelDemoBW`, `VoxelThermal`, `VoxelLava`, `StarfieldScene`, `ElitePanel`,
+  `ParallaxPanel`, `EnhanceView`, `RetroErrorPanel`, `DaggerfallPanel`,
+  `OscilloscopePanel`, `ThermonuclearWarPanel` (WOPR, nie groß), `PhysicsSandboxPanel`.
+- **SQUARE** (~1:1–4:3 — rund/zentriert/4:3): `GlobePanel`, `RadarSweepPanel`,
+  `SolarSystemPanel`, `MoonPanel`, `C64Panel`, `AllYourBase` (4:3, Klein-Deckel),
+  `AmiModPanel`, `CADRobotPanel`, `ShaderHackingCore`, `TixyPanel`, `VoxelNeon`,
+  `ThreeBodyScene`, `TunnelScene`, `DotCloudScene`.
+- **TALL** (Hochformat): nur `NuclearExplosionPanel`. (DNAHelix bleibt Split =
+  SQUARE/WIDE; kein eigenes Portrait-Panel gewünscht.)
+- **ANY** (formatneutral): alle `Fractal*`, `FractalJulia`, `PlasmaDemo`,
+  `MetaballsScene`, `RotozoomScene`, `FireScene`, `ShaderMandelbox`,
+  `MandelbulbScene`, `MengerSpongeScene`, `ApollonianGasketScene`, `IQSmoothMin`,
+  `IQDigitalStorm`, `LovebyteShowcasePanel`, `LidarScanPanel`, `VoxelMatrix`.
+- **TEXT** (jedes Format, NIE groß): alle 13 Textpanels (`SystemLog`, `DataStream`,
+  `Vitals`, `PortScanner`, `PseudoCode`, `AgentCodePanel`, `VisitorProfilePanel`,
+  `ICQChatPanel`, `DiskCleanupPanel`, `StockTickerPanel` (breit-schmal), `SatellitePanel`,
+  `ClassifiedPanel`, `MetaAgentPanel`).
+
+**(c) Größen-Deckelung.**
+- Nie groß (max 1×1): WOPR (raus aus `LARGE_PANELS`, WIDE-only), alle TEXT,
+  `AllYourBase`.
+- `AllYourBase`-Regel: Video ist **320×240, 4:3**. Cell-Pixel ≤ Video-px ×
+  `devicePixelRatio` → fester Klein-Slot, nie Hero (bei 2× Retina sonst weich).
+- Groß-fähig: Fraktale, große Shader (Mandelbulb/Menger/Apollonian/Mandelbox/
+  HackingCore/RetroWave), NuclearExplosion, Moon, SolarSystem, Voxel-Terrains,
+  Plasma/Tunnel/Metaballs, Elite, CADRobot, C64, AmiMod, Parallax, DNAHelix.
+
+**(d) Auslastungs-Wähler** (ersetzt `⟳ LAYOUT`-Button oben). 4 Segmente, Label
+"AUSLASTUNG": `25 MHz` (~4–6) · `Turbo` (~8–10) · `Overclock` (~14–18) ·
+`Proxima Centauri` (bis 32, rot/Warn-Glow als Köder). Panelzahl skaliert zusätzlich
+mit Bildschirmbreite. Klick = Dichte setzen + Layout neu würfeln; erneuter Klick =
+neu würfeln. Wahl in localStorage gemerkt. Frühere Max-Dichte war 32 (8×4 Ultrawide).
+
+**(e) Hardware/Default.** M1-vs-M5-Erkennung im Browser NICHT zuverlässig (Safari
+maskiert GPU zu generischem "Apple GPU"; nur `navigator.hardwareConcurrency` =
+Kernzahl als grober Hinweis). Lösung: 1s-FPS-Mini-Benchmark beim Start → schlägt
+Default-Stufe vor, User überschreibt jederzeit (persistiert).
+
 **Fakten/Notizen:**
 - AllYourBase-Video: extern gestreamt (`archive.org/download/youtube-dIQ53t0gv_4/dIQ53t0gv_4.mp4`), 0 Byte lokal → Seite ohne Assets ~1 MB.
 - `c64_font.png` (`public/`) wird in `C64Panel.tsx:140` aktiv geladen (nicht obsolet).
