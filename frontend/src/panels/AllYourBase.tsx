@@ -4,7 +4,9 @@ import { isSharedAudioContextRunning } from '../utils/shared-audio'
 import {
   registerAudioFocusListener,
   requestAudioFocus,
-  releaseAudioFocus
+  releaseAudioFocus,
+  registerAudioCandidate,
+  notifyAudioEnded,
 } from '../utils/audio-focus'
 
 const VIDEO_SRC = 'https://archive.org/download/youtube-dIQ53t0gv_4/dIQ53t0gv_4.mp4'
@@ -49,6 +51,27 @@ function AllYourBase() {
     }
   }, [])
 
+  // Als Election-Kandidat registrieren: start() spielt mit Ton + holt Fokus,
+  // setMuted() schaltet stumm/laut (Video läuft visuell weiter — Pause-Verhalten).
+  useEffect(() => {
+    return registerAudioCandidate('all-your-base', {
+      start: () => {
+        const v = videoRef.current
+        if (!v) return
+        requestAudioFocus(AUDIO_ID)
+        v.muted = false
+        setMuted(false)
+        v.play().catch(() => {})
+      },
+      setMuted: (m) => {
+        const v = videoRef.current
+        if (!v) return
+        v.muted = m
+        setMuted(m)
+      },
+    })
+  }, [])
+
   const toggleMute = () => {
     const v = videoRef.current
     if (!v) return
@@ -74,6 +97,7 @@ function AllYourBase() {
           src={VIDEO_SRC}
           autoPlay
           playsInline
+          onEnded={() => notifyAudioEnded(AUDIO_ID)}
           style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
         />
         <button

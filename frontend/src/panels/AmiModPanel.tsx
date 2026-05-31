@@ -3,7 +3,7 @@ import Panel from '../ui/Panel';
 import { ModPlayer } from '../utils/modplayer/player';
 import { Mod, Note } from '../utils/modplayer/mod';
 import { subscribe } from '../utils/raf-coordinator';
-import { registerAudioFocusListener, requestAudioFocus, releaseAudioFocus } from '../utils/audio-focus';
+import { registerAudioFocusListener, requestAudioFocus, releaseAudioFocus, registerAudioCandidate, notifyAudioEnded } from '../utils/audio-focus';
 
 const AUDIO_ID = 'ami-mod-player';
 
@@ -289,6 +289,41 @@ function AmiModPanel() {
     };
   }, [player]);
 
+  // Als Election-Kandidat registrieren. start() spielt den (beim Mount zufällig
+  // gewählten) Track ab + holt Fokus; setMuted() stoppt/startet, behält aber den
+  // Fokus (Pause-Verhalten). Liest player.mod LIVE statt aus React-State, damit
+  // der einmalig registrierte Callback nicht auf veralteten Ladestand zugreift.
+  useEffect(() => {
+    const playTrack = () => {
+      const p = playerRef.current;
+      requestAudioFocus(AUDIO_ID);
+      if (p.mod) {
+        lastPosRef.current = 0;
+        justScrubbedRef.current = false;
+        p.resumeContext();
+        p.play();
+        setPlaying(true);
+        (window as any).fraktallab_mod_playing = true;
+      } else {
+        // Track lädt noch → der Load-Finish-Pfad startet dann automatisch.
+        shouldAutoPlayRef.current = true;
+      }
+    };
+    return registerAudioCandidate(AUDIO_ID, {
+      start: playTrack,
+      setMuted: (m) => {
+        const p = playerRef.current;
+        if (m) {
+          p.stop();
+          setPlaying(false);
+          (window as any).fraktallab_mod_playing = false;
+        } else {
+          playTrack();
+        }
+      },
+    });
+  }, []);
+
   // Caching und Autoplay-Auswahl bei Mount
   useEffect(() => {
     // Falls kein anderes Video oder Mod-Player läuft, wählen wir einen zufälligen Track aus.
@@ -371,6 +406,8 @@ function AmiModPanel() {
             player.stop();
             setPlaying(false);
             (window as any).fraktallab_mod_playing = false;
+            // Song zu Ende → an einen anderen Player übergeben (z.B. SID/Video).
+            notifyAudioEnded(AUDIO_ID);
             return;
           }
           lastPosRef.current = pos;

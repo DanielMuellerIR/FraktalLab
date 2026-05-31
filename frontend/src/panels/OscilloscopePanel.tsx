@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import Panel from '../ui/Panel'
 import { subscribe } from '../utils/raf-coordinator'
-import { registerAudioFocusListener, requestAudioFocus, releaseAudioFocus } from '../utils/audio-focus'
+import { registerAudioFocusListener, requestAudioFocus, releaseAudioFocus, registerAudioCandidate } from '../utils/audio-focus'
 import { SidPlayer, type SidMetadata, type SidVisuals } from '../utils/sidplayer'
 
 const AUDIO_ID = 'sid-player'
@@ -294,6 +294,37 @@ function OscilloscopePanel() {
       releaseAudioFocus(AUDIO_ID)
     }
   }, [player])
+
+  // Als Election-Kandidat registrieren. Beim Mount ist bereits ein zufälliger
+  // Default-Track geladen (siehe Effekt unten) → start() spielt diesen ab.
+  // setMuted() stoppt/startet, behält aber den Audio-Fokus (Pause-Verhalten).
+  useEffect(() => {
+    return registerAudioCandidate(AUDIO_ID, {
+      start: () => {
+        const p = playerRef.current
+        requestAudioFocus(AUDIO_ID)
+        p.resumeContext()
+        if (p.loaded) {
+          p.play().then(() => setPlaying(true)).catch(console.error)
+        } else {
+          // Track noch nicht fertig geladen → nach dem Laden automatisch starten.
+          shouldAutoPlayRef.current = true
+        }
+      },
+      setMuted: (m) => {
+        const p = playerRef.current
+        if (m) {
+          p.stop()
+          setPlaying(false)
+        } else {
+          requestAudioFocus(AUDIO_ID)
+          p.resumeContext()
+          if (p.loaded) p.play().then(() => setPlaying(true)).catch(console.error)
+          else shouldAutoPlayRef.current = true
+        }
+      },
+    })
+  }, [])
 
   // Keep playingRef readable by the RAF loop (which captures stale state).
   useEffect(() => { playingRef.current = playing }, [playing])

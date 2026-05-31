@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useRef, memo } from 'react'
 import PanelSlot     from './ui/PanelSlot'
 import FractalView   from './panels/FractalView'
 import GlitchOverlay from './ui/GlitchOverlay'
-import AmbientSound  from './ui/AmbientSound'
 import Panel         from './ui/Panel'
 import { getSharedAudioContext } from './utils/shared-audio'
 import { setPaused } from './utils/raf-coordinator'
@@ -60,7 +59,14 @@ import { ShaderHackingCore, ShaderMandelbox, ShaderRetroWave } from './panels/Sh
 import { TixyPanel } from './panels/TixyPanel'
 import { IQSmoothMin, IQDigitalStorm } from './panels/IQTechniquePanel'
 import { LovebyteShowcasePanel } from './panels/LovebyteShowcasePanel'
-import { getAudioFocus, resetAudioFocus } from './utils/audio-focus'
+import {
+  getAudioFocus,
+  resetAudioFocus,
+  handleFirstGesture,
+  toggleAudioMuted,
+  isAudioMuted,
+  registerMuteListener,
+} from './utils/audio-focus'
 import MoonPanel from './panels/MoonPanel'
 import PhysicsSandboxPanel from './panels/PhysicsSandboxPanel'
 import NuclearExplosionPanel from './panels/NuclearExplosionPanel'
@@ -126,11 +132,25 @@ function generateMobileIndices(reviews: ReviewEntry[]): { textIdx: number; gfxId
   const { textPool, gfxPool } = getFilteredPools(reviews)
   const textIndices = getWeightedIndices(textPool, reviews)
   const gfxIndices = getWeightedIndices(gfxPool, reviews)
+
+  // Drei gfx-Slots vorbelegen.
+  const gfx = [gfxIndices[0] ?? 0, gfxIndices[1] ?? 0, gfxIndices[2] ?? 0]
+
+  // Audio-Garantie (wie im Desktop-Layout): genau ein Audio-Panel muss vorhanden
+  // sein, damit die Erst-Klick-Election einen Player starten kann.
+  const isAudio = (idx?: number) =>
+    idx != null && AUDIO_PANELS.has(getCompName(gfxPool[idx]))
+  if (!gfx.some(isAudio)) {
+    const audioIdx = gfxIndices.find(isAudio)
+    // audioIdx ist garantiert verschieden von gfx[*] (keiner davon war Audio).
+    if (audioIdx != null) gfx[2] = audioIdx
+  }
+
   return {
     textIdx: textIndices[0] ?? 0,
-    gfxIdx1: gfxIndices[0] ?? 0,
-    gfxIdx2: gfxIndices[1] ?? 0,
-    gfxIdx3: gfxIndices[2] ?? 0,
+    gfxIdx1: gfx[0],
+    gfxIdx2: gfx[1],
+    gfxIdx3: gfx[2],
   };
 }
 
@@ -202,6 +222,14 @@ const LARGE_PANELS = new Set([
   'NuclearExplosionPanel',
   'MoonPanel'
 ]);
+
+// Die drei Audio-Player. Genau einer davon muss in jedem Layout vorhanden sein
+// (Audio-Garantie in generateLayout) — Erst-Klick-Election wählt einen aus.
+const AUDIO_PANELS = new Set<string>([
+  'AllYourBase',       // archive.org-Video
+  'OscilloscopePanel', // C64 SID-Player
+  'AmiModPanel',       // ProTracker MOD-Player
+])
 
 const COMPONENT_NAMES = new Map<any, string>()
 
@@ -508,6 +536,58 @@ function generateLayout(id: number, reviews: ReviewEntry[]): GeneratedLayout {
         usedIndices.add(cell.panelIdx)
       }
     })
+  }
+
+  // ── Audio-Garantie: GENAU EIN Audio-Panel pro Layout ───────────────────────
+  // Das Audio-Konzept (Erst-Klick-Election in audio-focus.ts) wählt zufällig
+  // einen der drei Player {AllYourBase-Video, SID, MOD}. Dafür muss mindestens
+  // einer im Layout vorhanden sein. Wir erzwingen exakt einen — nicht mehrere,
+  // damit nicht zwei Player gleichzeitig sichtbar um den Audio-Fokus konkurrieren.
+  const isAudioIdx = (idx?: number) =>
+    idx != null && AUDIO_PANELS.has(getCompName(gfxPool[idx]))
+
+  // Alle gfx-Audio-Indizes, die nicht per Review (Daumen runter) ausgefiltert sind.
+  const audioPool = gfxIndices.filter(idx => AUDIO_PANELS.has(getCompName(gfxPool[idx])))
+
+  if (audioPool.length > 0) {
+    // Aktuell vergebene gfx-Indizes sammeln (für Dedup beim Umwidmen).
+    const usedGfx = new Set<number>()
+    cells.forEach(c => { if (c.type === 'gfx' && c.panelIdx != null) usedGfx.add(c.panelIdx) })
+
+    const audioCells = cells.filter(c => c.type === 'gfx' && isAudioIdx(c.panelIdx))
+
+    if (audioCells.length === 0) {
+      // Kein Audio-Player platziert → einen Slot dafür umwidmen.
+      // Bevorzugt eine kleine gfx-Zelle; sonst irgendeine gfx-Zelle; sonst eine
+      // Text-Zelle zu gfx umwandeln (Fallback, falls das Layout keine gfx-Zelle hat).
+      let target = cells.find(c => c.type === 'gfx' && c.panelIdx != null && !isCellLarge(c))
+                || cells.find(c => c.type === 'gfx' && c.panelIdx != null)
+      if (!target) {
+        const t = cells.find(c => c.type === 'text' && c.panelIdx != null)
+        if (t) { t.type = 'gfx'; target = t }
+      }
+      if (target) {
+        const freeAudio = audioPool.find(idx => !usedGfx.has(idx)) ?? audioPool[0]
+        if (target.panelIdx != null) usedGfx.delete(target.panelIdx)
+        target.panelIdx = freeAudio
+        usedGfx.add(freeAudio)
+      }
+    } else if (audioCells.length > 1) {
+      // Mehr als ein Audio-Panel → Überzählige durch unbenutzte NICHT-Audio-gfx
+      // ersetzen (oder deaktivieren, falls kein Ersatz frei ist).
+      for (let i = 1; i < audioCells.length; i++) {
+        const cell = audioCells[i]
+        const replacement = gfxIndices.find(idx =>
+          !usedGfx.has(idx) && !AUDIO_PANELS.has(getCompName(gfxPool[idx])))
+        usedGfx.delete(cell.panelIdx!)
+        if (replacement != null) {
+          cell.panelIdx = replacement
+          usedGfx.add(replacement)
+        } else {
+          cell.panelIdx = undefined  // wird unten herausgefiltert
+        }
+      }
+    }
   }
 
   // Zellen ohne gültigen panelIdx entfernen (sollte nie passieren)
@@ -818,6 +898,7 @@ function LayoutContent({
               activeIdx={cell.panelIdx!}
               onSkip={() => onSkipSlot(i)}
               className="h-full"
+              locked={AUDIO_PANELS.has(getCompName(gfxPool[cell.panelIdx!]))}
             />
           )}
         </div>
@@ -836,8 +917,8 @@ export default function App() {
   })
   const [prevLayout, setPrevLayout] = useState<GeneratedLayout | null>(null)
   const [sliding,    setSliding]    = useState(false)
-  // Ambient Sound: standardmäßig eingeschaltet
-  const [soundEnabled, setSoundEnabled] = useState(true)
+  // Globaler Audio-Mute-Zustand (gespiegelt aus audio-focus.ts für das Button-Label).
+  const [audioMuted, setAudioMuted] = useState(() => isAudioMuted())
 
   const [mobileIndices, setMobileIndices] = useState(() => {
     const reviews = loadReviews()
@@ -858,6 +939,29 @@ export default function App() {
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
+
+  // Erst-Klick irgendwo auf der Seite startet GENAU EINEN Audio-Player (Election).
+  // Capture-Phase, damit es vor Panel-eigenen Handlern feuert. Der Header-AUDIO-
+  // Button ist ausgenommen (data-audio-toggle) — der steuert die Election selbst.
+  useEffect(() => {
+    const onFirstGesture = (e: Event) => {
+      const target = e.target as HTMLElement | null
+      if (target?.closest?.('[data-audio-toggle]')) return
+      handleFirstGesture()
+    }
+    const opts = { capture: true } as const
+    window.addEventListener('click',      onFirstGesture, opts)
+    window.addEventListener('touchstart', onFirstGesture, opts)
+    window.addEventListener('keydown',    onFirstGesture, opts)
+    return () => {
+      window.removeEventListener('click',      onFirstGesture, opts)
+      window.removeEventListener('touchstart', onFirstGesture, opts)
+      window.removeEventListener('keydown',    onFirstGesture, opts)
+    }
+  }, [])
+
+  // Mute-Zustand aus audio-focus.ts spiegeln, damit das Button-Label stimmt.
+  useEffect(() => registerMuteListener(setAudioMuted), [])
 
   const reviews = loadReviews()
   const { textPool, gfxPool } = getFilteredPools(reviews)
@@ -1233,9 +1337,6 @@ export default function App() {
         <GlitchOverlay />
       </div>
 
-      {/* Ambient-Sound — rendert nichts, erzeugt nur Töne */}
-      <AmbientSound enabled={soundEnabled} />
-
       {/* Kopfzeile */}
       <header className="border-b border-green-900 px-3 py-1 flex items-center gap-3 shrink-0">
         <span className="text-green-600 text-xs uppercase tracking-widest">
@@ -1243,32 +1344,31 @@ export default function App() {
         </span>
         <span className="ml-auto text-red-800 text-xs animate-pulse">● LIVE</span>
 
-        {/* Ambient-Sound-Toggle */}
+        {/* Audio-Mute-Toggle. Erst-Klick startet einen zufälligen Player (Election),
+            danach schaltet der Button stumm/laut. data-audio-toggle nimmt ihn vom
+            globalen Erst-Geste-Listener aus, damit er sich nicht selbst doppelt feuert. */}
         <button
+          data-audio-toggle
           onClick={() => {
-            if (!soundEnabled) {
-              // AudioContext im User-Gesture-Callstack vorab aufwecken/erstellen
-              try {
-                const ctx = getSharedAudioContext()
-                if (ctx.state === 'suspended') {
-                  ctx.resume().catch(() => {})
-                }
-                const buffer = ctx.createBuffer(1, 1, 22050)
-                const source = ctx.createBufferSource()
-                source.buffer = buffer
-                source.connect(ctx.destination)
-                source.start(0)
-              } catch (e) {
-                console.warn('Failed to unlock AudioContext on click:', e)
-              }
+            // AudioContext im User-Gesture-Callstack aufwecken (iOS/Safari-Unlock).
+            try {
+              const ctx = getSharedAudioContext()
+              if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+              const buffer = ctx.createBuffer(1, 1, 22050)
+              const source = ctx.createBufferSource()
+              source.buffer = buffer
+              source.connect(ctx.destination)
+              source.start(0)
+            } catch (e) {
+              console.warn('Failed to unlock AudioContext on click:', e)
             }
-            setSoundEnabled(e => !e)
+            toggleAudioMuted()
           }}
-          title="Ambient Sound umschalten"
+          title="Audio stummschalten / wieder einschalten"
           className="border border-green-800 text-green-600 text-xs px-2 py-0.5
                      hover:border-green-600 hover:text-green-200 transition-colors"
         >
-          {soundEnabled ? 'AUDIO ON' : 'AUDIO OFF'}
+          {audioMuted ? 'AUDIO OFF' : 'AUDIO ON'}
         </button>
 
         {/* Layout-Wechsel-Button — nur auf Desktop, im Review-Modus ausgeblendet */}
@@ -1546,6 +1646,7 @@ export default function App() {
                     activeIdx={mobileIndices.gfxIdx1}
                     onSkip={() => handleSkipMobileSlot(1)}
                     className="h-full"
+                    locked={AUDIO_PANELS.has(getCompName(gfxPool[mobileIndices.gfxIdx1]))}
                   />
                 </div>
                 {/* Panel 3: Grafik-Panel 2 */}
@@ -1555,6 +1656,7 @@ export default function App() {
                     activeIdx={mobileIndices.gfxIdx2}
                     onSkip={() => handleSkipMobileSlot(2)}
                     className="h-full"
+                    locked={AUDIO_PANELS.has(getCompName(gfxPool[mobileIndices.gfxIdx2]))}
                   />
                 </div>
                 {/* Panel 4: Grafik-Panel 3 */}
@@ -1564,6 +1666,7 @@ export default function App() {
                     activeIdx={mobileIndices.gfxIdx3}
                     onSkip={() => handleSkipMobileSlot(3)}
                     className="h-full"
+                    locked={AUDIO_PANELS.has(getCompName(gfxPool[mobileIndices.gfxIdx3]))}
                   />
                 </div>
               </div>

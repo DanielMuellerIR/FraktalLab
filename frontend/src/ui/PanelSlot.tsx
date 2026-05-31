@@ -5,11 +5,16 @@ export default function PanelSlot({
   activeIdx,
   onSkip,
   className = '',
+  locked = false,
 }: {
   pool: React.ComponentType<any>[]
   activeIdx: number
   onSkip: () => void
   className?: string
+  // locked = dieser Slot darf NICHT (auto-)rotieren. Für das garantierte
+  // Audio-Panel: es soll im Layout bleiben, solange das Layout lebt
+  // ("Player wechseln nie mittendrin").
+  locked?: boolean
 }) {
   const [localIdx, setLocalIdx] = useState(activeIdx)
   const [visible, setVisible] = useState(true)
@@ -25,6 +30,7 @@ export default function PanelSlot({
   }, [activeIdx, localIdx])
 
   function handleSkip() {
+    if (locked) return  // gesperrter Slot (Audio-Panel) rotiert nicht
     if (isTransitioningRef.current) return
     isTransitioningRef.current = true
     setVisible(false)
@@ -52,11 +58,12 @@ export default function PanelSlot({
 
   // Auto rotation
   useEffect(() => {
+    if (locked) return            // Audio-Panel-Slot: nie automatisch wechseln
     if (pool.length <= 1) return
     const delay = 45_000 + Math.random() * 435_000
     const t = setTimeout(() => handleSkip(), delay)
     return () => clearTimeout(t)
-  }, [localIdx, pool.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [localIdx, pool.length, locked]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const Component = pool[localIdx]
   if (!Component) return null
@@ -68,7 +75,7 @@ export default function PanelSlot({
       } ${className}`}
     >
       <Component onComplete={() => handleSkip()} />
-      {pool.length > 1 && (
+      {pool.length > 1 && !locked && (
         <button
           onClick={() => handleSkip()}
           title="Zufälliges Panel"

@@ -1,6 +1,14 @@
 import { useEffect, useRef } from 'react'
 import { getSharedAudioContext, isSharedAudioContextRunning } from '../utils/shared-audio'
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ARCHIVIERT am 2026-05-31 (Relaunch-Audio-Konzept): Diese Tipp-/Klick-Geräusch-
+// Komponente wird NICHT mehr gerendert. Audio läuft jetzt ausschließlich über die
+// Erst-Klick-Election eines der drei Player (siehe utils/audio-focus.ts). Die
+// Datei bleibt als wiederverwendbarer Code im Repo — zum Reaktivieren wieder in
+// App.tsx importieren und <AmbientSound enabled={...} /> rendern.
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Erzeugt fetten, cremigen Tastatur-Sound mit Varianz-Zustandsautomat.
 // Drei Klang-Schichten pro Tastendruck:
 //   1. HF-Transient  — kurzes Bandpass-Rauschen ~4–7 kHz (der "Klick")

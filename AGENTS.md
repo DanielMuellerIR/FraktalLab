@@ -25,7 +25,15 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 - [x] **Fake-Text-Panels deaktiviert + archiviert** (Code bleibt, via `registry.ts`/Git wiederholbar): `NeuralLinkDecoderPanel`, `BitcoinMinerPanel`, `SocialEngineering`, `TrafficMonitor`, `NuclearTargets`, `PwdCracker`. Aus Pools + `ALL_PANELS` entfernt.
 
 **Offene Todos (aus User-Brief 2026-05-31):**
-- [ ] Audio-Konzept umsetzen (Auto-Play 1. Klick, Tippgeräusche raus+archiv, AUDIO-Button = Mute, Player locked, AllYourBase→Sid/Protracker nach Video, immer nur 1 von 3, random song)
+- [x] **Audio-Konzept umgesetzt** (App-Version v1.10.0). Umsetzung:
+  - `utils/audio-focus.ts` um Kandidaten-Registry + Erst-Klick-**Election** + zentrale Mute-Steuerung + `notifyAudioEnded`-Handoff erweitert. Beim ersten Klick irgendwo (globaler Capture-Listener in `App.tsx`, AUDIO-Button via `data-audio-toggle` ausgenommen) startet GENAU EIN zufällig gewählter Player.
+  - **Audio-Garantie:** `generateLayout` (Desktop) und `generateMobileIndices` (Mobile) erzwingen exakt 1 Audio-Panel pro Layout (300×-Self-Test: `{1:300}`). Sonst gäbe es nichts zu elektieren.
+  - **AUDIO-Button** = Mute/Unmute (Pause-Verhalten, Fokus bleibt). Label `AUDIO ON`/`AUDIO OFF`. Ersetzt den alten Ambient-Sound-Toggle.
+  - **Tippgeräusche raus:** `ui/AmbientSound.tsx` nicht mehr gerendert/importiert; Datei bleibt als archivierter Code (Header-Kommentar markiert).
+  - **"Player wechseln nie mittendrin":** `LOCKED_PANELS`/`isLocked` war toter Code — jetzt via neuem `PanelSlot`-Prop `locked` verdrahtet: das Audio-Panel-Slot rotiert nicht (kein Auto-Rotate, kein ⟳-Button).
+  - **Handoff:** MOD-Loop-Ende + Video-`onEnded` rufen `notifyAudioEnded` → anderer Player übernimmt (AllYourBase→SID/MOD nach Video). SID loopt endlos (kein Handoff von dort).
+  - **Random song:** SID/MOD wählen beim Mount einen zufälligen Default-Track; `start()` spielt ihn.
+  - Verifiziert im Browser (Desktop 1440px + Mobile 375px): Garantie, Erst-Klick-Start, Mute-Toggle — keine Konsolen-Fehler.
 - [ ] Doppel-Panel-Bug (Menger 2×): Dedup in `generateLayout` + Fallback in `handleSkipSlot` (Z. ~943 picks random ohne Dedup)
 - [ ] Galerie-Layout entwerfen + umsetzen, Auto-Komplett-Wechsel raus, Panels größer/weniger, Perf
 - [ ] Dateigröße-Anzeige pro Panel im Reviewmodus (+ Gesamtgröße inkl. Songs bei Playern)
