@@ -25,3 +25,29 @@ html, body, #root { margin: 0; padding: 0; height: 100%; overflow: hidden; }
 .layout-slide-in {
   animation: slideInRight 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
+
+/* ── Auslastungs-Wähler "Proxima Centauri" = Crazy-Modus ──────────────────────
+   Wenn aktiv: flackernder Feuer-Gradient als Hintergrund (orange→rot→magenta)
+   plus pulsierender Neon-Glow. Toppt das simple Rot der Overdrive-Stufe. */
+@keyframes densityFire {
+  /* Hintergrund-Gradient wandert + Helligkeit flackert wie eine Flamme */
+  0%   { background-position:   0% 50%; filter: brightness(1.05); }
+  25%  { background-position:  50% 30%; filter: brightness(1.25); }
+  50%  { background-position: 100% 50%; filter: brightness(0.95); }
+  75%  { background-position:  50% 70%; filter: brightness(1.30); }
+  100% { background-position:   0% 50%; filter: brightness(1.05); }
+}
+@keyframes densityNeon {
+  /* Glow pulsiert zwischen Magenta und Weiß-Heiß */
+  0%, 100% { box-shadow: 0 0 6px rgba(255,40,160,0.8), 0 0 14px rgba(255,0,80,0.6); }
+  50%      { box-shadow: 0 0 12px rgba(255,120,255,1), 0 0 26px rgba(255,40,160,0.9); }
+}
+.density-crazy {
+  /* Drei-Farb-Feuer; background-size > 100% gibt der Animation Wanderweg */
+  background-image: linear-gradient(115deg, #7a0033 0%, #ff2d00 30%, #ffb300 50%, #ff2d00 70%, #c2009b 100%);
+  background-size: 300% 300%;
+  animation: densityFire 1.2s ease-in-out infinite, densityNeon 0.9s ease-in-out infinite;
+  color: #fff !important;
+  text-shadow: 0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(255,255,255,0.7);
+  border-color: #ff66cc !important;
+}

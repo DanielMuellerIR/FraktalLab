@@ -976,7 +976,7 @@ type DensityLevel = '25mhz' | 'turbo' | 'overclock' | 'proxima'
 const DENSITY_LABELS: Record<DensityLevel, string> = {
   '25mhz': '25 MHz',
   'turbo': 'Turbo',
-  'overclock': 'Overclock',
+  'overclock': 'Overdrive',
   'proxima': 'Proxima Centauri',
 }
 
@@ -984,11 +984,14 @@ const DENSITY_LABELS: Record<DensityLevel, string> = {
 // Tailwind-JIT sie beim Scannen findet. `active` = aktivierter Look (heller
 // Rahmen + Text + dezenter Hintergrund), `idle` = gedimmt. Proxima bleibt auch
 // im Idle leicht rötlich (Warn-Köder); Glow nur, wenn aktiv.
+// Farb-Rampe grün → gelb → rot → Crazy. Buttons sind IMMER gefüllt (auffälliger),
+// aktiv = kräftige Sättigung + Glow + fett. Proxima aktiv = `.density-crazy`
+// (animiertes Feuer + Neon-Puls, in index.css), Glow daher per CSS, nicht inline.
 const DENSITY_STYLE: Record<DensityLevel, { active: string; idle: string; glow?: string }> = {
-  '25mhz':     { active: 'border-green-500 text-green-200 bg-green-950/50',    idle: 'border-green-900 text-green-700 hover:text-green-400' },
-  'turbo':     { active: 'border-green-400 text-green-100 bg-green-900/40',    idle: 'border-green-900 text-green-700 hover:text-green-300' },
-  'overclock': { active: 'border-yellow-400 text-yellow-200 bg-yellow-950/40', idle: 'border-green-900 text-green-700 hover:text-yellow-300' },
-  'proxima':   { active: 'border-red-400 text-red-200 bg-red-950/40',          idle: 'border-red-900/60 text-red-700/80 hover:text-red-300', glow: '0 0 10px rgba(255,40,40,0.55)' },
+  '25mhz':     { active: 'border-green-300 text-black bg-green-500 font-bold',    idle: 'border-green-700 text-green-300 bg-green-950/70 hover:bg-green-900',     glow: '0 0 10px rgba(34,197,94,0.85)' },
+  'turbo':     { active: 'border-yellow-200 text-black bg-yellow-400 font-bold',  idle: 'border-yellow-700 text-yellow-300 bg-yellow-950/70 hover:bg-yellow-900', glow: '0 0 10px rgba(250,204,21,0.9)' },
+  'overclock': { active: 'border-red-300 text-white bg-red-600 font-bold',        idle: 'border-red-800 text-red-300 bg-red-950/70 hover:bg-red-900',             glow: '0 0 12px rgba(239,68,68,0.9)' },
+  'proxima':   { active: 'density-crazy font-bold',                               idle: 'border-fuchsia-800 text-fuchsia-300 bg-fuchsia-950/70 hover:bg-fuchsia-900' },
 }
 
 const DENSITY_ORDER: DensityLevel[] = ['25mhz', 'turbo', 'overclock', 'proxima']
@@ -1514,7 +1517,12 @@ export default function App() {
             Klick = Dichte setzen + Layout neu würfeln; erneuter Klick = neu würfeln. */}
         {!reviewMode && (
           <div className="hidden md:flex items-center gap-1">
-            <span className="text-green-700 text-xs uppercase tracking-wide mr-0.5">Auslastung</span>
+            <span
+              className="text-green-200 text-xs font-bold uppercase tracking-widest mr-1"
+              style={{ textShadow: '0 0 6px rgba(74,222,128,0.7)' }}
+            >
+              Auslastung
+            </span>
             {DENSITY_ORDER.map(level => {
               const active = density === level
               const style = DENSITY_STYLE[level]
@@ -1532,7 +1540,8 @@ export default function App() {
                   className={`border text-xs px-2 py-0.5 transition-colors ${active ? style.active : style.idle}`}
                   style={active && style.glow ? { boxShadow: style.glow } : undefined}
                 >
-                  {DENSITY_LABELS[level]}
+                  {/* Crazy-Modus: Totenkopf, wenn Proxima aktiv ist */}
+                  {active && level === 'proxima' ? '💀 ' : ''}{DENSITY_LABELS[level]}
                 </button>
               )
             })}
