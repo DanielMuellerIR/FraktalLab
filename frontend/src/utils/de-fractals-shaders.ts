@@ -4,6 +4,9 @@
 export const MANDELBULB_SHADER = `
   precision highp float;
 
+  // Per-mount hue rotation (uHueShift uniform) for a random start color.
+  vec3 hueShift(vec3 c, float a){ vec3 k=vec3(0.57735); float ca=cos(a); return c*ca + cross(k,c)*sin(a) + k*dot(k,c)*(1.0-ca); }
+
   // Animate power over time
   float getPower() {
     return 7.0 + 3.0 * sin(iTime * 0.15);
@@ -100,6 +103,7 @@ export const MANDELBULB_SHADER = `
     
     // Grid scanlines
     col *= 0.93 + 0.07 * sin(fragCoord.y * 1.6);
+    col = hueShift(col, uHueShift);
     fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
   }
 `;
@@ -197,6 +201,9 @@ export const APOLLONIAN_SHADER = `
 export const MENGER_SHADER = `
   precision highp float;
 
+  // Per-mount hue rotation (uHueShift uniform) so Menger isn't always orange.
+  vec3 hueShift(vec3 c, float a){ vec3 k=vec3(0.57735); float ca=cos(a); return c*ca + cross(k,c)*sin(a) + k*dot(k,c)*(1.0-ca); }
+
   float sdBox(vec3 p, vec3 b) {
     vec3 d = abs(p) - b;
     return min(max(d.x, max(d.y, d.z)), 0.0) + length(max(d, 0.0));
@@ -282,6 +289,7 @@ export const MENGER_SHADER = `
     
     // CRT scanlines
     col *= 0.94 + 0.06 * sin(fragCoord.y * 1.5);
+    col = hueShift(col, uHueShift);
     fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
   }
 `;

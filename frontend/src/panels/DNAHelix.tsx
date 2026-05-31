@@ -93,7 +93,8 @@ const BASE_COLORS: Record<string, [number, number, number]> = {
 function DNAHelix() {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [speciesIdx, setSpeciesIdx] = useState(0)
+  // Start bei zufälliger Spezies statt immer Mensch (Index 0).
+  const [speciesIdx, setSpeciesIdx] = useState(() => Math.floor(Math.random() * SPECIES_LIST.length))
 
   // Cycle species
   useEffect(() => {
