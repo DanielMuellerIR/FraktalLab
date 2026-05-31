@@ -67,6 +67,13 @@ Alle Unterpunkte (a-e) umgesetzt. Build grün (tsc + vite), im Browser verifizie
 - [x] **FESTE Kachelzahl je Stufe** (nicht mehr breitenabhängig): `25 MHz`=6 · `Turbo`=12 · `Overclock`=20 · `Proxima Centauri`=30. `generateLayout` leitet cols×rows aus Ziel + Bildschirm-Seitenverhältnis ab (`cols≈√(N·ratio)`, Caps 8×6) → hohe Stufen auch auf Laptops erreichbar.
 - [x] **KEIN Benchmark mehr** (sorgte für Verspringen beim Start). Allererster Start = **Turbo**. Schwache Hardware → manuell auf `25 MHz` runter.
 - [x] **WebGL-Kontingent (Fix "SLOT EVICTED")** — Browser deckeln aktive WebGL-Kontexte (~8–16/Tab); bei Proxima (~30 Kacheln) sprengten die GL-Panels den Pool (`utils/webgl-pool.ts`, MAX=12) → verdrängte Kontexte zeigten dauerhaft "SLOT EVICTED TO CONSERVE POWER" (reaktivieren nur bei Sichtbarkeitswechsel, in statischer Galerie nie). Fix: `generateLayout` platziert nie mehr als `MAX_GL_PANELS_PER_LAYOUT=11` GL-Panels (Set `GL_PANELS` listet alle three.js-/Shadertoy-/FractalGL-Komponenten; Puffer 1 für das FractalView-Hintergrundbild). Überzählige Zellen bekommen Canvas-2D-/DOM-Panels. Im Browser verifiziert: Proxima 7×4, 19 Canvases, **0 Evictions**.
+### Duplikate-/Archiv-Feinschliff (App-Version **v1.16.1**)
+
+- [x] **Keine Duplikate beim Laden/Density-Wechsel** — Füll-Pass füllt leere Zellen jetzt NUR mit distinkten Nicht-GL-Panels (kein `allowDup` mehr). Reicht nichts, bleibt eine Zelle leer (selten, da Ziel-Kachelzahl auf verfügbare Distinct-Panels gedeckelt ist). Verifiziert: Proxima/Overdrive 0 Duplikate (auch bei 18 down-gevoteten Panels).
+- [x] **Pfeile dürfen duplizieren** — `handleNavSlot` blättert ohne Dedup gegen andere Slots (nur Aspect-/Größen-/GL-Regeln). Bewusste Ausnahme, damit Durchblättern bei kleinem Pool nicht steckenbleibt.
+- [x] **`getCompName`-Synthetik zurückgenommen** — die synthetische ID war für die Pools unnötig (alle 68 Pool-Komponenten stehen in `ALL_PANELS`/`COMPONENT_NAMES`, liefern also echte Namen) und barg das Risiko falscher Namen → Filter (Down/Archiv) griffen nicht. Wieder echter Name bzw. `''`.
+- [x] **Archiv-Filter** — `getFilteredPools` schließt jetzt zusätzlich `isArchived(name)`-Panels aus (Import aus `panels/registry`). Archivierte Panels können nie wieder in der Galerie erscheinen, selbst wenn sie versehentlich im Pool stehen.
+
 ### Echte Schrift-Skalierung der Text-/UI-Panels (App-Version **v1.16.0**)
 
 - [x] **Container-relative Schrift** — Kachel-Wrapper (`PanelSlot`) hat `container-type:size` → Panels nutzen `clamp(MIN, X·cqmin, MAX)` für Schriftgrößen. In dichten Layouts schrumpft die Schrift mit der Kachel (Untergrenze ~7,5px), in großen Kacheln wird sie größer. Geprüft: Font löst je nach Kachelgröße zu 8–11px auf.

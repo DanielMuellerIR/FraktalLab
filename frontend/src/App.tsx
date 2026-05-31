@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, memo } from 'react'
 import PanelSlot     from './ui/PanelSlot'
+import { isArchived } from './panels/registry'
 import FractalView   from './panels/FractalView'
 import GlitchOverlay from './ui/GlitchOverlay'
 import Panel         from './ui/Panel'
@@ -260,14 +261,6 @@ function getBaseComponent(Comp: any): any {
   return current
 }
 
-// Fallback-Identitäten für Komponenten ohne registrierten/echten Namen. WICHTIG:
-// Gäbe getCompName für mehrere VERSCHIEDENE (anonyme) Komponenten "" zurück,
-// würde der Dedup-Pass sie als Duplikate behandeln und fälschlich entfernen →
-// Löcher / vom Füll-Pass nachgezogene echte Duplikate. Eine stabile synthetische
-// ID je Komponente verhindert das.
-const SYNTHETIC_NAMES = new WeakMap<object, string>()
-let syntheticCounter = 0
-
 function getCompName(Comp: any): string {
   const base = getBaseComponent(Comp)
   if (!base) return ''
@@ -275,17 +268,11 @@ function getCompName(Comp: any): string {
   const name = COMPONENT_NAMES.get(base)
   if (name) return name
 
-  if (typeof base === 'function' && base.name) {
-    return base.name
+  if (typeof base === 'function') {
+    return base.name || ''
   }
   if (typeof base === 'string') {
     return base
-  }
-  // Kein echter Name → stabile, EINDEUTIGE synthetische ID (pro Komponente eine).
-  if (typeof base === 'function' || typeof base === 'object') {
-    let syn = SYNTHETIC_NAMES.get(base)
-    if (!syn) { syn = `__anon_${syntheticCounter++}`; SYNTHETIC_NAMES.set(base, syn) }
-    return syn
   }
   return ''
 }
@@ -632,14 +619,15 @@ function generateLayout(id: number, reviews: ReviewEntry[], targetCellCount?: nu
     })
   }
 
-  // ── Füll-Pass: KEINE leeren Zellen ──────────────────────────────────────────
+  // ── Füll-Pass: leere Zellen mit DISTINKTEN Nicht-GL-Panels auffüllen ─────────
   // Bei hoher Dichte (Proxima) + WebGL-Deckel bleiben sonst GFX-Zellen ohne
   // panelIdx (kein aspect-passendes Nicht-GL-Panel mehr frei) → LayoutContent
-  // rendert für solche Zellen NICHTS → Löcher (z.B. fast leere unterste Reihe).
-  // Füller sind ausschließlich Nicht-GL-Panels: Canvas-2D-/DOM-GFX und TEXT
-  // (beides ohne WebGL-Kontext, sprengt also das Kontingent nicht). Distinkte
-  // Panels werden bevorzugt; reichen sie nicht, sind als letzte Rettung Duplikate
-  // erlaubt — besser eine doppelte Kachel als ein Loch.
+  // rendert für solche Zellen NICHTS → Löcher. Füller sind ausschließlich Nicht-
+  // GL-Panels: Canvas-2D-/DOM-GFX und TEXT (kein WebGL-Kontext). WICHTIG: NUR
+  // distinkte Panels — beim Laden/Density-Wechsel dürfen KEINE Duplikate
+  // entstehen. Bleibt keine distinkte Wahl, bleibt die Zelle leer (selten, da
+  // die Ziel-Kachelzahl ohnehin auf die verfügbaren Distinct-Panels gedeckelt
+  // ist). Duplikate sind ausschließlich über die Pillen-Pfeile erlaubt.
   {
     const usedNames = new Set<string>()
     cells.forEach(c => {
@@ -651,19 +639,19 @@ function generateLayout(id: number, reviews: ReviewEntry[], targetCellCount?: nu
     // Nicht-GL-GFX-Indizes — als Füller geeignet (kein WebGL-Kontext).
     const nonGlGfx = gfxIndices.filter(idx => !isGLPanel(getCompName(gfxPool[idx])))
 
-    // Einen Füller für eine Zelle wählen. `allowDup=false`: nur unbenutzte Namen.
-    const pickFiller = (cellA: Aspect, allowDup: boolean): { type: 'gfx' | 'text'; idx: number } | null => {
+    // Einen UNBENUTZTEN Füller für eine Zelle wählen (nie ein Duplikat).
+    const pickFiller = (cellA: Aspect): { type: 'gfx' | 'text'; idx: number } | null => {
       // 1. Nicht-GL-GFX mit passendem Seitenverhältnis (behält Bild-Charakter)
       for (const idx of nonGlGfx) {
         const name = getCompName(gfxPool[idx])
-        if (!allowDup && usedNames.has(name)) continue
+        if (usedNames.has(name)) continue
         if (!aspectMatches(PANEL_ASPECT[name] ?? 'ANY', cellA)) continue
         return { type: 'gfx', idx }
       }
       // 2. TEXT-Panel (reines DOM, aspect-neutral)
       for (const idx of textIndices) {
         const name = getCompName(textPool[idx])
-        if (!allowDup && usedNames.has(name)) continue
+        if (usedNames.has(name)) continue
         return { type: 'text', idx }
       }
       return null
@@ -671,8 +659,7 @@ function generateLayout(id: number, reviews: ReviewEntry[], targetCellCount?: nu
 
     cells.forEach(cell => {
       if (cell.panelIdx != null) return
-      const cellA = cellAspect(cell)
-      const f = pickFiller(cellA, false) ?? pickFiller(cellA, true)
+      const f = pickFiller(cellAspect(cell))
       if (f) {
         cell.type = f.type
         cell.panelIdx = f.idx
@@ -943,17 +930,18 @@ function loadReviews(): ReviewEntry[] {
 
 function getFilteredPools(reviews: ReviewEntry[]) {
   const downPanels = new Set(reviews.filter(r => r.rating === 'down').map(r => r.panel))
-  
-  const textPool = POOL_TEXT.filter(comp => {
+
+  // Ein Panel fliegt aus der Galerie, wenn es down-gevotet ODER archiviert ist.
+  // Archivierte (deaktivierte) Panels dürfen NIE wieder auftauchen — auch dann
+  // nicht, wenn sie versehentlich noch in einem POOL stehen.
+  const allowed = (comp: React.ComponentType<any>) => {
     const name = getCompName(comp)
-    return !downPanels.has(name)
-  })
-  
-  const gfxPool = POOL_GFX.filter(comp => {
-    const name = getCompName(comp)
-    return !downPanels.has(name)
-  })
-  
+    return !downPanels.has(name) && !isArchived(name)
+  }
+
+  const textPool = POOL_TEXT.filter(allowed)
+  const gfxPool  = POOL_GFX.filter(allowed)
+
   return { textPool, gfxPool }
 }
 
@@ -1172,10 +1160,13 @@ export default function App() {
 
   // ── Deterministische Vor/Zurück-Navigation (Titel-Pillen-Pfeile) ────────────
   // Baut für den Slot eine STABILE (nach Pool-Index sortierte) Liste KOMPATIBLER
-  // Panels und blättert mit dir = -1/+1 durch. Kompatibel heißt: nicht schon in
-  // einem anderen Slot, gleiches Seitenverhältnis, gleiche Größenklasse und (bei
-  // GL-Panels) innerhalb des WebGL-Kontingents — dieselben Regeln wie beim Bauen
-  // des Layouts, damit nie eine ungültige Kombination entsteht.
+  // Panels und blättert mit dir = -1/+1 durch. Kompatibel heißt: gleiches
+  // Seitenverhältnis, gleiche Größenklasse und (bei GL-Panels) innerhalb des
+  // WebGL-Kontingents — dieselben Aspect-/GL-Regeln wie beim Bauen des Layouts.
+  // AUSNAHME (bewusst): die Pfeile dürfen ein bereits anderswo gezeigtes Panel
+  // wählen (Duplikat). Sonst wäre bei kleinem Pool kaum noch Durchblättern
+  // möglich. Duplikate beim LADEN/Density-Wechsel verhindert dagegen der Bau +
+  // Füll-Pass; nur die Pfeile lockern das absichtlich.
   const handleNavSlot = useCallback((slotIndex: number, dir: number) => {
     setLayout(curr => {
       const cell = curr.cells[slotIndex]
@@ -1185,27 +1176,25 @@ export default function App() {
       const { textPool, gfxPool } = getFilteredPools(reviews)
       const pool = cell.type === 'text' ? textPool : gfxPool
 
-      // Namen der OTHER-Slots (für Dedup) + GL-Verbrauch der übrigen Kacheln.
-      const otherNames = new Set<string>()
+      // GL-Verbrauch der ÜBRIGEN Kacheln (dieser Slot ausgenommen) — damit ein
+      // Wechsel das WebGL-Kontingent nicht sprengt.
       let otherGL = 0
       curr.cells.forEach((c, idx) => {
         if (idx === slotIndex || c.panelIdx == null) return
-        if (c.type === 'text' || c.type === 'gfx') {
-          const p = c.type === 'text' ? textPool : gfxPool
-          const name = getCompName(p[c.panelIdx])
-          otherNames.add(name)
-          if (c.type === 'gfx' && isGLPanel(name)) otherGL++
+        if (c.type === 'gfx') {
+          const name = getCompName(gfxPool[c.panelIdx])
+          if (isGLPanel(name)) otherGL++
         }
       })
 
       const cellA = cellAspect(cell)
       const isLarge = isCellLarge(cell)
 
-      // Stabile Kandidatenliste (Pool-Index-Reihenfolge).
+      // Stabile Kandidatenliste (Pool-Index-Reihenfolge). KEIN Dedup gegen andere
+      // Slots — Pfeile dürfen Duplikate erzeugen.
       const cands: number[] = []
       pool.forEach((comp, i) => {
         const name = getCompName(comp)
-        if (otherNames.has(name)) return
         if (cell.type === 'gfx') {
           if (!aspectMatches(PANEL_ASPECT[name] ?? 'ANY', cellA)) return
           if (panelMayBeLarge(name) !== isLarge) return
