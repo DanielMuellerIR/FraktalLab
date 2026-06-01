@@ -96,7 +96,9 @@ def main():
     host = resolve(env, "host")
     user = resolve(env, "user")
     password = resolve(env, "password")
-    port = resolve(env, "port", "22")
+    # FTPS (FTP über TLS), Port 21. Der Upload-Account kann nur FTP, kein SFTP —
+    # daher explizites FTPS mit erzwungenem TLS (Steuer- UND Datenkanal verschlüsselt).
+    port = resolve(env, "port", "21")
     remote = args.remote or os.environ.get("DEPLOY_REMOTE_PATH") or resolve(env, "remote", DEFAULT_REMOTE)
 
     missing = [n for n, v in (("host", host), ("user", user), ("password", password)) if not v]
@@ -104,12 +106,12 @@ def main():
         sys.exit(f"FEHLER: In der Env-Datei fehlen Werte für: {', '.join(missing)} "
                  f"(erwartete Schlüssel-Namen u.a.: {ALIASES['host'][0]}/{ALIASES['user'][0]}/{ALIASES['password'][0]}).")
 
-    print(f"→ Ziel: sftp://{user}@{host}:{port}{remote}   (Passwort verborgen)")
+    print(f"→ Ziel: ftp(es)://{user}@{host}:{port}{remote}   (FTPS/TLS · Passwort verborgen)")
     print(f"→ Quelle: {LOCAL_DIST}")
     print(f"→ Modus: {'DRY-RUN (kein Schreiben)' if args.dry_run else 'UPLOAD'} · kein Löschen auf dem Server")
 
     # 3) lftp-Skript (Passwort URL-kodiert in der URL, kommt über stdin → nicht in ps)
-    url = f"sftp://{quote(user, safe='')}:{quote(password, safe='')}@{host}:{port}"
+    url = f"ftp://{quote(user, safe='')}:{quote(password, safe='')}@{host}:{port}"
     dry = "--dry-run" if args.dry_run else ""
     # mirror -R = reverse mirror (LOKAL → REMOTE). KEIN --delete → nichts wird gelöscht.
     # WICHTIG: KEIN --verbose! lftps Verbose-Modus würde pro Datei die volle
@@ -125,12 +127,20 @@ def main():
         f'rm -f "{remote}/assets/.DS_Store"\n'
     )
     cmds = (
-        "set sftp:auto-confirm yes\n"
+        # FTPS: TLS erzwingen (Steuer- UND Datenkanal). verify-certificate aus, weil
+        # per IP verbunden wird (Server-Zertifikat lautet auf den FQDN, nicht die IP);
+        # die Verbindung ist trotzdem verschlüsselt. Für Cert-Prüfung FTP_HOST auf den
+        # FQDN umstellen statt der IP.
+        "set ftp:ssl-force true\n"
+        "set ftp:ssl-protect-data true\n"
+        "set ssl:verify-certificate no\n"
         "set net:max-retries 2\n"
         "set net:timeout 25\n"
         "set cmd:fail-exit yes\n"
         f"open {url}\n"
-        f'mirror -R --no-perms --parallel=3 -X .DS_Store {dry} "{LOCAL_DIST}/" "{remote}/"\n'
+        # parallel=1: der Upload-Account erlaubt nur EINE gleichzeitige SFTP-Connection
+        # (mehr → „max-retries überschritten" beim Login der Parallel-Verbindungen).
+        f'mirror -R --no-perms --parallel=1 -X .DS_Store {dry} "{LOCAL_DIST}/" "{remote}/"\n'
         f"{rm_dsstore}"
         "bye\n"
     )
