@@ -1,6 +1,14 @@
-import React, { useState, useEffect, useCallback, useRef, memo } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import PanelSlot     from './ui/PanelSlot'
-import { isArchived } from './panels/registry'
+// Zentrale Panel-Registry — Single Source of Truth für ALLE Panel-Regeln
+// (aktiv/inaktiv, Pool, Aspect, Größe, GL, Audio-Exklusivität, Tempo, Asset-Größe).
+// App.tsx definiert KEINE dieser Regeln mehr selbst, sondern leitet alles hier ab.
+import {
+  ALL_PANELS, POOL_TEXT, POOL_GFX, AUDIO_PANELS,
+  getCompName, isActive, isGLPanel, MAX_GL_PANELS_PER_LAYOUT,
+  panelAspect, panelMayBeLarge, panelPrefersLarge, panelAssetLabel,
+  type Aspect,
+} from './panels/panel-registry'
 import FractalView   from './panels/FractalView'
 import GlitchOverlay from './ui/GlitchOverlay'
 import Panel         from './ui/Panel'
@@ -8,59 +16,6 @@ import { getSharedAudioContext } from './utils/shared-audio'
 import { setPaused } from './utils/raf-coordinator'
 import { setSpeedDensity } from './utils/panel-speed'
 
-// ── Text-Panels ───────────────────────────────────────────────────────────────
-import SystemLog         from './panels/SystemLog'
-import Vitals            from './panels/Vitals'
-import DataStream        from './panels/DataStream'
-import PortScanner       from './panels/PortScanner'
-import PseudoCode        from './panels/PseudoCode'
-import AgentCodePanel    from './panels/AgentCodePanel'
-import VisitorProfilePanel from './panels/VisitorProfilePanel'
-import ICQChatPanel      from './panels/ICQChatPanel'
-import DiskCleanupPanel  from './panels/DiskCleanupPanel'
-// Archiviert 2026-05-31 (siehe panels/registry.ts ARCHIVED_PANELS):
-// TrafficMonitor, SocialEngineering, NuclearTargets, PwdCracker, BitcoinMinerPanel
-import StockTickerPanel  from './panels/StockTickerPanel'
-import SatellitePanel    from './panels/SatellitePanel'
-import ClassifiedPanel   from './panels/ClassifiedPanel'
-import MetaAgentPanel    from './panels/MetaAgentPanel'
-
-
-// ── Grafik-Panels ─────────────────────────────────────────────────────────────
-import { VoxelDemoColor, VoxelDemoBW } from './panels/VoxelDemo'
-import { VoxelThermal, VoxelNeon, VoxelLava, VoxelMatrix } from './panels/VoxelScenes'
-
-import PlasmaDemo        from './panels/PlasmaDemo'
-import EnhanceView       from './panels/EnhanceView'
-import AllYourBase       from './panels/AllYourBase'
-import GlobePanel        from './panels/GlobePanel'
-import DaggerfallPanel   from './panels/DaggerfallPanel'
-import LidarScanPanel    from './panels/LidarScanPanel'
-// NeuralLinkDecoderPanel archiviert 2026-05-31 (siehe panels/registry.ts)
-import DNAHelix          from './panels/DNAHelix'
-import OscilloscopePanel from './panels/OscilloscopePanel'
-import {
-  FireScene, StarfieldScene, TunnelScene, RotozoomScene,
-  MetaballsScene, DotCloudScene, ThreeBodyScene, LissajousScene,
-} from './panels/DemoScenes'
-import ParallaxPanel     from './panels/ParallaxPanel'
-import ElitePanel        from './panels/ElitePanel'
-import AmiModPanel       from './panels/AmiModPanel'
-import CADRobotPanel     from './panels/CADRobotPanel'
-import C64Panel          from './panels/C64Panel'
-import RetroErrorPanel   from './panels/RetroErrorPanel'
-import SolarSystemPanel  from './panels/SolarSystemPanel'
-import RadarSweepPanel   from './panels/RadarSweepPanel'
-import {
-  FractalSeahorse, FractalSpiral, FractalLightning, FractalElephant,
-  FractalMini, FractalSatellite, FractalTendril, FractalDragon,
-  FractalDendrite, FractalSwirl,
-} from './panels/FractalScenes'
-import FractalJulia from './panels/FractalJulia'
-import { ShaderHackingCore, ShaderMandelbox, ShaderRetroWave } from './panels/ShadertoyPanel'
-import { TixyPanel } from './panels/TixyPanel'
-import { IQSmoothMin, IQDigitalStorm } from './panels/IQTechniquePanel'
-import { LovebyteShowcasePanel } from './panels/LovebyteShowcasePanel'
 import {
   getAudioFocus,
   resetAudioFocus,
@@ -69,46 +24,9 @@ import {
   isAudioMuted,
   registerMuteListener,
 } from './utils/audio-focus'
-import MoonPanel from './panels/MoonPanel'
-import PhysicsSandboxPanel from './panels/PhysicsSandboxPanel'
-import NuclearExplosionPanel from './panels/NuclearExplosionPanel'
-import ThermonuclearWarPanel from './panels/ThermonuclearWarPanel'
-import { MandelbulbScene, ApollonianGasketScene, MengerSpongeScene } from './panels/DEFractalScenes'
 
-// ── Panel-Pools ───────────────────────────────────────────────────────────────
-const POOL_TEXT: React.ComponentType[] = [
-  SystemLog, DataStream, Vitals, PortScanner, PseudoCode,
-  AgentCodePanel, VisitorProfilePanel, ICQChatPanel, DiskCleanupPanel,
-  StockTickerPanel, SatellitePanel, ClassifiedPanel, MetaAgentPanel,
-]
-
-// Alle visuellen Panels in einem Pool — AllYourBase und EnhanceView sind normale Einträge
-const POOL_GFX: React.ComponentType[] = [
-  VoxelDemoColor, VoxelDemoBW, GlobePanel, VoxelThermal, VoxelLava, VoxelNeon, VoxelMatrix,
-
-  FireScene, StarfieldScene, ThreeBodyScene, /* LissajousScene, */
-  OscilloscopePanel, TunnelScene, MetaballsScene, RotozoomScene, DotCloudScene,
-  PlasmaDemo, DNAHelix, EnhanceView, AllYourBase,
-  ParallaxPanel, ElitePanel, AmiModPanel, CADRobotPanel, C64Panel, RetroErrorPanel, SolarSystemPanel,
-  FractalSeahorse, FractalSpiral, FractalTendril, FractalLightning,
-  FractalElephant, FractalMini, FractalSatellite, FractalDragon,
-  FractalDendrite, FractalSwirl,
-  FractalJulia,
-  ShaderHackingCore, ShaderMandelbox, ShaderRetroWave,
-  DaggerfallPanel, LidarScanPanel,
-  TixyPanel, IQSmoothMin, IQDigitalStorm, LovebyteShowcasePanel,
-  MoonPanel, PhysicsSandboxPanel, NuclearExplosionPanel,
-  MandelbulbScene, ApollonianGasketScene, MengerSpongeScene,
-]
-
-POOL_TEXT.forEach((Comp, idx) => {
-  POOL_TEXT[idx] = memo(Comp) as any
-})
-
-POOL_GFX.forEach((Comp, idx) => {
-  POOL_GFX[idx] = memo(Comp) as any
-})
-
+// POOL_TEXT / POOL_GFX kommen jetzt aus der Registry (nur aktive Panels, bereits
+// memo-gewrappt). Reihenfolge = Registry-Reihenfolge.
 
 // ── Zufallslayout-Generator ───────────────────────────────────────────────────
 
@@ -208,74 +126,9 @@ function randomPartition(n: number): number[] {
   return result
 }
 
-const LARGE_PANELS = new Set([
-  'ElitePanel',
-  'SolarSystemPanel',
-  'DNAHelix',
-  // CADRobotPanel raus (2026-06-01): jetzt in NO_LARGE_PANELS (nie groß).
-  'ShaderRetroWave',
-  'NuclearExplosionPanel',
-  'MoonPanel',
-]);
-
-// Die drei Audio-Player. Genau einer davon muss in jedem Layout vorhanden sein
-// (Audio-Garantie in generateLayout) — Erst-Klick-Election wählt einen aus.
-const AUDIO_PANELS = new Set<string>([
-  'AllYourBase',       // archive.org-Video
-  'OscilloscopePanel', // C64 SID-Player
-  'AmiModPanel',       // ProTracker MOD-Player
-])
-
-// Geschätzte Asset-Größe pro Panel in KB (im Reviewmodus angezeigt). Die meisten
-// Panels sind rein prozedural (Canvas/Shader, KEIN Asset) → 0 KB. Nur die
-// Medien-Panels laden Dateien. Werte von der Platte gemessen (frontend/public/),
-// Stand 2026-05-31 — bei Asset-Änderungen hier aktualisieren.
-const PANEL_ASSET_KB: Record<string, number> = {
-  AmiModPanel:       1253, // 12 ProTracker-MOD-Module
-  OscilloscopePanel:   30, // 3 SID-Tunes (C64)
-  EnhanceView:        344, // urbane Stadtfotos
-  C64Panel:             7, // c64_font.png
-  AllYourBase:          0, // Video extern gestreamt (archive.org) → 0 lokal
-}
-
-/** Menschlich lesbares Größen-Label fürs Review-Panel. */
-function panelAssetLabel(name: string): string {
-  const kb = PANEL_ASSET_KB[name] ?? 0
-  if (kb === 0) return '0 KB · prozedural'
-  if (kb >= 1024) return `${(kb / 1024).toFixed(1)} MB`
-  return `${kb} KB`
-}
-
-const COMPONENT_NAMES = new Map<any, string>()
-
-function getBaseComponent(Comp: any): any {
-  if (!Comp) return null
-  let current = Comp
-  while (current && typeof current === 'object') {
-    if (current.type) {
-      current = current.type
-    } else {
-      break
-    }
-  }
-  return current
-}
-
-function getCompName(Comp: any): string {
-  const base = getBaseComponent(Comp)
-  if (!base) return ''
-
-  const name = COMPONENT_NAMES.get(base)
-  if (name) return name
-
-  if (typeof base === 'function') {
-    return base.name || ''
-  }
-  if (typeof base === 'string') {
-    return base
-  }
-  return ''
-}
+// LARGE_PANELS / AUDIO_PANELS / Asset-Größen / Komponentennamen / GL-Liste /
+// Aspect-Map / panelMayBeLarge usw. leben jetzt zentral in panel-registry.ts und
+// werden oben importiert. Hier KEINE Panel-Regeln mehr definieren.
 
 function isCellLarge(cell: GridCell): boolean {
   if (cell.type !== 'gfx') return false;
@@ -471,7 +324,7 @@ function generateLayout(id: number, reviews: ReviewEntry[], targetCellCount?: nu
   gfxIndices.forEach(idx => {
     const comp = gfxPool[idx]
     const name = getCompName(comp)
-    if (LARGE_PANELS.has(name)) {
+    if (panelPrefersLarge(name)) {
       largeGfxIndices.push(idx)
     } else {
       smallGfxIndices.push(idx)
@@ -552,7 +405,7 @@ function generateLayout(id: number, reviews: ReviewEntry[], targetCellCount?: nu
       const candidateOk = (idx: number): boolean => {
         if (usedGfxAs.has(idx)) return false
         const name = getCompName(gfxPool[idx])
-        const pA = PANEL_ASPECT[name] ?? 'ANY'
+        const pA = panelAspect(name)
         if (!aspectMatches(pA, cellA)) return false
         if (glBudgetFull && isGLPanel(name)) return false
         return true
@@ -649,7 +502,7 @@ function generateLayout(id: number, reviews: ReviewEntry[], targetCellCount?: nu
       for (const idx of nonGlGfx) {
         const name = getCompName(gfxPool[idx])
         if (usedNames.has(name)) continue
-        if (!aspectMatches(PANEL_ASPECT[name] ?? 'ANY', cellA)) continue
+        if (!aspectMatches(panelAspect(name), cellA)) continue
         return { type: 'gfx', idx }
       }
       // 2. TEXT-Panel (reines DOM, aspect-neutral)
@@ -733,98 +586,8 @@ function generateLayout(id: number, reviews: ReviewEntry[], targetCellCount?: nu
   return { id, gridTemplateColumns, gridTemplateRows, cells: finalCells }
 }
 
-// ── Review-Modus: alle Panels als geordnete Liste ─────────────────────────────
-// Jeder Eintrag hat einen stabilen Namen (Funktionsname) als ID für localStorage.
-const ALL_PANELS: { name: string; Component: React.ComponentType }[] = [
-  // --- Recently Worked-On / Overhauled Panels (First in list) ---
-  { name: 'MetaAgentPanel',     Component: MetaAgentPanel },
-  { name: 'FractalJulia',       Component: FractalJulia },
-  { name: 'C64Panel',           Component: C64Panel },
-  { name: 'FractalSeahorse',    Component: FractalSeahorse },
-  { name: 'FractalSpiral',      Component: FractalSpiral },
-  { name: 'FractalTendril',     Component: FractalTendril },
-  { name: 'FractalLightning',   Component: FractalLightning },
-  { name: 'FractalElephant',    Component: FractalElephant },
-  { name: 'FractalMini',        Component: FractalMini },
-  { name: 'FractalSatellite',   Component: FractalSatellite },
-  { name: 'FractalDragon',      Component: FractalDragon },
-  { name: 'FractalDendrite',    Component: FractalDendrite },
-  { name: 'FractalSwirl',       Component: FractalSwirl },
-  { name: 'AmiModPanel',        Component: AmiModPanel },
-  { name: 'SolarSystemPanel',   Component: SolarSystemPanel },
-  { name: 'FractalView',        Component: FractalView },
-
-  // --- Other Graphics Panels ---
-  { name: 'ThreeBodyScene',     Component: ThreeBodyScene },
-  { name: 'FireScene',          Component: FireScene },
-  { name: 'LissajousScene',     Component: LissajousScene },
-  { name: 'TunnelScene',        Component: TunnelScene },
-  { name: 'RotozoomScene',      Component: RotozoomScene },
-  { name: 'PlasmaDemo',         Component: PlasmaDemo },
-  { name: 'EnhanceView',        Component: EnhanceView },
-  { name: 'VoxelDemoColor',     Component: VoxelDemoColor },
-  { name: 'VoxelDemoBW',        Component: VoxelDemoBW },
-  { name: 'GlobePanel',         Component: GlobePanel },
-  { name: 'VoxelThermal',       Component: VoxelThermal },
-  { name: 'VoxelLava',          Component: VoxelLava },
-  { name: 'VoxelNeon',          Component: VoxelNeon },
-  { name: 'VoxelMatrix',        Component: VoxelMatrix },
-  { name: 'StarfieldScene',     Component: StarfieldScene },
-  { name: 'OscilloscopePanel',  Component: OscilloscopePanel },
-  { name: 'MetaballsScene',     Component: MetaballsScene },
-  { name: 'DotCloudScene',      Component: DotCloudScene },
-  { name: 'AllYourBase',        Component: AllYourBase },
-  { name: 'ParallaxPanel',      Component: ParallaxPanel },
-  { name: 'ElitePanel',         Component: ElitePanel },
-  { name: 'CADRobotPanel',      Component: CADRobotPanel },
-  { name: 'RetroErrorPanel',    Component: RetroErrorPanel },
-  { name: 'RadarSweepPanel',    Component: RadarSweepPanel },
-  { name: 'DNAHelix',           Component: DNAHelix },
-  { name: 'ShaderHackingCore',  Component: ShaderHackingCore },
-  { name: 'ShaderMandelbox',    Component: ShaderMandelbox },
-  { name: 'ShaderRetroWave',    Component: ShaderRetroWave },
-  { name: 'DaggerfallPanel',    Component: DaggerfallPanel },
-  { name: 'LidarScanPanel',     Component: LidarScanPanel },
-  { name: 'TixyPanel',          Component: TixyPanel },
-  { name: 'IQSmoothMin',        Component: IQSmoothMin },
-  { name: 'IQDigitalStorm',     Component: IQDigitalStorm },
-  { name: 'LovebyteShowcasePanel', Component: LovebyteShowcasePanel },
-  { name: 'MoonPanel',          Component: MoonPanel },
-  { name: 'PhysicsSandboxPanel', Component: PhysicsSandboxPanel },
-  { name: 'NuclearExplosionPanel', Component: NuclearExplosionPanel },
-  { name: 'ThermonuclearWarPanel', Component: ThermonuclearWarPanel },
-  { name: 'MandelbulbScene',     Component: MandelbulbScene },
-  { name: 'ApollonianGasketScene', Component: ApollonianGasketScene },
-  { name: 'MengerSpongeScene',   Component: MengerSpongeScene },
-
-  // --- Text Panels ---
-  { name: 'ICQChatPanel',       Component: ICQChatPanel },
-  { name: 'VisitorProfilePanel',Component: VisitorProfilePanel },
-  { name: 'SatellitePanel',     Component: SatellitePanel },
-  { name: 'SystemLog',          Component: SystemLog },
-  { name: 'DataStream',         Component: DataStream },
-  { name: 'Vitals',             Component: Vitals },
-  { name: 'PortScanner',        Component: PortScanner },
-  { name: 'PseudoCode',         Component: PseudoCode },
-  { name: 'AgentCodePanel',     Component: AgentCodePanel },
-  { name: 'DiskCleanupPanel',   Component: DiskCleanupPanel },
-  { name: 'StockTickerPanel',   Component: StockTickerPanel },
-  { name: 'ClassifiedPanel',    Component: ClassifiedPanel },
-]
-
-ALL_PANELS.forEach(p => {
-  p.Component = memo(p.Component) as any
-})
-
-function initComponentNamesMap() {
-  ALL_PANELS.forEach(p => {
-    const base = getBaseComponent(p.Component)
-    if (base) {
-      COMPONENT_NAMES.set(base, p.name)
-    }
-  })
-}
-initComponentNamesMap()
+// ALL_PANELS (vollständige Liste für den Review-Modus) + getCompName kommen jetzt
+// aus der Registry (oben importiert). Hier keine doppelte Liste / kein Namens-Map mehr.
 
 // ── Eingefrorener Review-Slot ────────────────────────────────────────────────
 //
@@ -955,43 +718,23 @@ function loadReviews(): ReviewEntry[] {
   }
 }
 
-function getFilteredPools(reviews: ReviewEntry[]) {
-  const downPanels = new Set(reviews.filter(r => r.rating === 'down').map(r => r.panel))
-
-  // Ein Panel fliegt aus der Galerie, wenn es down-gevotet ODER archiviert ist.
-  // Archivierte (deaktivierte) Panels dürfen NIE wieder auftauchen — auch dann
-  // nicht, wenn sie versehentlich noch in einem POOL stehen.
-  const allowed = (comp: React.ComponentType<any>) => {
-    const name = getCompName(comp)
-    return !downPanels.has(name) && !isArchived(name)
-  }
-
+// WICHTIG: Reviews (Daumen) entscheiden NICHT mehr über aktiv/inaktiv oder
+// Anzeige-Häufigkeit. Aktiv/inaktiv kommt ausschließlich aus der Registry
+// (isActive). Der `_reviews`-Parameter bleibt aus Signatur-Kompatibilität,
+// wird aber bewusst nicht mehr ausgewertet.
+function getFilteredPools(_reviews: ReviewEntry[]) {
+  // Doppelte Absicherung: POOL_TEXT/POOL_GFX enthalten ohnehin nur aktive Panels.
+  const allowed = (comp: React.ComponentType<any>) => isActive(getCompName(comp))
   const textPool = POOL_TEXT.filter(allowed)
   const gfxPool  = POOL_GFX.filter(allowed)
-
   return { textPool, gfxPool }
 }
 
-function getWeightedIndices(pool: React.ComponentType<any>[], reviews: ReviewEntry[]): number[] {
-  const scored = pool.map((comp, idx) => {
-    const name = getCompName(comp)
-    const review = reviews.find(r => r.panel === name)
-    
-    let weight = 1.0
-    if (review?.rating === 'up') {
-      weight = 3.0
-    } else if (review?.rating === 'down') {
-      weight = 0.0
-    }
-    
-    const u = Math.random()
-    const score = weight > 0 ? Math.pow(u, 1 / weight) : -1
-    return { idx, score }
-  })
-  
-  return scored
-    .filter(item => item.score >= 0)
-    .sort((a, b) => b.score - a.score)
+// Reine Zufalls-Reihenfolge der Pool-Indizes (keine Review-Gewichtung mehr).
+function getWeightedIndices(pool: React.ComponentType<any>[], _reviews: ReviewEntry[]): number[] {
+  return pool
+    .map((_, idx) => ({ idx, r: Math.random() }))
+    .sort((a, b) => a.r - b.r)
     .map(item => item.idx)
 }
 
@@ -1237,7 +980,7 @@ export default function App() {
         // Locked Audio-Panel, das bereits im Layout läuft → nie Wechselziel.
         if (AUDIO_PANELS.has(name) && shownElsewhere.has(name)) return
         if (cell.type === 'gfx') {
-          if (!aspectMatches(PANEL_ASPECT[name] ?? 'ANY', cellA)) return
+          if (!aspectMatches(panelAspect(name), cellA)) return
           if (panelMayBeLarge(name) !== isLarge) return
           if (isGLPanel(name) && otherGL + 1 > MAX_GL_PANELS_PER_LAYOUT) return
         }
@@ -1382,13 +1125,13 @@ export default function App() {
     localStorage.setItem('fraktallab_hide_archived', String(hideArchived))
   }, [hideArchived])
 
+  // Review-Liste: "HIDE ARCHIVED" blendet jetzt die DEAKTIVIERTEN Panels aus
+  // (Registry-Status), NICHT mehr die down-gevoteten. Reviews spielen hier keine
+  // Rolle mehr.
   const activeAllPanels = React.useMemo(() => {
     if (!hideArchived) return ALL_PANELS
-    return ALL_PANELS.filter(p => {
-      const review = reviews.find(r => r.panel === p.name)
-      return review?.rating !== 'down'
-    })
-  }, [hideArchived, reviews])
+    return ALL_PANELS.filter(p => isActive(p.name))
+  }, [hideArchived])
 
   // Ensure index is within range of activeAllPanels
   useEffect(() => {
@@ -1708,7 +1451,11 @@ export default function App() {
                       if (idx < totalPanels) {
                         const panel = activeAllPanels[idx]
                         const Comp = panel.Component
-                        const isActive = idx === reviewIdx
+                        const isSelected = idx === reviewIdx
+                        // DEAKTIVIERT (rot) hängt NUR am Registry-Status, NICHT am
+                        // Daumen. Reviews sind reine Notizen und färben den Rahmen
+                        // nicht mehr.
+                        const deactivated = !isActive(panel.name)
                         const review = reviews.find(r => r.panel === panel.name)
                         const isUp = review?.rating === 'up'
                         const isDown = review?.rating === 'down'
@@ -1717,32 +1464,30 @@ export default function App() {
                           <div
                             key={panel.name}
                             className={`flex-1 min-h-0 h-full min-w-0 relative flex flex-col transition-all duration-200 cursor-pointer ${
-                              isActive
-                                ? isUp
-                                  ? 'ring-2 ring-green-400 border border-green-400 z-10'
-                                  : isDown
-                                    ? 'ring-2 ring-red-500 border border-red-500 z-10'
-                                    : 'ring-2 ring-green-500 border border-green-500 z-10'
-                                : isUp
-                                  ? 'border border-green-900/60 bg-green-950/5'
-                                  : isDown
-                                    ? 'border border-red-950/60 bg-red-950/5'
-                                    : ''
+                              isSelected
+                                ? deactivated
+                                  ? 'ring-2 ring-red-500 border border-red-500 z-10'
+                                  : 'ring-2 ring-green-500 border border-green-500 z-10'
+                                : deactivated
+                                  ? 'border border-red-950/60 bg-red-950/5'
+                                  : ''
                             }`}
                             onClick={() => goToPanel(idx)}
                           >
-                            {/* Nur das aktive Panel animiert live (B-4: Main-Thread
+                            {/* Nur das ausgewählte Panel animiert live (B-4: Main-Thread
                                 entlasten). Inaktive Slots zeigen einen statischen
                                 Platzhalter und mounten erst beim Anklicken. */}
-                            {isActive ? <Comp /> : <FrozenReviewSlot name={panel.name} />}
-                            {/* Review-Mode-Marker: Index + Kurzname des Panels. */}
+                            {isSelected ? <Comp /> : <FrozenReviewSlot name={panel.name} />}
+                            {/* Review-Mode-Marker: Index + Kurzname + Status + Notiz-Daumen. */}
                             <div className="absolute top-0.5 right-7 z-20 pointer-events-none select-none flex items-center gap-1 font-mono text-xs tracking-wider bg-black/80 border border-green-700/40 px-1.5 py-[1px] rounded-sm">
                               <span className="text-green-500 font-bold">#{idx + 1}</span>
                               <span className="text-green-700">·</span>
-                              <span className="text-green-300">{panel.name}</span>
+                              <span className={deactivated ? 'text-red-400' : 'text-green-300'}>{panel.name}</span>
                               <span className="text-green-700">·</span>
                               {/* Asset-Größe des Panels (prozedurale Panels: 0 KB). */}
                               <span className="text-green-600">{panelAssetLabel(panel.name)}</span>
+                              {deactivated && <span className="ml-1 text-red-500 font-bold">⊘ AUS</span>}
+                              {/* Daumen = reine Notiz (kein Einfluss auf aktiv/inaktiv). */}
                               {isUp && <span className="ml-1 text-green-400">👍</span>}
                               {isDown && <span className="ml-1 text-red-500">👎</span>}
                             </div>
@@ -1976,72 +1721,7 @@ export default function App() {
   )
 }
 
-// ── Aspect-Ratio-Gruppen (Layout-V2, 2026-05-31) ─────────────────────────────
-type Aspect = 'WIDE' | 'SQUARE' | 'TALL' | 'ANY' | 'TEXT'
-
-const PANEL_ASPECT: Record<string, Aspect> = {
-  VoxelDemoColor:        'WIDE',
-  VoxelDemoBW:           'WIDE',
-  VoxelThermal:          'WIDE',
-  VoxelLava:             'WIDE',
-  StarfieldScene:        'WIDE',
-  ElitePanel:            'WIDE',
-  ParallaxPanel:         'WIDE',
-  EnhanceView:           'WIDE',
-  RetroErrorPanel:       'WIDE',
-  DaggerfallPanel:       'WIDE',
-  OscilloscopePanel:     'WIDE',
-  ThermonuclearWarPanel: 'WIDE',
-  PhysicsSandboxPanel:   'WIDE',
-  GlobePanel:        'SQUARE',
-  RadarSweepPanel:   'SQUARE',
-  SolarSystemPanel:  'SQUARE',
-  MoonPanel:         'SQUARE',
-  C64Panel:          'SQUARE',
-  AllYourBase:       'SQUARE',
-  AmiModPanel:       'SQUARE',
-  ShaderHackingCore: 'SQUARE',
-  TixyPanel:         'SQUARE',
-  VoxelNeon:         'SQUARE',
-  ThreeBodyScene:    'SQUARE',
-  TunnelScene:       'SQUARE',
-  DotCloudScene:     'SQUARE',
-  NuclearExplosionPanel: 'TALL',
-  SystemLog:         'TEXT',
-  DataStream:        'TEXT',
-  Vitals:            'TEXT',
-  PortScanner:       'TEXT',
-  PseudoCode:        'TEXT',
-  AgentCodePanel:    'TEXT',
-  VisitorProfilePanel: 'TEXT',
-  ICQChatPanel:      'TEXT',
-  DiskCleanupPanel:  'TEXT',
-  StockTickerPanel:  'TEXT',
-  SatellitePanel:    'TEXT',
-  ClassifiedPanel:   'TEXT',
-  MetaAgentPanel:    'TEXT',
-  FractalSeahorse:       'ANY',
-  FractalSpiral:         'ANY',
-  FractalLightning:      'ANY',
-  FractalElephant:       'ANY',
-  FractalMini:           'ANY',
-  FractalSatellite:      'ANY',
-  FractalTendril:        'ANY',
-  FractalDragon:         'ANY',
-  FractalDendrite:       'ANY',
-  FractalSwirl:          'ANY',
-  FractalJulia:          'ANY',
-  PlasmaDemo:            'ANY',
-  ShaderMandelbox:       'ANY',
-  ShaderRetroWave:       'ANY',
-  LidarScanPanel:        'ANY',
-  IQSmoothMin:           'ANY',
-  IQDigitalStorm:        'ANY',
-  LovebyteShowcasePanel: 'ANY',
-  MandelbulbScene:       'ANY',
-  ApollonianGasketScene: 'ANY',
-  MengerSpongeScene:     'ANY',
-}
+// ── Aspect-Ratio-Helfer (Zell-Geometrie; Panel-Aspect kommt aus der Registry) ──
 
 function cellAspect(cell: GridCell): Aspect {
   const colParts = cell.gridColumn.split('/').map(s => parseInt(s.trim(), 10))
@@ -2057,64 +1737,5 @@ function cellAspect(cell: GridCell): Aspect {
 function aspectMatches(panelAspect: Aspect, cellAspect: Aspect): boolean {
   if (panelAspect === 'ANY' || panelAspect === 'TEXT') return true
   return panelAspect === cellAspect
-}
-
-const NO_LARGE_PANELS = new Set([
-  'C64Panel',
-  'AllYourBase',
-  // Auf Wunsch des Nutzers (2026-06-01) wieder aktiv, aber NIE groß anzeigen
-  // (zu unspektakulär in großer Kachel). Die TEXT-Panels darunter (Vitals/
-  // Satellite/Classified) sind ohnehin nie groß (panelMayBeLarge → false bei
-  // TEXT), hier zur Klarheit dennoch gelistet.
-  'Vitals',
-  'SatellitePanel',
-  'ShaderHackingCore',
-  'CADRobotPanel',
-  'EnhanceView',
-  'ClassifiedPanel',
-])
-
-function panelMayBeLarge(name: string): boolean {
-  if (NO_LARGE_PANELS.has(name)) return false
-  if (LARGE_PANELS.has(name)) return true
-  return PANEL_ASPECT[name] !== 'TEXT'
-}
-
-// ── WebGL-Kontingent (Fix "SLOT EVICTED") ───────────────────────────────────
-// Browser deckeln aktive WebGL-Kontexte (~8–16/Tab). Bei hoher Auslastung
-// (Proxima ~30 Kacheln) übersteigt die Zahl der GL-Panels den Pool (siehe
-// utils/webgl-pool.ts, MAX_GL_CONTEXTS=12) → der Pool verdrängt überzählige
-// Kontexte und die betroffenen Panels zeigen dauerhaft "SLOT EVICTED TO CONSERVE
-// POWER" (sie reaktivieren nur bei Sichtbarkeitswechsel — in einer statischen
-// Galerie nie). Lösung: schon im Layout NIE mehr GL-Panels platzieren als der
-// Pool fasst. Überzählige Zellen bekommen Canvas-2D-/DOM-Panels. Diese Liste
-// nennt alle Komponenten, die einen WebGL-Kontext belegen (three.js, Shadertoy-
-// /ShaderPanel-basiert, FractalGL).
-const GL_PANELS = new Set<string>([
-  // Fraktal-Shader
-  'FractalSeahorse', 'FractalSpiral', 'FractalLightning', 'FractalElephant',
-  'FractalMini', 'FractalSatellite', 'FractalTendril', 'FractalDragon',
-  'FractalDendrite', 'FractalSwirl', 'FractalJulia',
-  'MandelbulbScene', 'ApollonianGasketScene', 'MengerSpongeScene',
-  // Demo-Szenen (three.js / GL)
-  'TunnelScene', 'RotozoomScene', 'FireScene', 'MetaballsScene',
-  'LissajousScene', 'StarfieldScene', 'ThreeBodyScene', 'DotCloudScene',
-  // Voxel-Renderer
-  'VoxelDemoColor', 'VoxelDemoBW', 'VoxelThermal', 'VoxelLava',
-  'VoxelNeon', 'VoxelNeonGrid', 'VoxelMatrix',
-  // Shadertoy-/ShaderPanel-basiert
-  'ShaderHackingCore', 'ShaderRetroWave', 'ShaderMandelbox',
-  'IQSmoothMin', 'IQDigitalStorm', 'PlasmaDemo', 'LovebyteShowcasePanel',
-  // Einzelne GL-Panels
-  'GlobePanel', 'MoonPanel', 'NuclearExplosionPanel',
-  'NeuralLinkDecoderPanel', 'CADRobotPanel',
-])
-
-// Sicherheitspuffer unter MAX_GL_CONTEXTS (12): das Fraktal-Hintergrundbild
-// (FractalView) belegt selbst einen Kontext, daher max. 11 GL-Panels im Grid.
-const MAX_GL_PANELS_PER_LAYOUT = 11
-
-function isGLPanel(name: string): boolean {
-  return GL_PANELS.has(name)
 }
 
