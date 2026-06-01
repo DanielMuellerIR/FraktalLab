@@ -19,7 +19,8 @@
 //                     sichtbar (Auto-Wechsel-Ausschluss) und er ist „locked"
 //                     (rotiert nicht automatisch weg).
 //   • proximaSpeed  — Tempo-Faktor auf Stufe „Proxima" (nur GFX; Default 2×).
-//   • assetKb       — geschätzte Asset-Größe (nur fürs Review-Label).
+// Größen-Label (Review-Modus) = echte Quell-/Musikgröße aus den auto-generierten
+// Dateien (scripts/gen-panel-sizes.mjs + build-audio-manifest.mjs), nicht von Hand.
 //
 // Reviews (Daumen rauf/runter) sind ein reines Hilfsmittel, um Todos zu übergeben,
 // und beeinflussen NICHT, welche Panels aktiv sind oder angezeigt werden.
@@ -27,6 +28,8 @@
 
 import type { ComponentType } from 'react'
 import { memo } from 'react'
+// Echte Quell-/Musik-Größen (auto-generiert von scripts/gen-panel-sizes.mjs).
+import { PANEL_CODE_BYTES, MOD_MUSIC_BYTES, SID_MUSIC_BYTES } from './panel-sizes.generated'
 
 // ── Text-Panels ──
 import SystemLog           from './SystemLog'
@@ -49,7 +52,6 @@ import { VoxelDemoColor, VoxelDemoBW } from './VoxelDemo'
 import { VoxelThermal, VoxelNeon, VoxelLava, VoxelMatrix } from './VoxelScenes'
 import PlasmaDemo        from './PlasmaDemo'
 import EnhanceView       from './EnhanceView'
-import AllYourBase       from './AllYourBase'
 import GlobePanel        from './GlobePanel'
 import DaggerfallPanel   from './DaggerfallPanel'
 import LidarScanPanel    from './LidarScanPanel'
@@ -110,8 +112,6 @@ export interface PanelDef {
   audio: boolean
   /** Tempo-Faktor auf Stufe „Proxima" (nur GFX relevant; Default 2). */
   proximaSpeed: number
-  /** Geschätzte Asset-Größe in KB (0 = prozedural). Nur fürs Review-Label. */
-  assetKb: number
 }
 
 // Roh-Eintrag: nur die abweichenden Felder angeben, der Rest wird unten mit
@@ -126,7 +126,6 @@ interface RawPanel {
   gl?: boolean            // Default: false
   audio?: boolean         // Default: false
   proximaSpeed?: number   // Default: 2 (GFX). Audio/Text ignorieren den Wert.
-  assetKb?: number        // Default: 0
 }
 
 function normalize(r: RawPanel): PanelDef {
@@ -140,7 +139,6 @@ function normalize(r: RawPanel): PanelDef {
     gl: r.gl ?? false,
     audio: r.audio ?? false,
     proximaSpeed: r.proximaSpeed ?? 2,
-    assetKb: r.assetKb ?? 0,
   }
 }
 
@@ -150,7 +148,7 @@ const RAW: RawPanel[] = [
   // ── Zuletzt überarbeitete / hervorgehobene Panels ──
   { name: 'MetaAgentPanel',        Component: MetaAgentPanel,        pool: 'text', aspect: 'TEXT' },
   { name: 'FractalJulia',          Component: FractalJulia,          pool: 'gfx',  aspect: 'ANY',  gl: true, proximaSpeed: 4 },
-  { name: 'C64Panel',              Component: C64Panel,              pool: 'gfx',  aspect: 'SQUARE', size: 'no-large', assetKb: 7 },
+  { name: 'C64Panel',              Component: C64Panel,              pool: 'gfx',  aspect: 'SQUARE', size: 'no-large' },
   { name: 'FractalSeahorse',       Component: FractalSeahorse,       pool: 'gfx',  aspect: 'ANY',  gl: true, proximaSpeed: 4 },
   { name: 'FractalSpiral',         Component: FractalSpiral,         pool: 'gfx',  aspect: 'ANY',  gl: true, proximaSpeed: 4 },
   { name: 'FractalTendril',        Component: FractalTendril,        pool: 'gfx',  aspect: 'ANY',  gl: true, proximaSpeed: 4 },
@@ -161,7 +159,7 @@ const RAW: RawPanel[] = [
   { name: 'FractalDragon',         Component: FractalDragon,         pool: 'gfx',  aspect: 'ANY',  gl: true, proximaSpeed: 4 },
   { name: 'FractalDendrite',       Component: FractalDendrite,       pool: 'gfx',  aspect: 'ANY',  gl: true, proximaSpeed: 4 },
   { name: 'FractalSwirl',          Component: FractalSwirl,          pool: 'gfx',  aspect: 'ANY',  gl: true, proximaSpeed: 4 },
-  { name: 'AmiModPanel',           Component: AmiModPanel,           pool: 'gfx',  aspect: 'SQUARE', audio: true, assetKb: 1253 },
+  { name: 'AmiModPanel',           Component: AmiModPanel,           pool: 'gfx',  aspect: 'SQUARE', audio: true },
   { name: 'SolarSystemPanel',      Component: SolarSystemPanel,      pool: 'gfx',  aspect: 'SQUARE', size: 'prefer-large' },
   { name: 'FractalView',           Component: FractalView,          pool: 'gfx',  aspect: 'ANY',  gl: true, active: false }, // Hintergrundbild, kein Galerie-Panel
 
@@ -172,7 +170,7 @@ const RAW: RawPanel[] = [
   { name: 'TunnelScene',           Component: TunnelScene,           pool: 'gfx',  aspect: 'SQUARE', gl: true, proximaSpeed: 4 },
   { name: 'RotozoomScene',         Component: RotozoomScene,         pool: 'gfx',  aspect: 'ANY',  gl: true },
   { name: 'PlasmaDemo',            Component: PlasmaDemo,            pool: 'gfx',  aspect: 'ANY',  gl: true, proximaSpeed: 8 },
-  { name: 'EnhanceView',           Component: EnhanceView,           pool: 'gfx',  aspect: 'WIDE', size: 'no-large', assetKb: 344 },
+  { name: 'EnhanceView',           Component: EnhanceView,           pool: 'gfx',  aspect: 'WIDE', size: 'no-large' },
   { name: 'VoxelDemoColor',        Component: VoxelDemoColor,        pool: 'gfx',  aspect: 'WIDE', gl: true },
   { name: 'VoxelDemoBW',           Component: VoxelDemoBW,            pool: 'gfx',  aspect: 'WIDE', gl: true },
   { name: 'GlobePanel',            Component: GlobePanel,            pool: 'gfx',  aspect: 'SQUARE', gl: true },
@@ -181,10 +179,11 @@ const RAW: RawPanel[] = [
   { name: 'VoxelNeon',             Component: VoxelNeon,             pool: 'gfx',  aspect: 'SQUARE', gl: true },
   { name: 'VoxelMatrix',           Component: VoxelMatrix,           pool: 'gfx',  aspect: 'ANY',  gl: true, proximaSpeed: 4 }, // = MengerSpongeScene-Alias
   { name: 'StarfieldScene',        Component: StarfieldScene,        pool: 'gfx',  aspect: 'WIDE', gl: true },
-  { name: 'OscilloscopePanel',     Component: OscilloscopePanel,     pool: 'gfx',  aspect: 'WIDE', audio: true, assetKb: 30 },
+  { name: 'OscilloscopePanel',     Component: OscilloscopePanel,     pool: 'gfx',  aspect: 'WIDE', audio: true },
   { name: 'MetaballsScene',        Component: MetaballsScene,        pool: 'gfx',  aspect: 'SQUARE', gl: true },
   { name: 'DotCloudScene',         Component: DotCloudScene,         pool: 'gfx',  aspect: 'SQUARE', gl: true },
-  { name: 'AllYourBase',           Component: AllYourBase,           pool: 'gfx',  aspect: 'SQUARE', audio: true, size: 'no-large', assetKb: 0 },
+  // AllYourBase (archive.org-Video) am 2026-06-01 entfernt: nur per nicht-steuerbarem
+  // iframe rechtlich sauber einbindbar → unvereinbar mit Audio-Election/Mute/Handoff.
   { name: 'ParallaxPanel',         Component: ParallaxPanel,         pool: 'gfx',  aspect: 'WIDE' },
   { name: 'ElitePanel',            Component: ElitePanel,            pool: 'gfx',  aspect: 'WIDE', size: 'prefer-large' },
   { name: 'CADRobotPanel',         Component: CADRobotPanel,         pool: 'gfx',  aspect: 'WIDE', size: 'no-large', gl: true },
@@ -320,12 +319,24 @@ export function panelPrefersLarge(name: string): boolean {
   return BY_NAME.get(name)?.size === 'prefer-large'
 }
 
-/** Menschlich lesbares Größen-Label fürs Review-Panel. */
+/** Bytes → "KB"/"MB"-String. */
+function fmtBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${bytes} B`
+}
+
+/**
+ * Größen-Label fürs Review-Panel: echte Quell-Größe (Code) des Panels.
+ * Werte stammen aus panel-sizes.generated.ts (Skript gen-panel-sizes.mjs).
+ * Die beiden Player zeigen ZWEI Werte: Code allein / Code + Musikdateien,
+ * z.B. "89 KB / 1.1 MB". Die Musikgröße ist dynamisch aus den Dateien berechnet.
+ */
 export function panelAssetLabel(name: string): string {
-  const kb = BY_NAME.get(name)?.assetKb ?? 0
-  if (kb === 0) return '0 KB · prozedural'
-  if (kb >= 1024) return `${(kb / 1024).toFixed(1)} MB`
-  return `${kb} KB`
+  const code = PANEL_CODE_BYTES[name] ?? 0
+  if (name === 'AmiModPanel') return `${fmtBytes(code)} / ${fmtBytes(code + MOD_MUSIC_BYTES)}`
+  if (name === 'OscilloscopePanel') return `${fmtBytes(code)} / ${fmtBytes(code + SID_MUSIC_BYTES)}`
+  return fmtBytes(code)
 }
 
 // ── Tempo-Daten für panel-speed.ts bereitstellen ──────────────────────────────

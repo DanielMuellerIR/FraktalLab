@@ -40,3 +40,4 @@ archive/
 # Local SID scratch file (duplicate of frontend/public/audio/Turrican.sid, manual testing)
 /Turrican.sid
 
+scripts/_tools/

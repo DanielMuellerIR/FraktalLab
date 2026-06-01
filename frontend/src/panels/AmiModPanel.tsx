@@ -4,6 +4,7 @@ import { ModPlayer } from '../utils/modplayer/player';
 import { Mod, Note } from '../utils/modplayer/mod';
 import { subscribe } from '../utils/raf-coordinator';
 import { registerAudioFocusListener, requestAudioFocus, releaseAudioFocus, registerAudioCandidate, notifyAudioEnded } from '../utils/audio-focus';
+import { MOD_TRACKS, BOTB_SOURCE, BOTB_LICENSE_SHORT, BOTB_LICENSE_URL } from '../utils/botb-tracks.generated';
 
 const AUDIO_ID = 'ami-mod-player';
 
@@ -31,6 +32,10 @@ interface Track {
   arranger?: string;
   publisher?: string;
   year?: string;
+  // BotB-Attribution (CC BY-NC-SA): Quelle, Lizenz-Kürzel und Entry-Link.
+  source?: string;
+  license?: string;
+  entryUrl?: string;
   // Markiert User-Uploads. Wird genutzt, um beim Unmount Object-URLs wieder
   // freizugeben und im UI das User-/Default-Segment optisch zu trennen.
   isUser?: boolean;
@@ -38,30 +43,21 @@ interface Track {
 
 const BASE = import.meta.env.BASE_URL;
 
-// Mitgelieferte Default-Tracks. Dateien liegen unter frontend/public/audio/.
-// Endung .mod (kanonisch); Apache MIME-Type ist in der .htaccess gesetzt.
-// Encoded URLs (Spaces als %20), weil fetch zwar tolerant ist, aber manche
-// Server-Konfigurationen sonst patzig sind.
-//
-// Urheberangaben: Best-Effort recherchiert (siehe Audit-Session 2026-05-29
-// und Wikipedia / Hardcore Gaming 101 / Khinsider als Quellen). Diese
-// Attribution dient als "good faith"-Hinweis und ist keine Lizenz. Im
-// Footer steht ein entsprechender Disclaimer, takedown-on-request gilt.
-const DEFAULT_TRACKS: Track[] = [
-  { id: 'agony',         name: 'Agony (Intro)',                url: `${BASE}audio/agony-Intro.mod`,                composer: 'Tim Wright (CoLD SToRAGE)', arranger: 'Tim Wright',          publisher: 'Psygnosis / Art & Magic',     year: '1992' },
-  { id: 'lotus2',        name: 'Lotus 2',                      url: `${BASE}audio/Lotus2.mod`,                     composer: 'Barry Leitch',              arranger: 'Barry Leitch',        publisher: 'Magnetic Fields / Gremlin',   year: '1991' },
-  { id: 'lotus3',        name: 'Lotus 3 (Title)',              url: `${BASE}audio/Lotus3-Title.mod`,               composer: 'Barry Leitch',              arranger: 'Barry Leitch',        publisher: 'Magnetic Fields / Gremlin',   year: '1992' },
-  { id: 'rtype',         name: 'R-Type',                       url: `${BASE}audio/Rtype.mod`,                      composer: 'Chris Hülsbeck',            arranger: 'Chris Hülsbeck',      publisher: 'Factor 5 / Activision',       year: '1989' },
-  { id: 'simon',         name: 'Simon the Sorcerer (Village)', url: `${BASE}audio/Simon_the_Sorcerer-Village.mod`, composer: 'Mark McLeod & Adam Gilmore',arranger: 'Mark McLeod',         publisher: 'Adventure Soft',              year: '1993' },
-  { id: 'speedball2',    name: 'Speedball 2',                  url: `${BASE}audio/Speedball%202.mod`,              composer: 'Simon Rogers',              arranger: 'Richard Joseph',      publisher: 'Bitmap Brothers / Image Works', year: '1990' },
-  { id: 'stardust',      name: 'Stardust Memories',            url: `${BASE}audio/Stardust%20Memories.mod`,        composer: 'Volker Tripp (Jester)',     arranger: 'Volker Tripp (Jester)', publisher: 'Sanity (demoscene)',         year: '1992' },
-  { id: 'turrican',      name: 'Turrican',                     url: `${BASE}audio/TURRICAN.MOD`,                   composer: 'Chris Hülsbeck',            arranger: 'Chris Hülsbeck',      publisher: 'Rainbow Arts',                year: '1990' },
-  { id: 'turrican-ii',   name: 'Turrican II',                  url: `${BASE}audio/turrican%20ii.mod`,              composer: 'Chris Hülsbeck',            arranger: 'Chris Hülsbeck',      publisher: 'Rainbow Arts',                year: '1991' },
-  { id: 'turrican-2-1',  name: 'Turrican II — Level 2.1',      url: `${BASE}audio/turrican%202.1.mod`,             composer: 'Chris Hülsbeck',            arranger: 'Chris Hülsbeck',      publisher: 'Rainbow Arts',                year: '1991' },
-  { id: 'turrican-2-3',  name: 'Turrican II — Level 2.3',      url: `${BASE}audio/turrican%202.3.mod`,             composer: 'Chris Hülsbeck',            arranger: 'Chris Hülsbeck',      publisher: 'Rainbow Arts',                year: '1991' },
-  { id: 'turrican-end',  name: 'Turrican — End Part',          url: `${BASE}audio/turrican%20end-part.mod`,        composer: 'Chris Hülsbeck',            arranger: 'Chris Hülsbeck',      publisher: 'Rainbow Arts',                year: '1990' },
-  { id: 'turrican-hs',   name: 'Turrican — Highscore',         url: `${BASE}audio/turrican%20highscore.mod`,       composer: 'Chris Hülsbeck',            arranger: 'Chris Hülsbeck',      publisher: 'Rainbow Arts',                year: '1990' },
-];
+// Mitgelieferte Default-Tracks: MODs von Battle of the Bits (CC BY-NC-SA).
+// Die Liste wird AUTOMATISCH aus dem Manifest (botb-tracks.generated.ts) abgeleitet,
+// das wiederum vom Skript scripts/build-audio-manifest.mjs erzeugt wird. So bleiben
+// Tracks, Attribution UND Dateigrößen synchron, wenn sich die mods/sids ändern.
+const DEFAULT_TRACKS: Track[] = MOD_TRACKS.map(t => ({
+  id:        `botb-${t.id}`,
+  name:      t.title,
+  url:       `${BASE}${t.file}`,
+  composer:  t.author,            // Autor des Tracks
+  publisher: BOTB_SOURCE,         // "Battle of the Bits"
+  year:      `Entry ${t.id}`,     // BotB-Entry-ID statt Jahr
+  source:    BOTB_SOURCE,
+  license:   BOTB_LICENSE_SHORT,  // "CC BY-NC-SA"
+  entryUrl:  t.entryUrl,
+}));
 
 // Heuristik fuer MOD-Dateinamen: moderne .mod-Endung ODER klassische
 // Amiga-Konvention mit Praefix "mod." (z. B. "mod.elysium").
@@ -921,6 +917,20 @@ function AmiModPanel() {
                 : ''}
               {allTracks[trackIdx]?.publisher || '—'}
               {allTracks[trackIdx]?.year ? ` · ${allTracks[trackIdx]?.year}` : ''}
+            </div>
+          )}
+          {/* CC-Attribution (TASL: Title/Author/Source/Licence) — bei User-Uploads
+              ausgeblendet. Autoscroll-Laufschrift, falls der Text breiter als die
+              Kachel ist (siehe .marquee in index.css). Link führt zum BotB-Entry. */}
+          {allTracks[trackIdx]?.license && !allTracks[trackIdx]?.isUser && (
+            <div className="marquee text-[#6ee7b7]/80 border-t border-[#111827] pt-0.5" style={{ fontSize: '0.92em' }}>
+              <span className="marquee__inner">
+                {allTracks[trackIdx]?.name} — {allTracks[trackIdx]?.composer}, {allTracks[trackIdx]?.source} {allTracks[trackIdx]?.year},
+                {' '}{allTracks[trackIdx]?.license} · No changes made ·{' '}
+                <a href={allTracks[trackIdx]?.entryUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-white">BotB-Entry</a>
+                {' · '}
+                <a href={BOTB_LICENSE_URL} target="_blank" rel="noopener noreferrer" className="underline hover:text-white">Lizenz</a>
+              </span>
             </div>
           )}
           {loadError && <div className="text-red-500 font-bold mt-0.5">ERROR: {loadError}</div>}
