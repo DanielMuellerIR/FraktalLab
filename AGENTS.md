@@ -48,6 +48,29 @@ animierte Panel treibt seine Zeit über einen zentralen, skalierten Takt
 
 ---
 
+## 📋 OFFEN — SID „What is this thing" (Entry 14870) klingt kaputt
+
+Nach dem PSID-Ladeadressen-Fix (v1.23.1) spielen 4 von 5 BotB-SIDs sauber. **14870
+(„what is this thing", MovieMovies1)** zeigt Waveforms, macht aber nur kaputte
+Geräusche statt Musik — lokal UND online gleich (also KEIN Cache-/Deploy-Problem,
+sondern Tune-spezifisch). Header: PSID v2, load=$1006, init=$110f, play=$1117,
+flags=0x0010 (6581). Vermutung: digi/sample-Wiedergabe (z.B. $D418-Volume-Digis)
+oder Multispeed/CIA-Timing, das die vereinfachte jsSID-Engine im Worklet nicht
+beherrscht → Rauschen. **Optionen:** (a) Track ersetzen/entfernen, (b) Engine um
+die fehlende Technik erweitern (aufwändig, ungewiss). NICHT in dieser Session
+angefasst (Nutzer-Entscheidung). Datei: `frontend/public/audio/botb/botb-14870.sid`,
+Engine: `frontend/public/audio/sid-player-worklet.js`.
+
+## ✅ Bugfixes 2026-06-01 (v1.23.1–v1.23.2)
+
+- SID-Loader: PSID mit Header-Ladeadresse ≠ 0 wurde 2 Bytes verschoben geladen → Stille. Gefixt.
+- C64-Font online: absoluter Pfad `/c64_font.png` → 404 unter `/x/`; jetzt `${BASE_URL}`-relativ.
+- Registry-Aktiv-Set korrigiert (down-gevotete waren fälschlich aktiv; FractalView wieder aktiv).
+- Worklet-Cache-Busting: `?v=__APP_VERSION__` (vite `define` aus package.json), da public/-Worklets
+  ungehasht sind und sonst online die alte Version gecacht bleibt. **Wichtig: bei Worklet-
+  Änderungen Version in package.json bumpen, sonst greift der Fix online nicht.**
+- `deploy.py`: `mirror -X .DS_Store` (nie hochladen) + gezieltes rm; lädt nur `frontend/dist`.
+
 ## ✅ Lizenz/Audio + zentrale Registry + dynamische Größen — ERLEDIGT (App-Version **v1.22.0**, 2026-06-01)
 
 > **WICHTIG für Veröffentlichung:** Die Git-History wurde mit `git-filter-repo`
