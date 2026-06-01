@@ -44,6 +44,15 @@ export default function PanelSlot({
   // Vom inneren Panel gemeldeter Titel (null → Fallback aus Komponentenname).
   const [reported, setReported] = useState<{ title: string; rightLabel?: string } | null>(null)
   const isTransitioningRef = useRef(false)
+  // Pillen-Sichtbarkeit auf MOBILE: erst nach Tippen einblenden (Desktop nutzt
+  // reines CSS-Hover, siehe Klassen unten). Auto-Ausblenden nach 3 s.
+  const [revealed, setRevealed] = useState(false)
+  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  function revealPill() {
+    setRevealed(true)
+    if (revealTimerRef.current) clearTimeout(revealTimerRef.current)
+    revealTimerRef.current = setTimeout(() => setRevealed(false), 3000)
+  }
 
   // Panel-Wechsel: localIdx setzen UND den gemeldeten Titel im SELBEN Update
   // zurücksetzen. Nicht per [localIdx]-Effekt — der liefe NACH dem Mount-Effekt
@@ -108,9 +117,12 @@ export default function PanelSlot({
 
   return (
     <div
-      className={`relative transition-opacity duration-[300ms] min-h-0 h-full overflow-hidden ${
+      // `group`: erlaubt der Pille, per CSS auf Hover der ganzen Kachel zu
+      // reagieren (Desktop). `onClick` blendet die Pille auf Mobile ein.
+      className={`group relative transition-opacity duration-[300ms] min-h-0 h-full overflow-hidden ${
         visible ? 'opacity-100' : 'opacity-0'
       } ${className}`}
+      onClick={revealPill}
       // container-type: ermöglicht die Skalierung der Pille mit der Kachelgröße
       // (cqmin-Einheiten) → in dichten Layouts wird die Pille automatisch kleiner.
       style={{ containerType: 'size' }}
@@ -119,19 +131,24 @@ export default function PanelSlot({
         <Component onComplete={() => navigate(1)} />
       </PanelChromeContext.Provider>
 
-      {/* Schwebende Titel-Pille mit Vor-/Zurück-Pfeilen, oben mittig. */}
+      {/* Schwebende Titel-Pille mit Vor-/Zurück-Pfeilen, oben mittig.
+          Sichtbarkeit: Desktop NUR bei Hover über die Kachel (md:group-hover),
+          Mobile nach Tippen (revealed-State, 3 s). Wenn unsichtbar auch
+          klick-inert (pointer-events-none), damit die Pfeile nicht blind feuern. */}
       <div
-        className="absolute top-[3px] left-1/2 -translate-x-1/2 z-20 flex items-center
+        className={`absolute top-[3px] left-1/2 -translate-x-1/2 z-20 flex items-center
                    gap-1 rounded-full bg-black/70 backdrop-blur-sm
                    border border-green-800/50 text-green-300 select-none
-                   max-w-[92%] pointer-events-none"
+                   max-w-[92%] transition-opacity duration-150
+                   ${revealed ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}
+                   md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto`}
         style={{ fontSize: 'clamp(7px, 4.4cqmin, 11px)', paddingTop: '1px', paddingBottom: '1px' }}
       >
         {canNav && (
           <button
             onClick={() => navigate(-1)}
             title="Vorheriges Panel"
-            className="pointer-events-auto px-1 leading-none text-green-600 hover:text-green-200 transition-colors"
+            className="px-1 leading-none text-green-600 hover:text-green-200 transition-colors"
           >
             ◂
           </button>
@@ -151,7 +168,7 @@ export default function PanelSlot({
           <button
             onClick={() => navigate(1)}
             title="Nächstes Panel"
-            className="pointer-events-auto px-1 leading-none text-green-600 hover:text-green-200 transition-colors"
+            className="px-1 leading-none text-green-600 hover:text-green-200 transition-colors"
           >
             ▸
           </button>

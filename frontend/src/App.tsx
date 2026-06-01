@@ -316,11 +316,15 @@ function generateLayout(id: number, reviews: ReviewEntry[], targetCellCount?: nu
     const maxDistinct = Math.min(glAvail, MAX_GL_PANELS_PER_LAYOUT) + nonGlAvail + tp.length + 1
     const eff = Math.max(2, Math.min(targetCellCount, maxDistinct))
 
-    // cols ~ sqrt(N · ratio), rows füllt den Rest auf. Caps halten Zellen sichtbar groß.
+    // cols ~ sqrt(N · ratio). WICHTIG: cRows per FLOOR, damit cols×rows NIE über
+    // eff (= verfügbare Distinct-Panels) steigt → sonst entstehen Löcher (zu viele
+    // Zellen für zu wenige Panels). Lieber 1–2 Kacheln weniger als ein leeres Loch.
     let cCols = Math.round(Math.sqrt(eff * ratio))
     cCols = Math.min(8, Math.max(2, cCols))
-    let cRows = Math.max(1, Math.round(eff / cCols))
-    cRows = Math.min(6, Math.max(1, cRows))
+    let cRows = Math.max(1, Math.floor(eff / cCols))
+    cRows = Math.min(6, cRows)
+    // Falls cols×rows durch die Caps doch noch > eff: Spalten reduzieren.
+    while (cCols > 2 && cCols * cRows > eff) cCols--
     sizes = [[cCols, cRows]]
   } else if (width >= 3440) {
     // Ultra-wide / sehr große Entwickler-Bildschirme
@@ -1076,11 +1080,11 @@ function densityPanelCount(level: DensityLevel): number {
   switch (level) {
     case '25mhz':     return 6
     case 'turbo':     return 12
-    case 'overclock': return 18
-    // Proxima auf 24 begrenzt: das ist die distinct-Untergrenze (11 GL-Panels +
-    // 13 TEXT-Panels sind aspect-neutral genug), damit NIE Duplikate nötig sind.
-    // Höhere Dichte erfordert Roadmap-Schritt 2 (Freeze-to-Image für GL-Panels).
-    case 'proxima':   return 24
+    case 'overclock': return 15
+    // Proxima auf 20 begrenzt — komfortabel unter der Distinct-Untergrenze, damit
+    // keine Löcher/Duplikate entstehen. Höhere Dichte bräuchte Roadmap-Schritt 2
+    // (Freeze-to-Image für GL-Panels).
+    case 'proxima':   return 20
   }
 }
 
