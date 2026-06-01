@@ -97,23 +97,54 @@ export const LovebyteShowcasePanel = React.memo(function LovebyteShowcasePanel()
 
   return (
     <Panel
+      // Hinweis: rightLabel (Formel) bewusst NICHT mehr setzen — die Formel
+      // erscheint jetzt in der unteren Pille (siehe weiter unten), nicht in der
+      // oberen Titel-Pille. So gibt es keine Doppelung.
       title={`LOVEBYTE COMP // ${active.name} [PAL: ${currentPalette.name.toUpperCase()}]`}
-      rightLabel={active.expr}
     >
       <div className="w-full h-full relative bg-black">
-        {/* Use key={activeIdx} to force a clean context/shader recreation */}
+        {/* Use key={activeIdx} to force a clean context/shader recreation
+            attribution NICHT mehr an ShaderPanel geben — der Credit steht jetzt
+            in der unteren Pille (zweite Zeile), damit es nicht doppelt erscheint. */}
         <ShaderPanel
           key={activeIdx}
           fragmentShader={active.shader}
           uniforms={uniforms}
           title="" // Hide title since Panel title handles it
-          attribution="256B Sizecoding Showcase (Palette-Rework)"
           noPanel={true}
         />
-        
+
         {/* Hacker styling overlay */}
         <div className="absolute top-2 left-2 text-[8px] font-mono text-green-700/50 uppercase select-none pointer-events-none">
           SIZE: &lt;256 BYTES // PLATFORM: GLSL ES 1.0 // MODE: COMPACT
+        </div>
+
+        {/* Untere Pille: Shader-Formel + Copyright/Credit, analog zur oberen
+            Titel-Pille, aber am UNTEREN Rand zentriert. Zweizeilig:
+              Zeile 1 = Formel (Monospace, weil es Code ist)
+              Zeile 2 = Copyright/Credit
+            Stil wie die Titel-Pille (dunkel, abgerundet, dünner grüner Rand).
+            Schrift skaliert container-relativ (cqmin) — der container-type liegt
+            am PanelSlot-Wrapper. Lange Formeln werden je Zeile auf eine Zeile
+            geklemmt (line-clamp-1 + break-all), damit die Pille kompakt bleibt. */}
+        <div
+          className="absolute bottom-[3px] left-1/2 -translate-x-1/2 z-20 max-w-[92%]
+                     rounded bg-black/70 backdrop-blur-sm border border-green-800/50
+                     text-green-300 select-none pointer-events-none text-center"
+          style={{
+            fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+            fontSize: 'clamp(7px, 3.6cqmin, 11px)',
+            padding: '1px 6px',
+          }}
+        >
+          {/* Zeile 1: die Formel selbst — Monospace, einzeilig geklemmt */}
+          <div className="font-mono text-green-200 leading-tight break-all line-clamp-1">
+            {active.expr}
+          </div>
+          {/* Zeile 2: Copyright/Credit — etwas gedämpfter, einzeilig geklemmt */}
+          <div className="text-green-500/80 leading-tight break-all line-clamp-1">
+            256B Sizecoding Showcase (Palette-Rework)
+          </div>
         </div>
       </div>
     </Panel>

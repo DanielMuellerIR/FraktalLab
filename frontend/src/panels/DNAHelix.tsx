@@ -311,59 +311,72 @@ function DNAHelix() {
           <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
         </div>
 
-        {/* Right content: Stats & Sequence Data (65%) */}
-        <div className="w-[65%] h-full flex flex-col p-3 overflow-y-auto space-y-3 bg-black/40">
+        {/* Right content: Stats & Sequence Data (65%)
+            WICHTIG: Kein Scrollbalken mehr. Statt fester Pixel-Schriftgrößen und
+            festem Padding skaliert hier alles container-relativ (cqmin = kleinere
+            Kantenlänge der Kachel via container-type am PanelSlot-Wrapper). So
+            schrumpft der Inhalt in kleinen Kacheln mit und passt ohne Scrollen
+            in die Kachel. `overflow-hidden` ersetzt das frühere `overflow-y-auto`. */}
+        <div
+          className="w-[65%] h-full flex flex-col overflow-hidden bg-black/40"
+          // Padding, Abstände und Schrift wachsen/schrumpfen mit der Kachelgröße.
+          style={{
+            padding: 'clamp(3px, 1.6cqmin, 12px)',
+            gap: 'clamp(2px, 1.2cqmin, 12px)',
+            fontSize: 'clamp(6px, 2.6cqmin, 11px)',
+          }}
+        >
           {/* Header */}
-          <div className="flex justify-between items-start border-b border-slate-800 pb-2">
-            <div>
-              <div className="text-slate-500 uppercase tracking-wider text-[10px]">Active Subject</div>
-              <div className={`text-base font-bold uppercase ${currentSpecies.color}`}>
+          <div className="flex justify-between items-start border-b border-slate-800 shrink-0" style={{ paddingBottom: 'clamp(2px, 1cqmin, 8px)' }}>
+            <div className="min-w-0">
+              <div className="text-slate-500 uppercase tracking-wider" style={{ fontSize: 'clamp(5px, 2.2cqmin, 10px)' }}>Active Subject</div>
+              <div className={`font-bold uppercase truncate ${currentSpecies.color}`} style={{ fontSize: 'clamp(9px, 4cqmin, 16px)' }}>
                 {currentSpecies.name}
               </div>
-              <div className="text-slate-400 italic text-[11px] font-sans">
+              <div className="text-slate-400 italic font-sans truncate" style={{ fontSize: 'clamp(6px, 2.6cqmin, 11px)' }}>
                 {currentSpecies.scientificName}
               </div>
             </div>
-            <div className="text-right">
-              <span className="text-[10px] text-slate-500 uppercase">Cycle status</span>
+            <div className="text-right shrink-0" style={{ fontSize: 'clamp(5px, 2.2cqmin, 10px)' }}>
+              <span className="text-slate-500 uppercase">Cycle status</span>
               <div className="text-emerald-400 animate-pulse">● DATABASE LIVE</div>
             </div>
           </div>
 
-          {/* Stats Grid */}
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <div className="border border-slate-800/80 p-1.5 bg-slate-950/40 rounded">
-              <span className="text-slate-500 uppercase block text-[9px]">Genome Size</span>
+          {/* Stats Grid — Schrift erbt vom Container-clamp oben */}
+          <div className="grid grid-cols-2 shrink-0" style={{ gap: 'clamp(2px, 1cqmin, 8px)' }}>
+            <div className="border border-slate-800/80 bg-slate-950/40 rounded" style={{ padding: 'clamp(2px, 1cqmin, 6px)' }}>
+              <span className="text-slate-500 uppercase block" style={{ fontSize: 'clamp(5px, 2cqmin, 9px)' }}>Genome Size</span>
               <span className="font-bold text-slate-200">{currentSpecies.genomeSize}</span>
             </div>
-            <div className="border border-slate-800/80 p-1.5 bg-slate-950/40 rounded">
-              <span className="text-slate-500 uppercase block text-[9px]">Chromosomes</span>
+            <div className="border border-slate-800/80 bg-slate-950/40 rounded" style={{ padding: 'clamp(2px, 1cqmin, 6px)' }}>
+              <span className="text-slate-500 uppercase block" style={{ fontSize: 'clamp(5px, 2cqmin, 9px)' }}>Chromosomes</span>
               <span className="font-bold text-slate-200">{currentSpecies.chromosomes}</span>
             </div>
-            <div className="border border-slate-800/80 p-1.5 bg-slate-950/40 rounded">
-              <span className="text-slate-500 uppercase block text-[9px]">Coding Genes</span>
+            <div className="border border-slate-800/80 bg-slate-950/40 rounded" style={{ padding: 'clamp(2px, 1cqmin, 6px)' }}>
+              <span className="text-slate-500 uppercase block" style={{ fontSize: 'clamp(5px, 2cqmin, 9px)' }}>Coding Genes</span>
               <span className="font-bold text-slate-200">{currentSpecies.genes}</span>
             </div>
-            <div className="border border-slate-800/80 p-1.5 bg-slate-950/40 rounded">
-              <span className="text-slate-500 uppercase block text-[9px]">Population (Est.)</span>
+            <div className="border border-slate-800/80 bg-slate-950/40 rounded" style={{ padding: 'clamp(2px, 1cqmin, 6px)' }}>
+              <span className="text-slate-500 uppercase block" style={{ fontSize: 'clamp(5px, 2cqmin, 9px)' }}>Population (Est.)</span>
               <span className="font-bold text-slate-200">{currentSpecies.population}</span>
             </div>
           </div>
 
           {/* Fact Box */}
-          <div className="border border-slate-800/80 p-2 bg-slate-950/60 rounded text-[11px] leading-relaxed">
-            <span className="text-amber-500 uppercase font-bold block text-[9px] mb-1">
+          <div className="border border-slate-800/80 bg-slate-950/60 rounded leading-relaxed shrink-0" style={{ padding: 'clamp(2px, 1.2cqmin, 8px)' }}>
+            <span className="text-amber-500 uppercase font-bold block" style={{ fontSize: 'clamp(5px, 2cqmin, 9px)', marginBottom: 'clamp(1px, 0.5cqmin, 4px)' }}>
               Scientific Note:
             </span>
             <p className="text-slate-300 font-sans">{currentSpecies.fact}</p>
           </div>
 
-          {/* Sequence Viewer */}
-          <div className="flex-1 flex flex-col min-h-0 border border-slate-800/80 p-2 bg-slate-950/40 rounded">
-            <span className="text-slate-500 uppercase block text-[9px] mb-1.5">
+          {/* Sequence Viewer — füllt den Rest, eigener Inhalt ohne Scrollbalken (overflow-hidden) */}
+          <div className="flex-1 flex flex-col min-h-0 border border-slate-800/80 bg-slate-950/40 rounded" style={{ padding: 'clamp(2px, 1.2cqmin, 8px)' }}>
+            <span className="text-slate-500 uppercase block shrink-0" style={{ fontSize: 'clamp(5px, 2cqmin, 9px)', marginBottom: 'clamp(1px, 0.7cqmin, 6px)' }}>
               Genomic Sequence Segment (5' -&gt; 3')
             </span>
-            <div className="flex-1 overflow-y-auto font-mono text-[10px] break-all leading-tight text-slate-400 bg-black/60 p-1.5 rounded border border-slate-900">
+            <div className="flex-1 overflow-hidden font-mono break-all leading-tight text-slate-400 bg-black/60 rounded border border-slate-900" style={{ fontSize: 'clamp(5px, 2.2cqmin, 10px)', padding: 'clamp(2px, 1cqmin, 6px)' }}>
               {currentSpecies.seq.split('').map((base, idx) => {
                 let colorClass = 'text-slate-500'
                 if (base === 'A') colorClass = 'text-emerald-400'
