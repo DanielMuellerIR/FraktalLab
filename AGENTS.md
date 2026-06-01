@@ -56,6 +56,17 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 - [x] **`GlobePanel`**: Der rote Rahmen im Reviewmodus ist **korrektes generisches Down-Rating-Highlight** (aktives + 👎-Panel = rot), kein Bug. "Nie im Hauptbereich" = niedrige Pool-Wahrscheinlichkeit (49 GFX-Panels), kein Code-Defekt. Kein Fix nötig.
 - [x] **Panelanzahl/Layout nach Deaktivierung angepasst** — Teil des Galerie-Redesigns (weniger, größere Panels).
 
+### Deko/Dichte/Panel-Politur (App-Version **v1.17.0–v1.18.0**)
+
+- [x] **Titel-Pillen nur bei Bedarf** — Desktop: Pille erscheint nur bei Hover über die Kachel (`md:group-hover`); Mobile: nach Tippen (3 s). Unsichtbar = klick-inert.
+- [x] **Dichte** — Overdrive 15, Proxima 20.
+- [x] **Keine Löcher** — `cols×rows` per Floor + Korrekturschleife nie > Zahl verfügbarer Distinct-Panels (`eff`); vorher erzeugte Aufrunden zu viele Zellen → leere Kacheln.
+- [x] **Duplikate** — beim Laden/Density-Wechsel keine (distinct-only Füll-Pass, Clamp auf `eff`); nur die Pillen-Pfeile dürfen bewusst duplizieren. `data-pname`-Debug bestätigte 0 echte Duplikate (frühere „Menger×2"-Meldung war Pill-Detektions-Artefakt).
+- [x] **MOD-Player** (`AmiModPanel`) — Amiga-Workbench-Look raus, modern/randlos/schwarz wie der SID-Player. Titel jetzt "MOD PLAYER // PROTRACKER".
+- [x] **DNA** (`DNAHelix`) — keine Scrollbar mehr (overflow-hidden, container-relativ skaliert).
+- [x] **Lovebyte** (`LovebyteShowcasePanel`) — Shader-Formel + Credit als zweizeilige Pille am unteren Kachelrand.
+- [ ] **OFFEN: Proxima 2× Animationstempo** (außer Audio). Teilweise machbar über `raf-coordinator.ts` (virtuelle Uhr mit timeScale) — greift aber NUR bei `subscribe`-basierten Panels (v.a. ShaderPanel-GL), NICHT bei Panels mit eigenem rAF/Clock; Audio-Panel-Visuals lassen sich zentral nicht sauber ausnehmen. Uniformes 2× = hoher Aufwand (jede Zeitquelle anfassen). Auf User-Entscheidung wartend.
+
 ### Layout-V2 — Aspect-Matching + Auslastungs-Wähler (ERLEDIGT, App-Version **v1.13.0**)
 
 Alle Unterpunkte (a-e) umgesetzt. Build grün (tsc + vite), im Browser verifiziert.
