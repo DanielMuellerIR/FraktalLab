@@ -3,6 +3,72 @@
 Universelle Referenz für alle Coding-Agents und KI-Modelle.
 Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 
+---
+
+## ⚖️ Panel-Regelwerk (VERBINDLICH — bei JEDEM künftigen Panel-/Layout-Todo beachten)
+
+Stand 2026-06-01. Diese Regeln gelten dauerhaft, nicht nur für die Speed-Session.
+
+### R1 — Panel-Geschwindigkeit (Animationstempo) je Auslastungs-Stufe
+Effektives Tempo hängt von Panel-Typ UND Dichte-Stufe ab. Realisierung: jedes
+animierte Panel treibt seine Zeit über einen zentralen, skalierten Takt
+(`raf-coordinator`), Faktor = `effectiveSpeed(panelName, densityLevel)`.
+
+- **Player (MOD = `AmiModPanel`, SID = `OscilloscopePanel`): IMMER 1×** — Audio
+  UND Visuals (Tracker-Scroll, Oszilloskop-Kurve, VU). NIE schneller/langsamer,
+  auf KEINER Stufe. Neue Audio-/Player-Panels erben diese Regel automatisch.
+- **Textpanels** (alle 13 TEXT-Panels): 25 MHz **1×** · Turbo/Overdrive **1×** ·
+  Proxima **2×**. (TEXT wird auf 25 MHz NICHT verlangsamt.)
+- **GFX-Panels:** 25 MHz **0.5×** · Turbo/Overdrive **1×** · Proxima = Override
+  (Default **2×**). Proxima-Overrides:
+  - **16×**: MandelbulbScene
+  - **8×**: DNAHelix · PlasmaDemo (Plasma Core) · TixyPanel · IQDigitalStorm (Neural FBM)
+  - **4×**: ShaderRetroWave (RetroOutrun) · LovebyteShowcasePanel · MengerSpongeScene ·
+    TunnelScene (Wormhole) · FireScene (Neural Constellation) · ALLE `Fractal*` +
+    ApollonianGasketScene
+  - **2×**: ShaderMandelbox + alle übrigen GFX (Default)
+- **Bereits gesetzte Faktoren, die hier nicht genannt sind, bleiben bei 2× auf Proxima.**
+
+### R2 — Keine ungewollten Duplikate
+- Beim **Laden** und **Dichte-Wechsel**: NIE Duplikate (distinct-only Bau + Clamp).
+- **Auto-Rotation** (Slot-Timer): dedupt strikt — wechselt nie auf ein Panel, das
+  bereits in einem anderen Slot läuft; ein locked Audio-Panel (AllYourBase/MOD/SID)
+  ist nie Wechselziel, wenn es schon im Layout ist.
+- **Manueller Pille-Klick**: zufälliges kompatibles Panel; bevorzugt nicht-gezeigtes,
+  Duplikat NUR als Notnagel (wenn kein freies kompatibles existiert).
+
+### R3 — Pille-Interaktion
+- Klick auf die Titel-Pille = zufälliges kompatibles Panel (keine Vor/Zurück-Pfeile).
+- Pille: Desktop nur bei Hover, Mobile nach Tap (3 s). Kompatibel = Aspect-/Größen-/
+  GL-Kontingent-Regeln wie beim Layout-Bau.
+
+### R4 — WebGL-Kontingent
+- Max. `MAX_GL_PANELS_PER_LAYOUT` (=11) GL-Panels pro Layout (Browser-Kontextlimit).
+  GL-Klassifikation in `GL_PANELS`. Überzählige Zellen → Nicht-GL-Füller.
+
+---
+
+## 📋 Offene Todos — Speed-System v2 + Bugs (bestätigt 2026-06-01, „go" erteilt)
+
+Reihenfolge empfohlen: 1) Speed-System, 2) Player-Fix + Auto-Dedup, 3) Doku/Verify.
+
+1. **Speed-System je Panel/Stufe** gemäß **R1** umsetzen.
+   - `effectiveSpeed(panelName, densityLevel)` einführen; `raf-coordinator` liefert
+     pro Subscriber skalierte Zeit ODER Panels lesen Faktor und skalieren ihr dt.
+   - Panels mit EIGENER rAF/Timer (DNA, Tixy, evtl. Textpanels) an den zentralen
+     Takt anbinden, sonst greift der Faktor dort nicht.
+   - Player (MOD/SID) hart ausnehmen (Faktor 1, Audio+Visual).
+   - Globalen Proxima-2×-Hack (aktuell in `applyDensity` via `setTimeScale`) durch
+     das per-Panel-System ersetzen/erweitern.
+2. **Pille-Klick = Random-Wechsel** (R3); Pfeil-Navigation (`handleNavSlot` dir-basiert)
+   auf Random umstellen.
+3. **Auto-Rotation dedupt** (R2) — fix „3× AllYourBase nach automatischen Wechseln".
+4. **BUG MOD-Auto-Start**: MOD-Player startet nach Reload + Erstklick manchmal nicht,
+   wenn er im Layout ist. SID-Player (`OscilloscopePanel`) verhält sich korrekt →
+   als Referenz vergleichen (Election/AudioContext-Unlock/Auto-Play-Pfad).
+5. **Verify** im Browser (Tempo je Stufe stichprobenhaft, 0 Dups über Auto-Wechsel,
+   MOD startet zuverlässig) + Version bumpen + committen.
+
 > **Status (Stand 2026-05-31): Panel-Rework abgeschlossen + SID-Player-Session abgeschlossen (App-Version **v1.9.0**). Branch `feat/panel-rework-2026-05-30` wird nach `main` gemergt.** Panel-Rework (RW-01..29) komplett durch, 32 Panels überarbeitet, alle Grafik-Panels auf farbige Paletten migriert, 120 FPS auf Apple GPU nachgewiesen.
 >
 > **SID-Player-Session (2026-05-31) — `OscilloscopePanel`:** Der C64-SID-Player war stumm (kein Ton, keine Visualizer-Animation). Ursachen gefunden + behoben:
