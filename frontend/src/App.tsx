@@ -5,7 +5,7 @@ import FractalView   from './panels/FractalView'
 import GlitchOverlay from './ui/GlitchOverlay'
 import Panel         from './ui/Panel'
 import { getSharedAudioContext } from './utils/shared-audio'
-import { setPaused } from './utils/raf-coordinator'
+import { setPaused, setTimeScale } from './utils/raf-coordinator'
 
 // ── Text-Panels ───────────────────────────────────────────────────────────────
 import SystemLog         from './panels/SystemLog'
@@ -1439,6 +1439,9 @@ export default function App() {
   const applyDensity = useCallback((level: DensityLevel, persist: boolean) => {
     setDensity(level)
     densityRef.current = level
+    // Proxima = "Crazy"-Modus: alle subscribe-basierten Animationen doppelt so
+    // schnell. Audio (WebAudio-Echtzeit) bleibt unberührt. Andere Stufen: normal.
+    setTimeScale(level === 'proxima' ? 2 : 1)
     if (persist) {
       try { localStorage.setItem(LS_DENSITY, level) } catch { /* Private-Mode etc. */ }
     }
