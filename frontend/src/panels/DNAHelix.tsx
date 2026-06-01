@@ -131,7 +131,7 @@ function DNAHelix() {
     // Visibility
     const io = new IntersectionObserver(([e]) => {
       if (e.isIntersecting) {
-        if (!unsubscribe && alive) unsubscribe = subscribe(loop)
+        if (!unsubscribe && alive) unsubscribe = subscribe(loop, 'DNAHelix')
       } else {
         if (unsubscribe) {
           unsubscribe()

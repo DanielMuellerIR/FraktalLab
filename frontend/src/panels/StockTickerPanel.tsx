@@ -117,7 +117,7 @@ function StockTickerPanel() {
       // Rekursiver rAF-Aufruf entfaellt: subscribe ruft loop() bei jedem Tick.
     }
 
-    unsubscribe = subscribe(loop)
+    unsubscribe = subscribe(loop, 'StockTickerPanel')
     return () => {
       alive = false
       if (unsubscribe) unsubscribe()

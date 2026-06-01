@@ -30,9 +30,11 @@ export default function PanelSlot({
 }: {
   pool: React.ComponentType<any>[]
   activeIdx: number
-  // Richtungs-Navigation: dir = -1 (zurück) / +1 (vor). Der Parent wählt das
-  // nächste KOMPATIBLE Panel (Aspect-/GL-/Dedup-Regeln) und aktualisiert activeIdx.
-  onNav: (dir: number) => void
+  // Panelwechsel anfordern. `strict` steuert das Duplikat-Verhalten beim Parent:
+  //   true  = Auto-Rotation (NIE ein anderswo laufendes Panel wählen)
+  //   false = manueller Pillen-Klick (Duplikat nur als Notnagel)
+  // Der Parent wählt ein zufälliges kompatibles Panel und aktualisiert activeIdx.
+  onNav: (strict: boolean) => void
   fallbackName?: string
   className?: string
   // locked = dieser Slot darf NICHT (auto-)rotieren. Für das garantierte
@@ -69,13 +71,13 @@ export default function PanelSlot({
     }
   }, [activeIdx, localIdx]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Richtungs-Navigation mit Ausblenden/Einblenden.
-  function navigate(dir: number) {
+  // Zufalls-Panelwechsel mit Ausblenden/Einblenden.
+  function navigate(strict: boolean) {
     if (locked || isTransitioningRef.current || pool.length <= 1) return
     isTransitioningRef.current = true
     setVisible(false)
     setTimeout(() => {
-      onNav(dir)
+      onNav(strict)
       // Backup: ändert der Parent activeIdx nicht (z.B. nur 1 Kandidat), wieder einblenden.
       setTimeout(() => {
         if (isTransitioningRef.current) {
@@ -95,11 +97,12 @@ export default function PanelSlot({
     }
   }, [activeIdx]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-Rotation: gelegentlich zum nächsten kompatiblen Panel weiterblättern.
+  // Auto-Rotation: gelegentlich zu einem zufälligen kompatiblen Panel wechseln.
+  // strict=true → wählt nie ein anderswo laufendes Panel (kein Duplikat).
   useEffect(() => {
     if (locked || pool.length <= 1) return
     const delay = 45_000 + Math.random() * 435_000
-    const t = setTimeout(() => navigate(1), delay)
+    const t = setTimeout(() => navigate(true), delay)
     return () => clearTimeout(t)
   }, [localIdx, pool.length, locked]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -128,33 +131,31 @@ export default function PanelSlot({
       style={{ containerType: 'size' }}
     >
       <PanelChromeContext.Provider value={chrome}>
-        <Component onComplete={() => navigate(1)} />
+        <Component onComplete={() => navigate(true)} />
       </PanelChromeContext.Provider>
 
-      {/* Schwebende Titel-Pille mit Vor-/Zurück-Pfeilen, oben mittig.
-          Sichtbarkeit: Desktop NUR bei Hover über die Kachel (md:group-hover),
-          Mobile nach Tippen (revealed-State, 3 s). Wenn unsichtbar auch
-          klick-inert (pointer-events-none), damit die Pfeile nicht blind feuern. */}
+      {/* Schwebende Titel-Pille, oben mittig. KLICK = zufälliges kompatibles Panel
+          (keine Vor/Zurück-Pfeile mehr, R3). Sichtbarkeit: Desktop NUR bei Hover
+          über die Kachel (md:group-hover), Mobile nach Tippen (revealed-State, 3 s).
+          Wenn unsichtbar auch klick-inert (pointer-events-none). */}
       <div
+        // Bei klickbarer Pille (canNav) als Button: Klick stoppt die Propagation
+        // (sonst löst der Kachel-onClick/revealPill mit aus) und würfelt ein
+        // zufälliges Panel. Locked/Solo-Slots: nur Anzeige, kein Klick.
+        role={canNav ? 'button' : undefined}
+        onClick={canNav ? (e) => { e.stopPropagation(); navigate(false) } : undefined}
+        title={canNav ? 'Anderes Panel (zufällig)' : undefined}
         className={`absolute top-[3px] left-1/2 -translate-x-1/2 z-20 flex items-center
                    gap-1 rounded-full bg-black/70 backdrop-blur-sm
                    border border-green-800/50 text-green-300 select-none
                    max-w-[92%] transition-opacity duration-150
+                   ${canNav ? 'cursor-pointer hover:text-green-100 hover:border-green-600/70' : ''}
                    ${revealed ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}
                    md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto`}
-        style={{ fontSize: 'clamp(7px, 4.4cqmin, 11px)', paddingTop: '1px', paddingBottom: '1px' }}
+        style={{ fontSize: 'clamp(7px, 4.4cqmin, 11px)', paddingTop: '1px', paddingBottom: '1px', paddingLeft: '8px', paddingRight: '8px' }}
       >
-        {canNav && (
-          <button
-            onClick={() => navigate(-1)}
-            title="Vorheriges Panel"
-            className="px-1 leading-none text-green-600 hover:text-green-200 transition-colors"
-          >
-            ◂
-          </button>
-        )}
         <span
-          className="tracking-tight truncate px-0.5"
+          className="tracking-tight truncate"
           style={{ fontFamily: "'IBM Plex Sans', system-ui, sans-serif" }}
         >
           {title}
@@ -163,15 +164,6 @@ export default function PanelSlot({
           <span className="text-green-500/80 truncate" style={{ fontFamily: "'IBM Plex Sans', system-ui, sans-serif" }}>
             {reported.rightLabel}
           </span>
-        )}
-        {canNav && (
-          <button
-            onClick={() => navigate(1)}
-            title="Nächstes Panel"
-            className="px-1 leading-none text-green-600 hover:text-green-200 transition-colors"
-          >
-            ▸
-          </button>
         )}
       </div>
     </div>

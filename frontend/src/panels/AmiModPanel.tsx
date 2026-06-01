@@ -306,6 +306,12 @@ function AmiModPanel() {
         (window as any).fraktallab_mod_playing = true;
       } else {
         // Track lädt noch → der Load-Finish-Pfad startet dann automatisch.
+        // WICHTIG: den (geteilten) AudioContext TROTZDEM schon hier — also
+        // WÄHREND der User-Geste (Erst-Klick) — entsperren. Sonst spielt der
+        // spätere Auto-Start im load().then() außerhalb einer Geste, und Chrome
+        // lässt den Context dann suspended → MOD bleibt stumm (das war der Bug;
+        // der SID-Player entsperrt im Geste-Pfad und war deshalb nie betroffen).
+        p.resumeContext();
         shouldAutoPlayRef.current = true;
       }
     };
@@ -543,7 +549,7 @@ function AmiModPanel() {
           }
         }
       }
-    });
+    }, 'AmiModPanel'); // Player → Faktor 1× auf jeder Stufe (Audio + VU-Visual)
     return unsubscribe;
   }, []);
 

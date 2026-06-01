@@ -263,6 +263,7 @@ export const FireScene = React.memo(function FireScene() {
     <ShaderPanel
       fragmentShader={FIRE_SHADER}
       title="CORE MELTDOWN // STATUS: CRITICAL"
+      speedName="FireScene"
     />
   )
 })
@@ -797,6 +798,7 @@ export const TunnelScene = React.memo(function TunnelScene() {
     <ShaderPanel
       fragmentShader={TUNNEL_SHADER}
       title="WORMHOLE // TRANSIT ACTIVE"
+      speedName="TunnelScene"
     />
   )
 })

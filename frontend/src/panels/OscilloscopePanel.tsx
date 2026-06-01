@@ -448,7 +448,7 @@ function OscilloscopePanel() {
     // IntersectionObserver to pause loop when scrolled out of view
     const io = new IntersectionObserver(([e]) => {
       if (e.isIntersecting) {
-        if (!unsubscribe && alive) unsubscribe = subscribe(loop)
+        if (!unsubscribe && alive) unsubscribe = subscribe(loop, 'OscilloscopePanel')
       } else {
         if (unsubscribe) {
           unsubscribe()
@@ -615,7 +615,7 @@ function OscilloscopePanel() {
       )
     }
 
-    unsubscribe = subscribe(loop)
+    unsubscribe = subscribe(loop, 'OscilloscopePanel')
 
     return () => {
       alive = false

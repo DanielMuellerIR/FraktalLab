@@ -1,5 +1,6 @@
 import { memo,  useEffect, useRef } from 'react'
 import Panel from '../ui/Panel'
+import { getTextSpeed } from '../utils/panel-speed'
 
 // ── Typen ──────────────────────────────────────────────────────────────────────
 
@@ -216,12 +217,15 @@ function VisitorProfilePanel({ onComplete }: { onComplete?: () => void }) {
       // Shuffle die Ereignisliste einmalig
       const events = [...MONITOR_EVENTS].sort(() => Math.random() - 0.5)
 
+      // Speed-System v2: Textpanels laufen auf Proxima 2× schneller (getTextSpeed()).
+      // Layout re-mountet bei Dichte-Wechsel → Wert greift beim nächsten Mount.
+      const eff = randInt(28000, 36000) / getTextSpeed()
       monitorInterval = setInterval(() => {
         const evt = events[monitorIdx % events.length]
         appendLine('', '#166534')  // Leerzeile als Trenner
         appendLine(evt, '#fbbf24')
         monitorIdx++
-      }, randInt(28000, 36000))
+      }, eff)
     }
 
     // Startet den gesamten Ablauf

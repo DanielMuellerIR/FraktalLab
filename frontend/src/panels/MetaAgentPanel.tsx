@@ -1,4 +1,5 @@
 import { memo,  useEffect, useRef, useState } from 'react'
+import { getTextSpeed } from '../utils/panel-speed'
 
 const AGENT_NAMES = [
   'NetVibe', 'QuantumNexus', 'CyberCoder', 'Antigravity-Omega',
@@ -121,7 +122,9 @@ function MetaAgentPanel() {
         }
         return prev + 1
       })
-    }, 1000)
+      // Speed-System v2: Textpanels laufen auf Proxima 2× schneller (getTextSpeed()).
+      // Layout re-mountet bei Dichte-Wechsel → Wert greift beim nächsten Mount.
+    }, 1000 / getTextSpeed())
 
     return () => clearInterval(timer)
   }, [])
@@ -138,7 +141,9 @@ function MetaAgentPanel() {
           const next = curr + Math.random() * 3.5 + 0.5
           return Math.min(48.9, next)
         })
-      }, 200)
+        // Speed-System v2: Textpanels laufen auf Proxima 2× schneller (getTextSpeed()).
+        // Layout re-mountet bei Dichte-Wechsel → Wert greift beim nächsten Mount.
+      }, 200 / getTextSpeed())
       return () => clearInterval(interval)
     } else if (time === 0) {
       setSubagentsCount(1200)

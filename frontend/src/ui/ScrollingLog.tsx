@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { getTextSpeed } from '../utils/panel-speed'
 
 export default function ScrollingLog({ lines, interval, className = '' }: {
   lines: string[]
@@ -15,11 +16,14 @@ export default function ScrollingLog({ lines, interval, className = '' }: {
   const idxRef = useRef(startRef.current + 10)
 
   useEffect(() => {
+    // Speed-System v2: Textpanels scrollen auf Proxima 2× schneller (getTextSpeed()).
+    // Bei Dichte-Wechsel re-mountet das Layout → das Intervall greift den Wert neu.
+    const effInterval = interval / getTextSpeed()
     const t = setInterval(() => {
       const next = lines[idxRef.current % lines.length]
       idxRef.current++
       setLog(prev => [...prev.slice(-80), next])
-    }, interval)
+    }, effInterval)
     return () => clearInterval(t)
   }, [lines, interval])
 

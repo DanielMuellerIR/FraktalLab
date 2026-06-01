@@ -1,5 +1,6 @@
 import { memo,  useEffect, useRef, useState } from 'react'
 import Panel from '../ui/Panel'
+import { getTextSpeed } from '../utils/panel-speed'
 
 // ── Typen ──────────────────────────────────────────────────────────────────────
 
@@ -273,7 +274,9 @@ function ClassifiedPanel() {
             setDocIdx(prev => (prev + 1) % DOCS.length)
           }, wait)
         }
-      }, 30) // ~30ms pro Zeichen → ca. 33 Zeichen/Sekunde
+        // Speed-System v2: Textpanels laufen auf Proxima 2× schneller (getTextSpeed()).
+        // Layout re-mountet bei Dichte-Wechsel → Wert greift beim nächsten Mount.
+      }, 30 / getTextSpeed()) // ~30ms pro Zeichen → ca. 33 Zeichen/Sekunde
     }, 600) // 600ms Anlauf-Pause nach Dokument-Wechsel
 
     // Cleanup wenn Komponente unmountet oder docIdx sich erneut ändert

@@ -48,26 +48,38 @@ animierte Panel treibt seine Zeit über einen zentralen, skalierten Takt
 
 ---
 
-## 📋 Offene Todos — Speed-System v2 + Bugs (bestätigt 2026-06-01, „go" erteilt)
+## ✅ Speed-System v2 + Bugs — ERLEDIGT (App-Version **v1.20.0**, 2026-06-01)
 
-Reihenfolge empfohlen: 1) Speed-System, 2) Player-Fix + Auto-Dedup, 3) Doku/Verify.
+Alle 5 Todos umgesetzt, tsc + build grün, im Browser verifiziert (Desktop 1440px,
+alle Dichte-Stufen durchgeklickt, 16 Panels Proxima, 0 Konsolen-Fehler/-Warnungen,
+0 Duplikate, 0 GL-Evictions). Umsetzung:
 
-1. **Speed-System je Panel/Stufe** gemäß **R1** umsetzen.
-   - `effectiveSpeed(panelName, densityLevel)` einführen; `raf-coordinator` liefert
-     pro Subscriber skalierte Zeit ODER Panels lesen Faktor und skalieren ihr dt.
-   - Panels mit EIGENER rAF/Timer (DNA, Tixy, evtl. Textpanels) an den zentralen
-     Takt anbinden, sonst greift der Faktor dort nicht.
-   - Player (MOD/SID) hart ausnehmen (Faktor 1, Audio+Visual).
-   - Globalen Proxima-2×-Hack (aktuell in `applyDensity` via `setTimeScale`) durch
-     das per-Panel-System ersetzen/erweitern.
-2. **Pille-Klick = Random-Wechsel** (R3); Pfeil-Navigation (`handleNavSlot` dir-basiert)
-   auf Random umstellen.
-3. **Auto-Rotation dedupt** (R2) — fix „3× AllYourBase nach automatischen Wechseln".
-4. **BUG MOD-Auto-Start**: MOD-Player startet nach Reload + Erstklick manchmal nicht,
-   wenn er im Layout ist. SID-Player (`OscilloscopePanel`) verhält sich korrekt →
-   als Referenz vergleichen (Election/AudioContext-Unlock/Auto-Play-Pfad).
-5. **Verify** im Browser (Tempo je Stufe stichprobenhaft, 0 Dups über Auto-Wechsel,
-   MOD startet zuverlässig) + Version bumpen + committen.
+1. [x] **Speed-System je Panel/Stufe (R1)** — neues Modul `utils/panel-speed.ts`:
+   `getSpeed(name)` + `getTextSpeed()` + `setSpeedDensity(level)`. Klassifikation:
+   PLAYER (MOD/SID) immer 1× · TEXT 1× (Proxima 2×) · GFX 25 MHz 0.5× / Turbo+
+   Overdrive 1× / Proxima Override (Map: Mandelbulb 16×, DNA/Plasma/Tixy/DigitalStorm
+   8×, RetroWave/Lovebyte/Menger/Tunnel/Fire/Apollonian + alle `Fractal*` 4×, Rest 2×).
+   - `raf-coordinator` führt jetzt PRO Subscriber eine eigene virtuelle Uhr und
+     skaliert deren Zeit mit `getSpeed(subscriberName)`. `subscribe(cb, name)`.
+   - `ShaderPanel` bekam Prop `speedName`; die Override-Wrapper liefern ihren Namen.
+   - Eigen-getaktete Panels: DNA/Tixy/SID/MOD/StockTicker geben Namen an `subscribe`;
+     intervall-basierte Textpanels teilen ihr Intervall durch `getTextSpeed()`
+     (shared `ScrollingLog`/`StatBar` + Classified/VisitorProfile/Satellite/MetaAgent).
+     Greift beim Re-Mount, da `applyDensity` das Layout neu baut.
+   - Player (MOD/SID) hart auf 1× (Audio + Visuals). Globaler `setTimeScale`-Hack entfernt.
+2. [x] **Pille-Klick = Random-Wechsel (R3)** — `handleNavSlot(slotIndex, strict)` wählt
+   ein zufälliges kompatibles Panel (keine Vor/Zurück-Pfeile mehr). `PanelSlot`: die
+   Titel-Pille ist jetzt EIN klickbarer Button (kein ◂ ▸).
+3. [x] **Auto-Rotation dedupt (R2)** — `strict=true` (Slot-Timer) wählt NIE ein anderswo
+   laufendes Panel; reicht keins → kein Wechsel. Manueller Klick (`strict=false`) bevorzugt
+   nicht-gezeigte Panels, Duplikat nur als Notnagel. Locked Audio-Panel nie Wechselziel,
+   wenn schon im Layout. Fixt „3× AllYourBase".
+4. [x] **BUG MOD-Auto-Start** — Ursache: `playTrack()` entsperrte den AudioContext NICHT
+   während der User-Geste, wenn der MOD beim Erst-Klick noch lud (~1,2 MB async). Der
+   spätere Auto-Start lief im `load().then()` außerhalb einer Geste → Chrome ließ den
+   Context suspended → stumm. SID entsperrt im Geste-Pfad (deshalb nie betroffen). Fix:
+   `p.resumeContext()` im Lade-noch-Zweig von `playTrack()` (AmiModPanel.tsx).
+5. [x] **Verify + Bump + Commit** — s.o.
 
 > **Status (Stand 2026-05-31): Panel-Rework abgeschlossen + SID-Player-Session abgeschlossen (App-Version **v1.9.0**). Branch `feat/panel-rework-2026-05-30` wird nach `main` gemergt.** Panel-Rework (RW-01..29) komplett durch, 32 Panels überarbeitet, alle Grafik-Panels auf farbige Paletten migriert, 120 FPS auf Apple GPU nachgewiesen.
 >
@@ -131,7 +143,9 @@ Reihenfolge empfohlen: 1) Speed-System, 2) Player-Fix + Auto-Dedup, 3) Doku/Veri
 - [x] **MOD-Player** (`AmiModPanel`) — Amiga-Workbench-Look raus, modern/randlos/schwarz wie der SID-Player. Titel jetzt "MOD PLAYER // PROTRACKER".
 - [x] **DNA** (`DNAHelix`) — keine Scrollbar mehr (overflow-hidden, container-relativ skaliert).
 - [x] **Lovebyte** (`LovebyteShowcasePanel`) — Shader-Formel + Credit als zweizeilige Pille am unteren Kachelrand.
-- [ ] **OFFEN: Proxima 2× Animationstempo** (außer Audio). Teilweise machbar über `raf-coordinator.ts` (virtuelle Uhr mit timeScale) — greift aber NUR bei `subscribe`-basierten Panels (v.a. ShaderPanel-GL), NICHT bei Panels mit eigenem rAF/Clock; Audio-Panel-Visuals lassen sich zentral nicht sauber ausnehmen. Uniformes 2× = hoher Aufwand (jede Zeitquelle anfassen). Auf User-Entscheidung wartend.
+- [x] **ERLEDIGT (v1.20.0): Proxima-Animationstempo** — gelöst durch Speed-System v2
+  (per-Subscriber-Uhr im `raf-coordinator` + `getSpeed(name)`/`getTextSpeed()`, eigen-
+  getaktete Panels eingebunden, Audio-Panel-Visuals hart auf 1×). Siehe Abschnitt oben.
 
 ### Layout-V2 — Aspect-Matching + Auslastungs-Wähler (ERLEDIGT, App-Version **v1.13.0**)
 

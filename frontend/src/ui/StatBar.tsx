@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
+import { getTextSpeed } from '../utils/panel-speed'
 
 export default function StatBar({ label, value }: { label: string; value: number }) {
   const [v, setV] = useState(value)
   useEffect(() => {
+    // Speed-System v2: Textpanels laufen auf Proxima 2× schneller (getTextSpeed()).
+    // Layout re-mountet bei Dichte-Wechsel → Wert greift beim nächsten Mount.
     const t = setInterval(
       () => setV(p => Math.max(5, Math.min(99, p + (Math.random() - 0.48) * 8))),
-      900,
+      900 / getTextSpeed(),
     )
     return () => clearInterval(t)
   }, [])

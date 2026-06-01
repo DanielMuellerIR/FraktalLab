@@ -112,6 +112,7 @@ export const LovebyteShowcasePanel = React.memo(function LovebyteShowcasePanel()
           uniforms={uniforms}
           title="" // Hide title since Panel title handles it
           noPanel={true}
+          speedName="LovebyteShowcasePanel"
         />
 
         {/* Hacker styling overlay */}

@@ -81,7 +81,7 @@ export const TixyPanel = React.memo(function TixyPanel() {
       isVisible = e.isIntersecting
       if (isVisible) {
         if (!unsubscribe && alive) {
-          unsubscribe = subscribe(loop)
+          unsubscribe = subscribe(loop, 'TixyPanel')
         }
       } else {
         if (unsubscribe) {
@@ -142,7 +142,7 @@ export const TixyPanel = React.memo(function TixyPanel() {
     }
 
     if (isVisible && alive) {
-      unsubscribe = subscribe(loop)
+      unsubscribe = subscribe(loop, 'TixyPanel')
     }
 
     return () => {

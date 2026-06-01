@@ -1,5 +1,6 @@
 import { memo,  useEffect, useState, useRef } from 'react'
 import Panel from '../ui/Panel'
+import { getTextSpeed } from '../utils/panel-speed'
 
 // ── Typen ──────────────────────────────────────────────────────────────────────
 
@@ -192,7 +193,9 @@ function SatellitePanel({ onComplete }: { onComplete?: () => void }) {
       }
 
       setLockBlink(b => !b)
-    }, 200)
+      // Speed-System v2: Textpanels laufen auf Proxima 2× schneller (getTextSpeed()).
+      // Layout re-mountet bei Dichte-Wechsel → Wert greift beim nächsten Mount.
+    }, 200 / getTextSpeed())
 
     return () => clearInterval(interval)
   }, [])

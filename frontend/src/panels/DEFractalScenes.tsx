@@ -15,6 +15,7 @@ export const MandelbulbScene = React.memo(function MandelbulbScene() {
       uniforms={{ uHueShift: hue }}
       title="MANDELBULB EXPLORER // POWER-8 MORPH"
       attribution="Mandelbulb by Antigravity (DE-Upgrade)"
+      speedName="MandelbulbScene"
     />
   )
 })
@@ -25,6 +26,7 @@ export const ApollonianGasketScene = React.memo(function ApollonianGasketScene()
       fragmentShader={APOLLONIAN_SHADER}
       title="APOLLONIAN GASKET // SPACE FOLD"
       attribution="Apollonian Gasket by Antigravity"
+      speedName="ApollonianGasketScene"
     />
   )
 })
@@ -38,6 +40,7 @@ export const MengerSpongeScene = React.memo(function MengerSpongeScene() {
       uniforms={{ uHueShift: hue }}
       title="MENGER SPONGE // INFINITE GRID"
       attribution="Menger Sponge by Antigravity"
+      speedName="MengerSpongeScene"
     />
   )
 })

@@ -5,7 +5,8 @@ import FractalView   from './panels/FractalView'
 import GlitchOverlay from './ui/GlitchOverlay'
 import Panel         from './ui/Panel'
 import { getSharedAudioContext } from './utils/shared-audio'
-import { setPaused, setTimeScale } from './utils/raf-coordinator'
+import { setPaused } from './utils/raf-coordinator'
+import { setSpeedDensity } from './utils/panel-speed'
 
 // ── Text-Panels ───────────────────────────────────────────────────────────────
 import SystemLog         from './panels/SystemLog'
@@ -994,7 +995,8 @@ function LayoutContent({
   gfxPool,
 }: {
   layout: GeneratedLayout
-  onNavSlot: (slotIndex: number, dir: number) => void
+  // strict=true → Auto-Rotation (kein Duplikat); false → manueller Pillen-Klick.
+  onNavSlot: (slotIndex: number, strict: boolean) => void
   textPool: React.ComponentType<any>[]
   gfxPool: React.ComponentType<any>[]
 }) {
@@ -1025,7 +1027,7 @@ function LayoutContent({
               key={`${layout.id}-text-${i}`}
               pool={textPool}
               activeIdx={cell.panelIdx!}
-              onNav={(dir) => onNavSlot(i, dir)}
+              onNav={(strict) => onNavSlot(i, strict)}
               fallbackName={getCompName(textPool[cell.panelIdx!])}
               className="h-full"
             />
@@ -1035,7 +1037,7 @@ function LayoutContent({
               key={`${layout.id}-gfx-${i}`}
               pool={gfxPool}
               activeIdx={cell.panelIdx!}
-              onNav={(dir) => onNavSlot(i, dir)}
+              onNav={(strict) => onNavSlot(i, strict)}
               fallbackName={getCompName(gfxPool[cell.panelIdx!])}
               className="h-full"
               locked={AUDIO_PANELS.has(getCompName(gfxPool[cell.panelIdx!]))}
@@ -1162,16 +1164,22 @@ export default function App() {
   const reviews = loadReviews()
   const { textPool, gfxPool } = getFilteredPools(reviews)
 
-  // ── Deterministische Vor/Zurück-Navigation (Titel-Pillen-Pfeile) ────────────
-  // Baut für den Slot eine STABILE (nach Pool-Index sortierte) Liste KOMPATIBLER
-  // Panels und blättert mit dir = -1/+1 durch. Kompatibel heißt: gleiches
-  // Seitenverhältnis, gleiche Größenklasse und (bei GL-Panels) innerhalb des
-  // WebGL-Kontingents — dieselben Aspect-/GL-Regeln wie beim Bauen des Layouts.
-  // AUSNAHME (bewusst): die Pfeile dürfen ein bereits anderswo gezeigtes Panel
-  // wählen (Duplikat). Sonst wäre bei kleinem Pool kaum noch Durchblättern
-  // möglich. Duplikate beim LADEN/Density-Wechsel verhindert dagegen der Bau +
-  // Füll-Pass; nur die Pfeile lockern das absichtlich.
-  const handleNavSlot = useCallback((slotIndex: number, dir: number) => {
+  // ── Zufalls-Panelwechsel pro Slot (R2/R3) ──────────────────────────────────
+  // Wählt für den Slot ein ZUFÄLLIGES kompatibles Panel (keine Vor/Zurück-Pfeile
+  // mehr). Kompatibel heißt: gleiches Seitenverhältnis, gleiche Größenklasse und
+  // (bei GL-Panels) innerhalb des WebGL-Kontingents — dieselben Aspect-/GL-Regeln
+  // wie beim Bauen des Layouts.
+  //
+  // `strict` steuert das Duplikat-Verhalten:
+  //   - strict=true  (Auto-Rotation, Slot-Timer): NIE ein Panel wählen, das bereits
+  //     in einem anderen Slot läuft. Reicht kein freies kompatibles Panel → kein
+  //     Wechsel (return curr). Verhindert "3× AllYourBase nach Auto-Wechseln".
+  //   - strict=false (manueller Pillen-Klick): bevorzugt ein nicht-gezeigtes Panel;
+  //     Duplikat NUR als Notnagel, wenn KEIN freies kompatibles Panel existiert.
+  //
+  // Locked Audio-Panels (AllYourBase/MOD/SID) sind nie Wechselziel, wenn sie schon
+  // irgendwo im Layout laufen — sie sollen nicht dupliziert/verdrängt werden.
+  const handleNavSlot = useCallback((slotIndex: number, strict: boolean) => {
     setLayout(curr => {
       const cell = curr.cells[slotIndex]
       if (!cell || cell.panelIdx == null || (cell.type !== 'text' && cell.type !== 'gfx')) return curr
@@ -1180,25 +1188,32 @@ export default function App() {
       const { textPool, gfxPool } = getFilteredPools(reviews)
       const pool = cell.type === 'text' ? textPool : gfxPool
 
-      // GL-Verbrauch der ÜBRIGEN Kacheln (dieser Slot ausgenommen) — damit ein
-      // Wechsel das WebGL-Kontingent nicht sprengt.
+      // GL-Verbrauch der ÜBRIGEN Kacheln (dieser Slot ausgenommen) + Namen aller
+      // anderswo gezeigten Panels (für die Duplikat-Vermeidung).
       let otherGL = 0
+      const shownElsewhere = new Set<string>()
       curr.cells.forEach((c, idx) => {
         if (idx === slotIndex || c.panelIdx == null) return
         if (c.type === 'gfx') {
           const name = getCompName(gfxPool[c.panelIdx])
           if (isGLPanel(name)) otherGL++
+          shownElsewhere.add(name)
+        } else if (c.type === 'text') {
+          shownElsewhere.add(getCompName(textPool[c.panelIdx]))
         }
       })
 
       const cellA = cellAspect(cell)
       const isLarge = isCellLarge(cell)
+      const currentName = getCompName(pool[cell.panelIdx])
 
-      // Stabile Kandidatenliste (Pool-Index-Reihenfolge). KEIN Dedup gegen andere
-      // Slots — Pfeile dürfen Duplikate erzeugen.
+      // Kompatible Kandidaten (ohne das aktuell gezeigte Panel selbst).
       const cands: number[] = []
       pool.forEach((comp, i) => {
         const name = getCompName(comp)
+        if (name === currentName) return
+        // Locked Audio-Panel, das bereits im Layout läuft → nie Wechselziel.
+        if (AUDIO_PANELS.has(name) && shownElsewhere.has(name)) return
         if (cell.type === 'gfx') {
           if (!aspectMatches(PANEL_ASPECT[name] ?? 'ANY', cellA)) return
           if (panelMayBeLarge(name) !== isLarge) return
@@ -1208,14 +1223,22 @@ export default function App() {
       })
       if (cands.length === 0) return curr
 
-      // Aktuelle Position finden und in Richtung dir weiterspringen (mit Umlauf).
-      const curPos = cands.indexOf(cell.panelIdx)
-      const nextPos = curPos === -1
-        ? (dir > 0 ? 0 : cands.length - 1)
-        : ((curPos + dir) % cands.length + cands.length) % cands.length
+      // Bevorzugt nicht-gezeigte Panels (distinct gegen alle anderen Slots).
+      const distinct = cands.filter(i => !shownElsewhere.has(getCompName(pool[i])))
+
+      let chosen: number
+      if (distinct.length > 0) {
+        chosen = distinct[Math.floor(Math.random() * distinct.length)]
+      } else if (strict) {
+        // Auto-Rotation: kein freies kompatibles Panel → nicht wechseln.
+        return curr
+      } else {
+        // Manueller Klick: Duplikat als Notnagel.
+        chosen = cands[Math.floor(Math.random() * cands.length)]
+      }
 
       const newCells = [...curr.cells]
-      newCells[slotIndex] = { ...cell, panelIdx: cands[nextPos] }
+      newCells[slotIndex] = { ...cell, panelIdx: chosen }
       return { ...curr, cells: newCells }
     })
   }, [])
@@ -1439,9 +1462,12 @@ export default function App() {
   const applyDensity = useCallback((level: DensityLevel, persist: boolean) => {
     setDensity(level)
     densityRef.current = level
-    // Proxima = "Crazy"-Modus: alle subscribe-basierten Animationen doppelt so
-    // schnell. Audio (WebAudio-Echtzeit) bleibt unberührt. Andere Stufen: normal.
-    setTimeScale(level === 'proxima' ? 2 : 1)
+    // Speed-System v2: das effektive Tempo pro Panel ergibt sich aus Panel-Typ +
+    // Stufe (siehe panel-speed.ts / AGENTS R1). Hier nur die aktive Stufe melden;
+    // raf-coordinator + Panels mit eigener Schleife lesen getSpeed(name) selbst.
+    // Da generateLayout das Layout neu baut (Panels re-mounten), greifen auch
+    // intervall-basierte Panels die neue Stufe beim nächsten Mount auf.
+    setSpeedDensity(level)
     if (persist) {
       try { localStorage.setItem(LS_DENSITY, level) } catch { /* Private-Mode etc. */ }
     }
