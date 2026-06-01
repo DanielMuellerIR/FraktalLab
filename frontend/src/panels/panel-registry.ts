@@ -178,7 +178,7 @@ const RAW: RawPanel[] = [
   { name: 'VoxelLava',             Component: VoxelLava,             pool: 'gfx',  aspect: 'WIDE', gl: true },
   { name: 'VoxelNeon',             Component: VoxelNeon,             pool: 'gfx',  aspect: 'SQUARE', gl: true },
   { name: 'VoxelMatrix',           Component: VoxelMatrix,           pool: 'gfx',  aspect: 'ANY',  gl: true, proximaSpeed: 4 }, // = MengerSpongeScene-Alias
-  { name: 'StarfieldScene',        Component: StarfieldScene,        pool: 'gfx',  aspect: 'WIDE', gl: true },
+  { name: 'StarfieldScene',        Component: StarfieldScene,        pool: 'gfx',  active: false, aspect: 'WIDE', gl: true }, // deaktiviert 2026-06-01
   { name: 'OscilloscopePanel',     Component: OscilloscopePanel,     pool: 'gfx',  aspect: 'WIDE', audio: true },
   { name: 'MetaballsScene',        Component: MetaballsScene,        pool: 'gfx',  aspect: 'SQUARE', gl: true },
   { name: 'DotCloudScene',         Component: DotCloudScene,         pool: 'gfx',  aspect: 'SQUARE', gl: true },
