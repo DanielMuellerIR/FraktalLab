@@ -67,6 +67,27 @@ weiterhin bis ~1e9.
 
 ---
 
+## Auslastung (Dichte)
+
+Ein Vierfach-Wähler steuert, wie viele Panels gleichzeitig laufen — und wie schnell
+sie animieren. Die gewählte Stufe wird in `localStorage` gespeichert; Startwert ist
+*Turbo*.
+
+| Stufe | Panels (Ziel) | Wirkung auf das Animationstempo |
+|---|---|---|
+| **25 MHz** | 6 | Grafik-Panels laufen ruhiger (0,5×), Text 1× |
+| **Turbo** | 12 | alles 1× (Normaltempo) |
+| **Overdrive** | 15 | alles 1× |
+| **Proxima Centauri** | 20 | beschleunigt: Text 2×, Grafik je nach Panel 2×–16× |
+
+Die feste Zielzahl pro Stufe (statt rein bildschirmbreitenabhängig) sorgt dafür,
+dass auch Laptops die hohen Stufen erreichen; `cols×rows` wird passend zum
+Seitenverhältnis abgeleitet und auf die Zahl tatsächlich verfügbarer Panels
+gedeckelt, damit keine leeren Kacheln oder Duplikate entstehen. Audio-Visualisierung
+(MOD-Tracker, Oszilloskop) bleibt auf jeder Stufe bei 1×, synchron zum Klang.
+
+---
+
 ## Die Panels
 
 ### GPU-Fraktale (Escape-Time, Double-Single)
