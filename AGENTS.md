@@ -81,6 +81,30 @@ alle Dichte-Stufen durchgeklickt, 16 Panels Proxima, 0 Konsolen-Fehler/-Warnunge
    `p.resumeContext()` im Lade-noch-Zweig von `playTrack()` (AmiModPanel.tsx).
 5. [x] **Verify + Bump + Commit** — s.o.
 
+### Panel-Pflege + DNA-Layout (App-Version **v1.21.0**, 2026-06-01)
+
+- [x] **DNA-Panel (`DNAHelix`) nutzt den rechten Bereich besser** — Schrift-Caps der
+  container-relativen `clamp()`-Größen angehoben (Titel bis 28px, Werte/Text bis 17px,
+  Labels bis 13–14px, Sequenz bis 15px), sodass große Kacheln den Platz füllen statt
+  Mini-Schrift mit Leerraum. Sequenz-Viewer: statt der ~150 bp kurzen Art-Sequenz wird
+  jetzt eine 24× rotierte Kopie (`longSeq`) gerendert (`overflow-hidden` clippt) → der
+  Block füllt jede Kachelgröße ohne Leerfläche. Verifiziert (Review-Modus, Build grün).
+- [x] **Deaktiviert (archiviert):** `RadarSweepPanel`, `ThermonuclearWarPanel` — in
+  `ARCHIVED_PANELS` (registry.ts) + aus `POOL_GFX` entfernt. Imports bleiben (ALL_PANELS/
+  Review-Modus). `ThermonuclearWarPanel` aus `NO_LARGE_PANELS` entfernt (jetzt archiviert).
+- [x] **Reaktiviert, aber NIE groß** (`NO_LARGE_PANELS`): `Vitals`, `SatellitePanel`,
+  `ShaderHackingCore`, `CADRobotPanel`, `EnhanceView`, `ClassifiedPanel`. Waren als
+  Default in `INITIAL_REVIEWS` down-gevotet → aus der Galerie geflogen. Down-Einträge
+  aus `INITIAL_REVIEWS` entfernt + einmalige Migration (`applyReactivationMigration`,
+  Key `fraktallab_reactivate_2026_06_01`) löscht ihre Down-Votes auch bei bereits
+  geseedeten Nutzern (eigene up-Votes bleiben). `CADRobotPanel` zusätzlich aus
+  `LARGE_PANELS` entfernt. Im Browser bestätigt: alle vier sichtbaren erscheinen nur in
+  normalen Kacheln; Radar/Thermo tauchen nicht mehr auf.
+- [x] **Proxima-Speed-Regel** — „wenn nichts vermerkt, 2×" ist bereits der Default in
+  `panel-speed.ts` (GFX-Default = Proxima 2×). Die reaktivierten/geänderten Panels stehen
+  in keiner Override-Map → laufen auf Proxima mit 2× (TEXT-Panels via `getTextSpeed()`).
+  Kein Code-Eingriff nötig, nur bestätigt.
+
 > **Status (Stand 2026-05-31): Panel-Rework abgeschlossen + SID-Player-Session abgeschlossen (App-Version **v1.9.0**). Branch `feat/panel-rework-2026-05-30` wird nach `main` gemergt.** Panel-Rework (RW-01..29) komplett durch, 32 Panels überarbeitet, alle Grafik-Panels auf farbige Paletten migriert, 120 FPS auf Apple GPU nachgewiesen.
 >
 > **SID-Player-Session (2026-05-31) — `OscilloscopePanel`:** Der C64-SID-Player war stumm (kein Ton, keine Visualizer-Animation). Ursachen gefunden + behoben:

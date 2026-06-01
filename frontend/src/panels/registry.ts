@@ -21,6 +21,9 @@ export const ARCHIVED_PANELS = new Set<string>([
   'NuclearTargets',
   'PwdCracker',
   'SupervolcanoPanel',
+  // Deaktiviert am 2026-06-01 auf Wunsch des Nutzers.
+  'RadarSweepPanel',
+  'ThermonuclearWarPanel',
 ])
 
 // Medien-Panels, die NIE automatisch (Auto-Switch / Layout-Wechsel) verdrängt

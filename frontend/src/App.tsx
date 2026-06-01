@@ -93,12 +93,11 @@ const POOL_GFX: React.ComponentType[] = [
   FractalSeahorse, FractalSpiral, FractalTendril, FractalLightning,
   FractalElephant, FractalMini, FractalSatellite, FractalDragon,
   FractalDendrite, FractalSwirl,
-  FractalJulia, RadarSweepPanel,
+  FractalJulia,
   ShaderHackingCore, ShaderMandelbox, ShaderRetroWave,
   DaggerfallPanel, LidarScanPanel,
   TixyPanel, IQSmoothMin, IQDigitalStorm, LovebyteShowcasePanel,
   MoonPanel, PhysicsSandboxPanel, NuclearExplosionPanel,
-  ThermonuclearWarPanel,
   MandelbulbScene, ApollonianGasketScene, MengerSpongeScene,
 ]
 
@@ -213,7 +212,7 @@ const LARGE_PANELS = new Set([
   'ElitePanel',
   'SolarSystemPanel',
   'DNAHelix',
-  'CADRobotPanel',
+  // CADRobotPanel raus (2026-06-01): jetzt in NO_LARGE_PANELS (nie groß).
   'ShaderRetroWave',
   'NuclearExplosionPanel',
   'MoonPanel',
@@ -869,12 +868,9 @@ const SEED_KEY = 'fraktallab_reviews_seeded_2026_05_30'
 const INITIAL_REVIEWS: ReviewEntry[] = [
   { panel: "MetaAgentPanel", rating: "down", comment: "", ts: 1780166214686 },
   { panel: "TunnelScene", rating: "up", comment: "", ts: 1780166236483 },
-  { panel: "EnhanceView", rating: "down", comment: "", ts: 1780166240762 },
   { panel: "VoxelMatrix", rating: "up", comment: "", ts: 1780166250443 },
   { panel: "ParallaxPanel", rating: "down", comment: "", ts: 1780166282783 },
-  { panel: "CADRobotPanel", rating: "down", comment: "", ts: 1780166285762 },
   { panel: "RetroErrorPanel", rating: "up", comment: "", ts: 1780166305343 },
-  { panel: "ShaderHackingCore", rating: "down", comment: "", ts: 1780166337653 },
   { panel: "ShaderMandelbox", rating: "up", comment: "", ts: 1780166339905 },
   { panel: "ShaderRetroWave", rating: "up", comment: "Bitte kein Tal in der Mitte, sondern eine Ebene mit Bergen", ts: 1780166363932 },
   { panel: "DaggerfallPanel", rating: "down", comment: "", ts: 1780166367432 },
@@ -886,17 +882,42 @@ const INITIAL_REVIEWS: ReviewEntry[] = [
   { panel: "MandelbulbScene", rating: "up", comment: "", ts: 1780166406715 },
   { panel: "MengerSpongeScene", rating: "up", comment: "", ts: 1780166412482 },
   { panel: "VisitorProfilePanel", rating: "down", comment: "", ts: 1780166419907 },
-  { panel: "SatellitePanel", rating: "down", comment: "", ts: 1780166423807 },
   { panel: "SystemLog", rating: "down", comment: "", ts: 1780166430132 },
   { panel: "DataStream", rating: "down", comment: "", ts: 1780166432508 },
-  { panel: "Vitals", rating: "down", comment: "", ts: 1780166441532 },
   { panel: "PortScanner", rating: "down", comment: "", ts: 1780166452899 },
   { panel: "PseudoCode", rating: "down", comment: "", ts: 1780166455774 },
   { panel: "AgentCodePanel", rating: "down", comment: "", ts: 1780166458923 },
   { panel: "DiskCleanupPanel", rating: "down", comment: "", ts: 1780166461315 },
-  { panel: "StockTickerPanel", rating: "down", comment: "", ts: 1780166463098 },
-  { panel: "ClassifiedPanel", rating: "down", comment: "", ts: 1780166464590 }
+  { panel: "StockTickerPanel", rating: "down", comment: "", ts: 1780166463098 }
 ]
+
+// Panels, die am 2026-06-01 auf Wunsch des Nutzers REAKTIVIERT wurden (waren als
+// Default down-gevotet → flogen aus der Galerie). Eine einmalige Migration (Key
+// unten) entfernt ihre Down-Votes auch bei bereits geseedeten Nutzern, sodass sie
+// wieder erscheinen (neutral, kein up). Sie werden NIE groß angezeigt (NO_LARGE_PANELS).
+const REACTIVATE_PANELS_2026_06_01 = [
+  'Vitals', 'SatellitePanel', 'ShaderHackingCore',
+  'CADRobotPanel', 'EnhanceView', 'ClassifiedPanel',
+]
+const REACTIVATE_KEY = 'fraktallab_reactivate_2026_06_01'
+
+/** Einmalig die Down-Votes der reaktivierten Panels aus localStorage entfernen. */
+function applyReactivationMigration(): void {
+  if (typeof window === 'undefined') return
+  try {
+    if (localStorage.getItem(REACTIVATE_KEY) === 'true') return
+    const raw = JSON.parse(localStorage.getItem(LS_KEY) ?? '[]') as ReviewEntry[]
+    const reactivate = new Set(REACTIVATE_PANELS_2026_06_01)
+    // Nur die DOWN-Votes dieser Panels entfernen; eigene up-Votes des Nutzers bleiben.
+    const cleaned = Array.isArray(raw)
+      ? raw.filter(r => !(reactivate.has(r.panel) && r.rating === 'down'))
+      : []
+    localStorage.setItem(LS_KEY, JSON.stringify(cleaned))
+    localStorage.setItem(REACTIVATE_KEY, 'true')
+  } catch (e) {
+    console.error('Failed to apply reactivation migration:', e)
+  }
+}
 
 function seedInitialReviewsIfNeeded(): void {
   if (typeof window === 'undefined') return
@@ -926,6 +947,7 @@ function seedInitialReviewsIfNeeded(): void {
 /** Liest alle Reviews aus localStorage. Gibt leeres Array zurück bei Fehler. */
 function loadReviews(): ReviewEntry[] {
   seedInitialReviewsIfNeeded()
+  applyReactivationMigration()
   try {
     return JSON.parse(localStorage.getItem(LS_KEY) ?? '[]') as ReviewEntry[]
   } catch {
@@ -2039,8 +2061,17 @@ function aspectMatches(panelAspect: Aspect, cellAspect: Aspect): boolean {
 
 const NO_LARGE_PANELS = new Set([
   'C64Panel',
-  'ThermonuclearWarPanel',
   'AllYourBase',
+  // Auf Wunsch des Nutzers (2026-06-01) wieder aktiv, aber NIE groß anzeigen
+  // (zu unspektakulär in großer Kachel). Die TEXT-Panels darunter (Vitals/
+  // Satellite/Classified) sind ohnehin nie groß (panelMayBeLarge → false bei
+  // TEXT), hier zur Klarheit dennoch gelistet.
+  'Vitals',
+  'SatellitePanel',
+  'ShaderHackingCore',
+  'CADRobotPanel',
+  'EnhanceView',
+  'ClassifiedPanel',
 ])
 
 function panelMayBeLarge(name: string): boolean {
