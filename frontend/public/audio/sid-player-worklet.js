@@ -576,22 +576,29 @@ class SidPlayerProcessor {
       initSID();
       
       let offs = filedata[7];
+      // PSID-Ladeadresse: Steht im Header-Feld (0x08/0x09, big-endian) ein Wert != 0,
+      // gilt DIESER und die C64-Daten beginnen direkt bei dataOffset (offs) — OHNE
+      // 2-Byte-Prefix. Ist das Feld 0, steckt die echte Ladeadresse als 2-Byte-Wort
+      // (little-endian) AM ANFANG der Daten, und die eigentlichen Daten folgen dahinter.
+      // Vorher wurde IMMER um 2 Bytes versprungen → bei Header-Ladeadresse != 0 wurden
+      // die ersten 2 Datenbytes verschluckt → Code/Player landete falsch → Stille.
       loadaddr = filedata[8] * 256 + filedata[9];
+      let dataStart = offs;
       if (loadaddr === 0) {
         loadaddr = filedata[offs] + filedata[offs + 1] * 256;
+        dataStart = offs + 2;
       }
-      
+
       for (let i = 0; i < 32; i++) {
         timermode[31 - i] = filedata[0x12 + (i >> 3)] & Math.pow(2, 7 - (i % 8));
       }
-      
+
       // Clear memory
       for (let i = 0; i < memory.length; i++) memory[i] = 0;
-      
-      for (let i = offs + 2; i < filedata.byteLength; i++) {
-        if (loadaddr + i - (offs + 2) < memory.length) {
-          memory[loadaddr + i - (offs + 2)] = filedata[i];
-        }
+
+      for (let i = dataStart; i < filedata.byteLength; i++) {
+        const addr = loadaddr + i - dataStart;
+        if (addr < memory.length) memory[addr] = filedata[i];
       }
       
       let strend = 1;

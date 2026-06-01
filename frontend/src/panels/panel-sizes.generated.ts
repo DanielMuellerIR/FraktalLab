@@ -9,7 +9,7 @@
 export const PANEL_CODE_BYTES: Record<string, number> = {
   'MetaAgentPanel': 15130,
   'FractalJulia': 10409,
-  'C64Panel': 24609,
+  'C64Panel': 24826,
   'FractalSeahorse': 14460,
   'FractalSpiral': 14460,
   'FractalTendril': 14460,
@@ -38,7 +38,7 @@ export const PANEL_CODE_BYTES: Record<string, number> = {
   'VoxelNeon': 43560,
   'VoxelMatrix': 43560,
   'StarfieldScene': 74799,
-  'OscilloscopePanel': 72995,
+  'OscilloscopePanel': 73545,
   'MetaballsScene': 74799,
   'DotCloudScene': 74799,
   'ParallaxPanel': 17348,

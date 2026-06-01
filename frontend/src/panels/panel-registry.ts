@@ -146,7 +146,7 @@ function normalize(r: RawPanel): PanelDef {
 // Reihenfolge = Anzeige-Reihenfolge im Review-Modus (zuletzt überarbeitete oben).
 const RAW: RawPanel[] = [
   // ── Zuletzt überarbeitete / hervorgehobene Panels ──
-  { name: 'MetaAgentPanel',        Component: MetaAgentPanel,        pool: 'text', aspect: 'TEXT' },
+  { name: 'MetaAgentPanel',        Component: MetaAgentPanel,        pool: 'text', active: false, aspect: 'TEXT' },
   { name: 'FractalJulia',          Component: FractalJulia,          pool: 'gfx',  aspect: 'ANY',  gl: true, proximaSpeed: 4 },
   { name: 'C64Panel',              Component: C64Panel,              pool: 'gfx',  aspect: 'SQUARE', size: 'no-large' },
   { name: 'FractalSeahorse',       Component: FractalSeahorse,       pool: 'gfx',  aspect: 'ANY',  gl: true, proximaSpeed: 4 },
@@ -161,7 +161,7 @@ const RAW: RawPanel[] = [
   { name: 'FractalSwirl',          Component: FractalSwirl,          pool: 'gfx',  aspect: 'ANY',  gl: true, proximaSpeed: 4 },
   { name: 'AmiModPanel',           Component: AmiModPanel,           pool: 'gfx',  aspect: 'SQUARE', audio: true },
   { name: 'SolarSystemPanel',      Component: SolarSystemPanel,      pool: 'gfx',  aspect: 'SQUARE', size: 'prefer-large' },
-  { name: 'FractalView',           Component: FractalView,          pool: 'gfx',  aspect: 'ANY',  gl: true, active: false }, // Hintergrundbild, kein Galerie-Panel
+  { name: 'FractalView',           Component: FractalView,          pool: 'gfx',  aspect: 'ANY',  gl: true }, // Fraktal-Hintergrund + wählbares GFX-Panel (aktiv)
 
   // ── Übrige Grafik-Panels ──
   { name: 'ThreeBodyScene',        Component: ThreeBodyScene,        pool: 'gfx',  aspect: 'SQUARE', gl: true },
@@ -184,7 +184,7 @@ const RAW: RawPanel[] = [
   { name: 'DotCloudScene',         Component: DotCloudScene,         pool: 'gfx',  aspect: 'SQUARE', gl: true },
   // AllYourBase (archive.org-Video) am 2026-06-01 entfernt: nur per nicht-steuerbarem
   // iframe rechtlich sauber einbindbar → unvereinbar mit Audio-Election/Mute/Handoff.
-  { name: 'ParallaxPanel',         Component: ParallaxPanel,         pool: 'gfx',  aspect: 'WIDE' },
+  { name: 'ParallaxPanel',         Component: ParallaxPanel,         pool: 'gfx',  active: false, aspect: 'WIDE' },
   { name: 'ElitePanel',            Component: ElitePanel,            pool: 'gfx',  aspect: 'WIDE', size: 'prefer-large' },
   { name: 'CADRobotPanel',         Component: CADRobotPanel,         pool: 'gfx',  aspect: 'WIDE', size: 'no-large', gl: true },
   { name: 'RetroErrorPanel',       Component: RetroErrorPanel,       pool: 'gfx',  aspect: 'WIDE' },
@@ -193,7 +193,7 @@ const RAW: RawPanel[] = [
   { name: 'ShaderHackingCore',     Component: ShaderHackingCore,     pool: 'gfx',  aspect: 'SQUARE', size: 'no-large', gl: true },
   { name: 'ShaderMandelbox',       Component: ShaderMandelbox,       pool: 'gfx',  aspect: 'ANY',  gl: true }, // Default 2×
   { name: 'ShaderRetroWave',       Component: ShaderRetroWave,       pool: 'gfx',  aspect: 'ANY',  size: 'prefer-large', gl: true, proximaSpeed: 4 },
-  { name: 'DaggerfallPanel',       Component: DaggerfallPanel,       pool: 'gfx',  aspect: 'WIDE' },
+  { name: 'DaggerfallPanel',       Component: DaggerfallPanel,       pool: 'gfx',  active: false, aspect: 'WIDE' },
   { name: 'LidarScanPanel',        Component: LidarScanPanel,        pool: 'gfx',  aspect: 'ANY' },
   { name: 'TixyPanel',             Component: TixyPanel,             pool: 'gfx',  aspect: 'SQUARE', gl: true, proximaSpeed: 8 },
   { name: 'IQSmoothMin',           Component: IQSmoothMin,           pool: 'gfx',  aspect: 'ANY',  gl: true },
@@ -209,16 +209,16 @@ const RAW: RawPanel[] = [
 
   // ── Text-Panels ──
   { name: 'ICQChatPanel',          Component: ICQChatPanel,          pool: 'text', aspect: 'TEXT' },
-  { name: 'VisitorProfilePanel',   Component: VisitorProfilePanel,   pool: 'text', aspect: 'TEXT' },
+  { name: 'VisitorProfilePanel',   Component: VisitorProfilePanel,   pool: 'text', active: false, aspect: 'TEXT' },
   { name: 'SatellitePanel',        Component: SatellitePanel,        pool: 'text', aspect: 'TEXT', size: 'no-large' },
-  { name: 'SystemLog',             Component: SystemLog,             pool: 'text', aspect: 'TEXT' },
-  { name: 'DataStream',            Component: DataStream,            pool: 'text', aspect: 'TEXT' },
+  { name: 'SystemLog',             Component: SystemLog,             pool: 'text', active: false, aspect: 'TEXT' },
+  { name: 'DataStream',            Component: DataStream,            pool: 'text', active: false, aspect: 'TEXT' },
   { name: 'Vitals',                Component: Vitals,                pool: 'text', aspect: 'TEXT', size: 'no-large' },
-  { name: 'PortScanner',           Component: PortScanner,           pool: 'text', aspect: 'TEXT' },
-  { name: 'PseudoCode',            Component: PseudoCode,            pool: 'text', aspect: 'TEXT' },
-  { name: 'AgentCodePanel',        Component: AgentCodePanel,        pool: 'text', aspect: 'TEXT' },
-  { name: 'DiskCleanupPanel',      Component: DiskCleanupPanel,      pool: 'text', aspect: 'TEXT' },
-  { name: 'StockTickerPanel',      Component: StockTickerPanel,      pool: 'text', aspect: 'TEXT' },
+  { name: 'PortScanner',           Component: PortScanner,           pool: 'text', active: false, aspect: 'TEXT' },
+  { name: 'PseudoCode',            Component: PseudoCode,            pool: 'text', active: false, aspect: 'TEXT' },
+  { name: 'AgentCodePanel',        Component: AgentCodePanel,        pool: 'text', active: false, aspect: 'TEXT' },
+  { name: 'DiskCleanupPanel',      Component: DiskCleanupPanel,      pool: 'text', active: false, aspect: 'TEXT' },
+  { name: 'StockTickerPanel',      Component: StockTickerPanel,      pool: 'text', active: false, aspect: 'TEXT' },
   { name: 'ClassifiedPanel',       Component: ClassifiedPanel,       pool: 'text', aspect: 'TEXT', size: 'no-large' },
   { name: 'PwdCracker',            Component: PwdCracker,            pool: 'text', aspect: 'TEXT', size: 'no-large' }, // reaktiviert 2026-06-01
 ]

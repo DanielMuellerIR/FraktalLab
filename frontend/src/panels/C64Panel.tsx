@@ -171,7 +171,10 @@ function C64Panel() {
     //   Palettenfarben wie #a2a2ff). Das ist farbtreu, kontraststark und kommt
     //   ohne das verlustbehaftete Palette-Einrasten aus.
     const fontImg = new Image()
-    fontImg.src = '/c64_font.png'
+    // BASE_URL-relativ laden: online läuft die Seite unter /x/ (nicht /), ein
+    // absolutes '/c64_font.png' würde dort 404 liefern → Font weg. Lokal (Base '/')
+    // ebenso korrekt.
+    fontImg.src = `${import.meta.env.BASE_URL}c64_font.png`
     let fontLoaded = false
 
     // Die Alpha-Maske: weisse Glyphen (RGB 255,255,255) mit Alpha aus der
