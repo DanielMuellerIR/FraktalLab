@@ -48,6 +48,35 @@ animierte Panel treibt seine Zeit über einen zentralen, skalierten Takt
 
 ---
 
+## ✅ Lizenz/Audio + zentrale Registry + dynamische Größen — ERLEDIGT (App-Version **v1.22.0**, 2026-06-01)
+
+> **WICHTIG für Veröffentlichung:** Die Git-History wurde mit `git-filter-repo`
+> rückwirkend bereinigt (alle copyright-belasteten `*.sid`/`*.mod`/`track_*.dat`
+> aus ALLEN Commits entfernt). Backup als Bundle: `../p_fraktal_PREPURGE_backup.bundle`
+> (Stand vor Purge, HEAD 71cdd9c). Alle Commit-Hashes haben sich geändert. Lokale
+> `.git`-Altobjekte werden durch `git gc`/Ablauf der Reflog entfernt; beim
+> `git push` zu GitHub gehen nur erreichbare (saubere) Objekte raus. **Falls je ein
+> Remote existierte: force-push nötig.** Hier gab es keinen Remote.
+
+**Single Source of Truth — `frontend/src/panels/panel-registry.ts`:** ALLE Panel-Regeln
+(aktiv/inaktiv, Pool, Aspect, Größe, GL-Kontingent, Audio-Exklusivität=nur 1 Player
+gleichzeitig, Proxima-Tempo) leben dort in EINEM `PANELS`-Array. App.tsx + panel-speed.ts
+leiten alles ab → eine zentrale Änderung propagiert automatisch. Reviews (Daumen) sind
+NUR Notizen, entkoppelt von aktiv/inaktiv. Review-Modus: roter Rahmen + „⊘ AUS" = inaktiv.
+Deaktiviert: RadarSweepPanel (Anzeige-Titel „DRADIS"), ThermonuclearWarPanel, FractalView,
+LissajousScene. Reaktiviert (nie groß): PwdCracker + Vitals/Satellite/ShaderHackingCore/
+CADRobotPanel/EnhanceView/ClassifiedPanel.
+
+**Audio (Copyright-Bereinigung):** alte Amiga/C64-Tunes raus, ersetzt durch CC-BY-NC-SA-
+Tracks von Battle of the Bits (`sid_mod_dl/` = Quellen, `public/audio/botb/` = ausgeliefert,
+ASCII-Namen `botb-<id>.<ext>`). Manifest-Skripte (laufen via `npm run prebuild` automatisch):
+- `scripts/build-audio-manifest.mjs` → `src/utils/botb-tracks.generated.ts` (Metadaten + echte Größen)
+- `scripts/gen-panel-sizes.mjs` → `src/panels/panel-sizes.generated.ts` (echte Quell-/Musikgrößen)
+Bei Änderung der sids/mods: `npm run gen` neu laufen lassen. Player zeigen pro Song TASL-
+Attribution (Titel — Autor, BotB Entry, CC BY-NC-SA, „No changes made") + Links, Autoscroll
+(`.marquee`). Review-Größen: echte KB; Player „Code / Code+Musik" (z.B. „89 KB / 1.1 MB").
+**AllYourBase entfernt** (nur per nicht-steuerbarem iframe sauber → unvereinbar mit Election).
+
 ## ✅ Speed-System v2 + Bugs — ERLEDIGT (App-Version **v1.20.0**, 2026-06-01)
 
 Alle 5 Todos umgesetzt, tsc + build grün, im Browser verifiziert (Desktop 1440px,
