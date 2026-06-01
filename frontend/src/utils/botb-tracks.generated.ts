@@ -33,7 +33,6 @@ export const MOD_TRACKS: BotbTrack[] = [
 ]
 
 export const SID_TRACKS: BotbTrack[] = [
-  { id: '14870', file: 'audio/botb/botb-14870.sid', title: 'what is this thing', author: 'MovieMovies1', ext: 'sid', bytes: 31502, entryUrl: 'https://battleofthebits.com/arena/Entry/what+is+this+thing.sid/14870/' },
   { id: '15743', file: 'audio/botb/botb-15743.sid', title: 'wistleball', author: 'aji', ext: 'sid', bytes: 2389, entryUrl: 'https://battleofthebits.com/arena/Entry/wistleball.sid/15743/' },
   { id: '23575', file: 'audio/botb/botb-23575.sid', title: 'Mushroom Argument', author: 'MovieMovies1', ext: 'sid', bytes: 2729, entryUrl: 'https://battleofthebits.com/arena/Entry/Mushroom+Argument.sid/23575/' },
   { id: '23584', file: 'audio/botb/botb-23584.sid', title: '哎吔!(Aiya!)', author: 'Pegmode', ext: 'sid', bytes: 49010, entryUrl: 'https://battleofthebits.com/arena/Entry/%E5%93%8E%E5%90%94!(Aiya!).sid/23584/' },
@@ -42,4 +41,4 @@ export const SID_TRACKS: BotbTrack[] = [
 
 // Echte Gesamtgrößen (Bytes) der mitgelieferten Musikdateien pro Player.
 export const MOD_TRACKS_TOTAL_BYTES = 1091248
-export const SID_TRACKS_TOTAL_BYTES = 96996
+export const SID_TRACKS_TOTAL_BYTES = 65494

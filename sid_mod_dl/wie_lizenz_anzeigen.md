@@ -3,7 +3,7 @@
 **Nein, ich würde sagen: nicht ganz.** Der Dateiname wie
 
 ``` overflow-visible!
-BotB 14870 MovieMovies1 - what is this thing.sid
+BotB 23575 MovieMovies1 - Mushroom Argument.sid
 ```
 
 enthält vermutlich:
@@ -17,20 +17,20 @@ Das ist gut, weil Autor und Titel sichtbar sind. Für Creative-Commons-Attributi
 Also besser nicht nur:
 
 ``` overflow-visible!
-BotB 14870 MovieMovies1 - what is this thing.sid
+BotB 23575 MovieMovies1 - Mushroom Argument.sid
 ```
 
 sondern z.B.:
 
 ``` overflow-visible!
-what is this thing.sid — MovieMovies1, Battle of the Bits Entry 14870, licensed via BotB as Creative Commons Attribution-NonCommercial-ShareAlike. No changes made.
+Mushroom Argument.sid — MovieMovies1, Battle of the Bits Entry 23575, licensed via BotB as Creative Commons Attribution-NonCommercial-ShareAlike. No changes made.
 ```
 
 Noch besser mit Links:
 
 ``` overflow-visible!
-<a href="https://battleofthebits.com/arena/Entry/what+is+this+thing.sid/14870/">
-  what is this thing.sid
+<a href="https://battleofthebits.com/arena/Entry/Mushroom+Argument.sid/23575/">
+  Mushroom Argument.sid
 </a>
 — MovieMovies1,
 from Battle of the Bits,
@@ -52,13 +52,13 @@ Titel — Autor, from Battle of the Bits, used under Creative Commons Attributio
 Für deinen konkreten Beispielsong:
 
 ``` overflow-visible!
-what is this thing.sid — MovieMovies1, from Battle of the Bits, Entry 14870, used under Creative Commons Attribution-NonCommercial-ShareAlike according to BotB license information. No changes made.
+Mushroom Argument.sid — MovieMovies1, from Battle of the Bits, Entry 23575, used under Creative Commons Attribution-NonCommercial-ShareAlike according to BotB license information. No changes made.
 ```
 
 Plus Link auf:
 
 ``` overflow-visible!
-https://battleofthebits.com/arena/Entry/what+is+this+thing.sid/14870/
+https://battleofthebits.com/arena/Entry/Mushroom+Argument.sid/23575/
 ```
 
 und:

@@ -48,18 +48,18 @@ animierte Panel treibt seine Zeit über einen zentralen, skalierten Takt
 
 ---
 
-## 📋 OFFEN — SID „What is this thing" (Entry 14870) klingt kaputt
+## ✅ SID „What is this thing" (Entry 14870) entfernt (v1.23.3, 2026-06-01)
 
-Nach dem PSID-Ladeadressen-Fix (v1.23.1) spielen 4 von 5 BotB-SIDs sauber. **14870
-(„what is this thing", MovieMovies1)** zeigt Waveforms, macht aber nur kaputte
-Geräusche statt Musik — lokal UND online gleich (also KEIN Cache-/Deploy-Problem,
-sondern Tune-spezifisch). Header: PSID v2, load=$1006, init=$110f, play=$1117,
-flags=0x0010 (6581). Vermutung: digi/sample-Wiedergabe (z.B. $D418-Volume-Digis)
-oder Multispeed/CIA-Timing, das die vereinfachte jsSID-Engine im Worklet nicht
-beherrscht → Rauschen. **Optionen:** (a) Track ersetzen/entfernen, (b) Engine um
-die fehlende Technik erweitern (aufwändig, ungewiss). NICHT in dieser Session
-angefasst (Nutzer-Entscheidung). Datei: `frontend/public/audio/botb/botb-14870.sid`,
-Engine: `frontend/public/audio/sid-player-worklet.js`.
+14870 (MovieMovies1) machte Rauschen statt Musik — Sample/Digi-Tune (31 KB,
+andere SIDs 2–11 KB). Ursache: die jsSID-Engine im Worklet führt pro Frame den
+ganzen CPU-Code am Stück aus und rendert Audio erst danach aus dem End-Registerstand
+(`play()`-Schleife in `sid-player-worklet.js:531`). $D418-Volume-Digis (4-bit PCM,
+viele Schreibvorgänge pro Frame) gehen so verloren → nur Endwert zählt → Rauschen.
+Echte Digi-Wiedergabe bräuchte Sub-Frame-Interleaving von CPU + Rendering = Umbau
+der Kern-Schleife (jsSID kann es nicht; reSID/sidplayfp schon). Aufwändig + ungewiss
+→ **Nutzer-Entscheidung: Track entfernt** statt Engine erweitern. Verbleiben 4
+funktionierende SIDs (15743, 23575, 23584, 35682) + 9 MODs. Dateien aus `botb/`,
+`sid_mod_dl/` und Lizenz-Doku-Beispiel entfernt, `npm run gen` neu gelaufen.
 
 ## ✅ Bugfixes 2026-06-01 (v1.23.1–v1.23.2)
 

@@ -79,4 +79,4 @@ export const PANEL_CODE_BYTES: Record<string, number> = {
 }
 
 export const MOD_MUSIC_BYTES = 1091248
-export const SID_MUSIC_BYTES = 96996
+export const SID_MUSIC_BYTES = 65494
