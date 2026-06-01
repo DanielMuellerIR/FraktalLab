@@ -135,7 +135,18 @@ def main():
         "bye\n"
     )
 
-    proc = subprocess.run(["lftp"], input=cmds, text=True)
+    # WICHTIG: lftp-Ausgabe NIE ungefiltert durchreichen. `mirror --dry-run` (und
+    # verbose Läufe) echoen jede Transfer-Zeile MIT der vollen sftp://user:pass@host-
+    # URL → sonst landet das Passwort im Klartext in Terminal/Session-Log. Darum
+    # Output abfangen und jede Form des Geheimnisses (roh + URL-kodiert + ganze URL)
+    # durch *** ersetzen, bevor irgendetwas gedruckt wird.
+    proc = subprocess.run(["lftp"], input=cmds, text=True, capture_output=True)
+    out = (proc.stdout or "") + (proc.stderr or "")
+    for secret in (url, quote(password, safe=""), password):
+        if secret:
+            out = out.replace(secret, "***")
+    if out.strip():
+        print(out, end="" if out.endswith("\n") else "\n")
     if proc.returncode != 0:
         sys.exit(f"FEHLER: lftp endete mit Code {proc.returncode}.")
     print("✓ Fertig." + ("  (Dry-Run — nichts geschrieben)" if args.dry_run else "  Upload abgeschlossen."))
