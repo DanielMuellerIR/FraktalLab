@@ -1,9 +1,18 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { readFileSync } from 'node:fs'
+
+// App-Version aus package.json → als __APP_VERSION__ ins Bundle. Dient u.a. zum
+// Cache-Busting der Worklet-Dateien (liegen in public/, werden NICHT gehasht →
+// Browser cachen sie sonst über Deploys hinweg).
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8'))
 
 export default defineConfig({
   base: './',
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   plugins: [
     tailwindcss(),
     react(),

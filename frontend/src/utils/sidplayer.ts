@@ -103,7 +103,9 @@ export class SidPlayer {
     const audioCtxAny = ctx as any;
     if (!audioCtxAny.__sidWorkletAdded) {
       const BASE = import.meta.env.BASE_URL;
-      const absoluteWorkletUrl = new URL(`${BASE}audio/sid-player-worklet.js`, window.location.href).href;
+      // ?v=<version> bricht den Browser-Cache bei jedem Deploy auf — die Worklet-
+      // Datei liegt in public/ und wird NICHT gehasht, sonst bliebe online die alte.
+      const absoluteWorkletUrl = new URL(`${BASE}audio/sid-player-worklet.js?v=${__APP_VERSION__}`, window.location.href).href;
       await ctx.audioWorklet.addModule(absoluteWorkletUrl);
       audioCtxAny.__sidWorkletAdded = true;
     }

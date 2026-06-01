@@ -115,13 +115,23 @@ def main():
     # WICHTIG: KEIN --verbose! lftps Verbose-Modus würde pro Datei die volle
     # sftp://user:PASSWORT@host-URL ausgeben und so das Passwort im Terminal leaken.
     # Ohne --verbose zeigt lftp nur eine Transfer-Zusammenfassung.
+    # .DS_Store (macOS) NIE hochladen (-X) und bereits hochgeladene Reste gezielt
+    # entfernen (rm -f bricht nicht ab, wenn die Datei fehlt). Nur einzelne Dateien
+    # werden gelöscht, KEINE Verzeichnisse.
+    rm_dsstore = "" if args.dry_run else (
+        f'rm -f "{remote}/.DS_Store"\n'
+        f'rm -f "{remote}/audio/.DS_Store"\n'
+        f'rm -f "{remote}/audio/botb/.DS_Store"\n'
+        f'rm -f "{remote}/assets/.DS_Store"\n'
+    )
     cmds = (
         "set sftp:auto-confirm yes\n"
         "set net:max-retries 2\n"
         "set net:timeout 25\n"
         "set cmd:fail-exit yes\n"
         f"open {url}\n"
-        f'mirror -R --no-perms --parallel=3 {dry} "{LOCAL_DIST}/" "{remote}/"\n'
+        f'mirror -R --no-perms --parallel=3 -X .DS_Store {dry} "{LOCAL_DIST}/" "{remote}/"\n'
+        f"{rm_dsstore}"
         "bye\n"
     )
 

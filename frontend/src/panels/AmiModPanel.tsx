@@ -356,7 +356,7 @@ function AmiModPanel() {
     vuTargetsRef.current = [0, 0, 0, 0];
     activeRowElRef.current = null;
 
-    player.load(allTracks[trackIdx].url, `${BASE}audio/mod-player-worklet.js`).then(() => {
+    player.load(allTracks[trackIdx].url, `${BASE}audio/mod-player-worklet.js?v=${__APP_VERSION__}`).then(() => {
       // Stale-Check: entweder Effect schon unmounted (active=false) oder
       // ein neuer Track-Wechsel hat die Generation hochgesetzt.
       if (!active || myGen !== loadGenRef.current) {
