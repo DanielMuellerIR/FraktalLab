@@ -1,112 +1,32 @@
-import React, { useState, useEffect, useCallback, useRef, memo } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import PanelSlot     from './ui/PanelSlot'
+// Zentrale Panel-Registry — Single Source of Truth für ALLE Panel-Regeln
+// (aktiv/inaktiv, Pool, Aspect, Größe, GL, Audio-Exklusivität, Tempo, Asset-Größe).
+// App.tsx definiert KEINE dieser Regeln mehr selbst, sondern leitet alles hier ab.
+import {
+  ALL_PANELS, POOL_TEXT, POOL_GFX, AUDIO_PANELS,
+  getCompName, isActive, isGLPanel, MAX_GL_PANELS_PER_LAYOUT,
+  panelAspect, panelMayBeLarge, panelPrefersLarge, panelAssetLabel,
+  type Aspect,
+} from './panels/panel-registry'
 import FractalView   from './panels/FractalView'
 import GlitchOverlay from './ui/GlitchOverlay'
-import AmbientSound  from './ui/AmbientSound'
 import Panel         from './ui/Panel'
 import { getSharedAudioContext } from './utils/shared-audio'
 import { setPaused } from './utils/raf-coordinator'
+import { setSpeedDensity } from './utils/panel-speed'
 
-// ── Text-Panels ───────────────────────────────────────────────────────────────
-import SystemLog         from './panels/SystemLog'
-import Vitals            from './panels/Vitals'
-import DataStream        from './panels/DataStream'
-import TrafficMonitor    from './panels/TrafficMonitor'
-import SocialEngineering from './panels/SocialEngineering'
-import NuclearTargets    from './panels/NuclearTargets'
-import PwdCracker        from './panels/PwdCracker'
-import PortScanner       from './panels/PortScanner'
-import PseudoCode        from './panels/PseudoCode'
-import AgentCodePanel    from './panels/AgentCodePanel'
-import VisitorProfilePanel from './panels/VisitorProfilePanel'
-import ICQChatPanel      from './panels/ICQChatPanel'
-import BitcoinMinerPanel from './panels/BitcoinMinerPanel'
-import DiskCleanupPanel  from './panels/DiskCleanupPanel'
-import StockTickerPanel  from './panels/StockTickerPanel'
-import SatellitePanel    from './panels/SatellitePanel'
-import ClassifiedPanel   from './panels/ClassifiedPanel'
-import MetaAgentPanel    from './panels/MetaAgentPanel'
-
-
-// ── Grafik-Panels ─────────────────────────────────────────────────────────────
-import { VoxelDemoColor, VoxelDemoBW } from './panels/VoxelDemo'
-import { VoxelThermal, VoxelNeon, VoxelLava, VoxelMatrix } from './panels/VoxelScenes'
-
-import PlasmaDemo        from './panels/PlasmaDemo'
-import EnhanceView       from './panels/EnhanceView'
-import AllYourBase       from './panels/AllYourBase'
-import GlobePanel        from './panels/GlobePanel'
-import DaggerfallPanel   from './panels/DaggerfallPanel'
-import LidarScanPanel    from './panels/LidarScanPanel'
-import NeuralLinkDecoderPanel from './panels/NeuralLinkDecoderPanel'
-import DNAHelix          from './panels/DNAHelix'
-import OscilloscopePanel from './panels/OscilloscopePanel'
 import {
-  FireScene, StarfieldScene, TunnelScene, RotozoomScene,
-  MetaballsScene, DotCloudScene, ThreeBodyScene, LissajousScene,
-} from './panels/DemoScenes'
-import ParallaxPanel     from './panels/ParallaxPanel'
-import ElitePanel        from './panels/ElitePanel'
-import AmiModPanel       from './panels/AmiModPanel'
-import CADRobotPanel     from './panels/CADRobotPanel'
-import C64Panel          from './panels/C64Panel'
-import RetroErrorPanel   from './panels/RetroErrorPanel'
-import SolarSystemPanel  from './panels/SolarSystemPanel'
-import RadarSweepPanel   from './panels/RadarSweepPanel'
-import {
-  FractalSeahorse, FractalSpiral, FractalLightning, FractalElephant,
-  FractalMini, FractalSatellite, FractalTendril, FractalDragon,
-  FractalDendrite, FractalSwirl,
-} from './panels/FractalScenes'
-import FractalJulia from './panels/FractalJulia'
-import { ShaderHackingCore, ShaderMandelbox, ShaderRetroWave } from './panels/ShadertoyPanel'
-import { TixyPanel } from './panels/TixyPanel'
-import { IQSmoothMin, IQDigitalStorm } from './panels/IQTechniquePanel'
-import { LovebyteShowcasePanel } from './panels/LovebyteShowcasePanel'
-import { getAudioFocus, resetAudioFocus } from './utils/audio-focus'
-import MoonPanel from './panels/MoonPanel'
-import PhysicsSandboxPanel from './panels/PhysicsSandboxPanel'
-import NuclearExplosionPanel from './panels/NuclearExplosionPanel'
-import ThermonuclearWarPanel from './panels/ThermonuclearWarPanel'
-import SupervolcanoPanel from './panels/SupervolcanoPanel'
-import { MandelbulbScene, ApollonianGasketScene, MengerSpongeScene } from './panels/DEFractalScenes'
+  getAudioFocus,
+  resetAudioFocus,
+  handleFirstGesture,
+  toggleAudioMuted,
+  isAudioMuted,
+  registerMuteListener,
+} from './utils/audio-focus'
 
-// ── Panel-Pools ───────────────────────────────────────────────────────────────
-const POOL_TEXT: React.ComponentType[] = [
-  SystemLog, DataStream, SocialEngineering, Vitals, TrafficMonitor,
-  NuclearTargets, PwdCracker, PortScanner, PseudoCode,
-  AgentCodePanel, VisitorProfilePanel, ICQChatPanel, BitcoinMinerPanel, DiskCleanupPanel,
-  StockTickerPanel, SatellitePanel, ClassifiedPanel, MetaAgentPanel,
-]
-
-// Alle visuellen Panels in einem Pool — AllYourBase und EnhanceView sind normale Einträge
-const POOL_GFX: React.ComponentType[] = [
-  VoxelDemoColor, VoxelDemoBW, GlobePanel, VoxelThermal, VoxelLava, VoxelNeon, VoxelMatrix,
-
-  FireScene, StarfieldScene, ThreeBodyScene, /* LissajousScene, */
-  OscilloscopePanel, TunnelScene, MetaballsScene, RotozoomScene, DotCloudScene,
-  PlasmaDemo, DNAHelix, EnhanceView, AllYourBase,
-  ParallaxPanel, ElitePanel, AmiModPanel, CADRobotPanel, C64Panel, RetroErrorPanel, SolarSystemPanel,
-  FractalSeahorse, FractalSpiral, FractalTendril, FractalLightning,
-  FractalElephant, FractalMini, FractalSatellite, FractalDragon,
-  FractalDendrite, FractalSwirl,
-  FractalJulia, RadarSweepPanel,
-  ShaderHackingCore, ShaderMandelbox, ShaderRetroWave,
-  DaggerfallPanel, LidarScanPanel, NeuralLinkDecoderPanel,
-  TixyPanel, IQSmoothMin, IQDigitalStorm, LovebyteShowcasePanel,
-  MoonPanel, PhysicsSandboxPanel, NuclearExplosionPanel,
-  ThermonuclearWarPanel, SupervolcanoPanel,
-  MandelbulbScene, ApollonianGasketScene, MengerSpongeScene,
-]
-
-POOL_TEXT.forEach((Comp, idx) => {
-  POOL_TEXT[idx] = memo(Comp) as any
-})
-
-POOL_GFX.forEach((Comp, idx) => {
-  POOL_GFX[idx] = memo(Comp) as any
-})
-
+// POOL_TEXT / POOL_GFX kommen jetzt aus der Registry (nur aktive Panels, bereits
+// memo-gewrappt). Reihenfolge = Registry-Reihenfolge.
 
 // ── Zufallslayout-Generator ───────────────────────────────────────────────────
 
@@ -130,11 +50,25 @@ function generateMobileIndices(reviews: ReviewEntry[]): { textIdx: number; gfxId
   const { textPool, gfxPool } = getFilteredPools(reviews)
   const textIndices = getWeightedIndices(textPool, reviews)
   const gfxIndices = getWeightedIndices(gfxPool, reviews)
+
+  // Drei gfx-Slots vorbelegen.
+  const gfx = [gfxIndices[0] ?? 0, gfxIndices[1] ?? 0, gfxIndices[2] ?? 0]
+
+  // Audio-Garantie (wie im Desktop-Layout): genau ein Audio-Panel muss vorhanden
+  // sein, damit die Erst-Klick-Election einen Player starten kann.
+  const isAudio = (idx?: number) =>
+    idx != null && AUDIO_PANELS.has(getCompName(gfxPool[idx]))
+  if (!gfx.some(isAudio)) {
+    const audioIdx = gfxIndices.find(isAudio)
+    // audioIdx ist garantiert verschieden von gfx[*] (keiner davon war Audio).
+    if (audioIdx != null) gfx[2] = audioIdx
+  }
+
   return {
     textIdx: textIndices[0] ?? 0,
-    gfxIdx1: gfxIndices[0] ?? 0,
-    gfxIdx2: gfxIndices[1] ?? 0,
-    gfxIdx3: gfxIndices[2] ?? 0,
+    gfxIdx1: gfx[0],
+    gfxIdx2: gfx[1],
+    gfxIdx3: gfx[2],
   };
 }
 
@@ -192,51 +126,9 @@ function randomPartition(n: number): number[] {
   return result
 }
 
-const LARGE_PANELS = new Set([
-  'AmiModPanel',
-  'C64Panel',
-  'ElitePanel',
-  'ThermonuclearWarPanel',
-  'SupervolcanoPanel',
-  'SolarSystemPanel',
-  'DNAHelix',
-  'CADRobotPanel',
-  'NeuralLinkDecoderPanel',
-  'ShaderRetroWave',
-  'NuclearExplosionPanel',
-  'MoonPanel'
-]);
-
-const COMPONENT_NAMES = new Map<any, string>()
-
-function getBaseComponent(Comp: any): any {
-  if (!Comp) return null
-  let current = Comp
-  while (current && typeof current === 'object') {
-    if (current.type) {
-      current = current.type
-    } else {
-      break
-    }
-  }
-  return current
-}
-
-function getCompName(Comp: any): string {
-  const base = getBaseComponent(Comp)
-  if (!base) return ''
-  
-  const name = COMPONENT_NAMES.get(base)
-  if (name) return name
-  
-  if (typeof base === 'function') {
-    return base.name || ''
-  }
-  if (typeof base === 'string') {
-    return base
-  }
-  return ''
-}
+// LARGE_PANELS / AUDIO_PANELS / Asset-Größen / Komponentennamen / GL-Liste /
+// Aspect-Map / panelMayBeLarge usw. leben jetzt zentral in panel-registry.ts und
+// werden oben importiert. Hier KEINE Panel-Regeln mehr definieren.
 
 function isCellLarge(cell: GridCell): boolean {
   if (cell.type !== 'gfx') return false;
@@ -251,29 +143,60 @@ function isCellLarge(cell: GridCell): boolean {
  * Erzeugt ein vollständig zufälliges CSS-Grid-Layout.
  * @param id Eindeutiger Zähler — wird als React-Key verwendet
  */
-function generateLayout(id: number, reviews: ReviewEntry[]): GeneratedLayout {
+function generateLayout(id: number, reviews: ReviewEntry[], targetCellCount?: number): GeneratedLayout {
   // 1. Gittergröße: cols × rows basierend auf der Bildschirmbreite
   const width = typeof window !== 'undefined' ? window.innerWidth : 1200
   let sizes: [number, number][]
 
-  if (width >= 3440) {
-    // Ultra-wide / massive developer screens: noch mehr Panels zeigen!
-    sizes = [[6, 4], [7, 4], [8, 4]]
+  // Layout-V2 (Density): targetCellCount überschreibt die breitenbasierte Auto-
+  // Wahl mit einer FESTEN Ziel-Kachelzahl pro Auslastungs-Stufe. Statt aus festen
+  // Grid-Kandidaten zu wählen (die die Höchstzahl an die Breite koppelten und z.B.
+  // Proxima ~30 auf Laptops verhinderten), leiten wir cols×rows direkt aus dem Ziel
+  // und dem Bildschirm-Seitenverhältnis ab. So sind auch hohe Stufen auf jedem
+  // Display erreichbar.
+  if (targetCellCount != null) {
+    const height = typeof window !== 'undefined' ? window.innerHeight : 800
+    const ratio = Math.max(0.5, width / Math.max(1, height))   // Querformat → >1
+
+    // Auf die Zahl TATSÄCHLICH verfügbarer Distinct-Panels deckeln, damit nie
+    // Duplikate nötig werden. Down-gevotete Panels (Review) verkleinern den Pool
+    // → die Dichte passt sich automatisch nach unten an. Platzierbar sind: GL-
+    // Panels nur bis zum WebGL-Kontingent, dazu alle Nicht-GL-GFX + alle TEXT +
+    // die eine Fraktal-Zelle.
+    const { textPool: tp, gfxPool: gp } = getFilteredPools(reviews)
+    let glAvail = 0, nonGlAvail = 0
+    gp.forEach(c => { if (isGLPanel(getCompName(c))) glAvail++; else nonGlAvail++ })
+    const maxDistinct = Math.min(glAvail, MAX_GL_PANELS_PER_LAYOUT) + nonGlAvail + tp.length + 1
+    const eff = Math.max(2, Math.min(targetCellCount, maxDistinct))
+
+    // cols ~ sqrt(N · ratio). WICHTIG: cRows per FLOOR, damit cols×rows NIE über
+    // eff (= verfügbare Distinct-Panels) steigt → sonst entstehen Löcher (zu viele
+    // Zellen für zu wenige Panels). Lieber 1–2 Kacheln weniger als ein leeres Loch.
+    let cCols = Math.round(Math.sqrt(eff * ratio))
+    cCols = Math.min(8, Math.max(2, cCols))
+    let cRows = Math.max(1, Math.floor(eff / cCols))
+    cRows = Math.min(6, cRows)
+    // Falls cols×rows durch die Caps doch noch > eff: Spalten reduzieren.
+    while (cCols > 2 && cCols * cRows > eff) cCols--
+    sizes = [[cCols, cRows]]
+  } else if (width >= 3440) {
+    // Ultra-wide / sehr große Entwickler-Bildschirme
+    sizes = [[5, 3], [5, 4], [6, 4]]
   } else if (width >= 2560) {
     // QHD / 4K Bildschirme
-    sizes = [[5, 4], [6, 3], [6, 4]]
+    sizes = [[4, 3], [4, 4]]
   } else if (width >= 1920) {
     // Full HD / größere Monitore
-    sizes = [[4, 3], [4, 4], [5, 3]]
+    sizes = [[3, 3], [4, 3]]
   } else if (width >= 1440) {
     // QHD Laptop / mittlere Monitore
-    sizes = [[3, 3], [4, 3]]
+    sizes = [[3, 2], [3, 3]]
   } else if (width >= 1024) {
     // Standard Desktop / Tablet im Querformat
-    sizes = [[3, 2], [3, 3]]
+    sizes = [[2, 2], [3, 2]]
   } else {
     // Kleine Desktops / Tablet im Hochformat (ab 768px)
-    sizes = [[2, 2], [3, 2]]
+    sizes = [[2, 2]]
   }
   const [cols, rows] = sizes[Math.floor(Math.random() * sizes.length)]
 
@@ -401,7 +324,7 @@ function generateLayout(id: number, reviews: ReviewEntry[]): GeneratedLayout {
   gfxIndices.forEach(idx => {
     const comp = gfxPool[idx]
     const name = getCompName(comp)
-    if (LARGE_PANELS.has(name)) {
+    if (panelPrefersLarge(name)) {
       largeGfxIndices.push(idx)
     } else {
       smallGfxIndices.push(idx)
@@ -459,59 +382,200 @@ function generateLayout(id: number, reviews: ReviewEntry[]): GeneratedLayout {
     if (textCell) { textCell.type = 'gfx'; gfxCount++; textCount-- }
   }
 
-  // Index-Zuweisung: strikt ohne Wraparound → jedes Panel nur einmal
-  let textIdxPtr = 0
-  let largeGfxPtr = 0
-  let smallGfxPtr = 0
+  // Index-Zuweisung mit Aspect-Matching (Layout-V2): jedes Panel nur einmal,
+  // nur auf Zellen mit passendem Seitenverhältnis.
+  let textPtr = 0
+  const usedGfxAs = new Set<number>()
+  // Anzahl bereits platzierter WebGL-Panels — gegen das Browser-Kontextlimit
+  // gedeckelt (s. GL_PANELS / MAX_GL_PANELS_PER_LAYOUT). Ist das Kontingent voll,
+  // werden nur noch Canvas-2D-/DOM-Panels eingesetzt → kein "SLOT EVICTED" mehr.
+  let glCount = 0
 
   cells.forEach(cell => {
     if (cell.type === 'text') {
-      if (textIdxPtr < textIndices.length) {
-        cell.panelIdx = textIndices[textIdxPtr++]
+      if (textPtr < textIndices.length) {
+        cell.panelIdx = textIndices[textPtr++]
       }
     } else if (cell.type === 'gfx') {
-      if (isCellLarge(cell)) {
-        if (largeGfxPtr < largeGfxIndices.length) {
-          cell.panelIdx = largeGfxIndices[largeGfxPtr++]
-        } else if (smallGfxPtr < smallGfxIndices.length) {
-          cell.panelIdx = smallGfxIndices[smallGfxPtr++]
-        }
+      const cellA = cellAspect(cell)
+      const glBudgetFull = glCount >= MAX_GL_PANELS_PER_LAYOUT
+
+      // Kandidat ist gültig, wenn Aspect passt UND (GL-Budget frei ODER Panel
+      // braucht keinen GL-Kontext).
+      const candidateOk = (idx: number): boolean => {
+        if (usedGfxAs.has(idx)) return false
+        const name = getCompName(gfxPool[idx])
+        const pA = panelAspect(name)
+        if (!aspectMatches(pA, cellA)) return false
+        if (glBudgetFull && isGLPanel(name)) return false
+        return true
+      }
+
+      function findGfx(candidates: number[], fallback: number[]): number | undefined {
+        for (const idx of candidates) if (candidateOk(idx)) return idx
+        // Fallback (andere Größenklasse) — weiterhin aspect- UND GL-budget-konform.
+        // Lieber Zelle leer lassen als Seitenverhältnis brechen oder Kontext-Limit
+        // sprengen.
+        for (const idx of fallback) if (candidateOk(idx)) return idx
+        return undefined
+      }
+
+      const isLarge = isCellLarge(cell)
+      let idx: number | undefined
+
+      if (isLarge) {
+        idx = findGfx(largeGfxIndices, smallGfxIndices)
+        if (idx == null) idx = findGfx(smallGfxIndices, largeGfxIndices)
       } else {
-        if (smallGfxPtr < smallGfxIndices.length) {
-          cell.panelIdx = smallGfxIndices[smallGfxPtr++]
-        } else if (largeGfxPtr < largeGfxIndices.length) {
-          cell.panelIdx = largeGfxIndices[largeGfxPtr++]
-        }
+        idx = findGfx(smallGfxIndices, largeGfxIndices)
+        if (idx == null) idx = findGfx(largeGfxIndices, smallGfxIndices)
+      }
+
+      if (idx != null) {
+        cell.panelIdx = idx
+        usedGfxAs.add(idx)
+        if (isGLPanel(getCompName(gfxPool[idx]))) glCount++
       }
     }
   })
 
-  // ── Dedup-Pass: Sicherstellen, dass kein panelIdx doppelt vergeben ist ──────
-  // Getrennt für text und gfx prüfen
+  // ── Dedup-Pass: kein Panel (nach Komponenten-NAME) doppelt im Layout ────────
+  // Wichtig: NICHT nur nach panelIdx prüfen. Manche Pool-Einträge sind Aliase/
+  // Re-Exports (z.B. VoxelMatrix = NeuralNetPanel), und verschiedene Indizes
+  // können auf denselben sichtbaren Namen auflösen. Reines Index-Dedup ließ
+  // dadurch z.B. Menger 2× gleichzeitig erscheinen. Daher hier nach Name dedupen.
   for (const poolType of ['text', 'gfx'] as const) {
+    const pool = poolType === 'text' ? textPool : gfxPool
+    const poolIndices = poolType === 'text' ? textIndices : gfxIndices
+    const usedNames = new Set<string>()
     const usedIndices = new Set<number>()
-    const allPoolIndices = new Set(
-      poolType === 'text' ? textIndices : gfxIndices
-    )
 
     cells.forEach(cell => {
       if (cell.type !== poolType || cell.panelIdx == null) return
+      const name = getCompName(pool[cell.panelIdx])
 
-      if (usedIndices.has(cell.panelIdx)) {
-        // Duplikat! Ersetze durch unbenutzten Index
-        for (const candidate of allPoolIndices) {
-          if (!usedIndices.has(candidate)) {
-            cell.panelIdx = candidate
-            usedIndices.add(candidate)
-            return
-          }
+      if (usedNames.has(name)) {
+        // Duplikat-Name → ersten unbenutzten Index mit unbenutztem Namen suchen
+        let replaced = false
+        for (const candidate of poolIndices) {
+          if (usedIndices.has(candidate)) continue
+          const candName = getCompName(pool[candidate])
+          if (usedNames.has(candName)) continue
+          cell.panelIdx = candidate
+          usedIndices.add(candidate)
+          usedNames.add(candName)
+          replaced = true
+          break
         }
-        // Kein unbenutzter Index mehr → Zelle deaktivieren
-        cell.panelIdx = undefined
+        // Kein unbenutzter Name mehr verfügbar → Zelle deaktivieren
+        if (!replaced) cell.panelIdx = undefined
       } else {
+        usedNames.add(name)
         usedIndices.add(cell.panelIdx)
       }
     })
+  }
+
+  // ── Füll-Pass: leere Zellen mit DISTINKTEN Nicht-GL-Panels auffüllen ─────────
+  // Bei hoher Dichte (Proxima) + WebGL-Deckel bleiben sonst GFX-Zellen ohne
+  // panelIdx (kein aspect-passendes Nicht-GL-Panel mehr frei) → LayoutContent
+  // rendert für solche Zellen NICHTS → Löcher. Füller sind ausschließlich Nicht-
+  // GL-Panels: Canvas-2D-/DOM-GFX und TEXT (kein WebGL-Kontext). WICHTIG: NUR
+  // distinkte Panels — beim Laden/Density-Wechsel dürfen KEINE Duplikate
+  // entstehen. Bleibt keine distinkte Wahl, bleibt die Zelle leer (selten, da
+  // die Ziel-Kachelzahl ohnehin auf die verfügbaren Distinct-Panels gedeckelt
+  // ist). Duplikate sind ausschließlich über die Pillen-Pfeile erlaubt.
+  {
+    const usedNames = new Set<string>()
+    cells.forEach(c => {
+      if (c.panelIdx == null) return
+      const pool = c.type === 'text' ? textPool : gfxPool
+      if (c.type === 'text' || c.type === 'gfx') usedNames.add(getCompName(pool[c.panelIdx]))
+    })
+
+    // Nicht-GL-GFX-Indizes — als Füller geeignet (kein WebGL-Kontext).
+    const nonGlGfx = gfxIndices.filter(idx => !isGLPanel(getCompName(gfxPool[idx])))
+
+    // Einen UNBENUTZTEN Füller für eine Zelle wählen (nie ein Duplikat).
+    const pickFiller = (cellA: Aspect): { type: 'gfx' | 'text'; idx: number } | null => {
+      // 1. Nicht-GL-GFX mit passendem Seitenverhältnis (behält Bild-Charakter)
+      for (const idx of nonGlGfx) {
+        const name = getCompName(gfxPool[idx])
+        if (usedNames.has(name)) continue
+        if (!aspectMatches(panelAspect(name), cellA)) continue
+        return { type: 'gfx', idx }
+      }
+      // 2. TEXT-Panel (reines DOM, aspect-neutral)
+      for (const idx of textIndices) {
+        const name = getCompName(textPool[idx])
+        if (usedNames.has(name)) continue
+        return { type: 'text', idx }
+      }
+      return null
+    }
+
+    cells.forEach(cell => {
+      if (cell.panelIdx != null) return
+      const f = pickFiller(cellAspect(cell))
+      if (f) {
+        cell.type = f.type
+        cell.panelIdx = f.idx
+        const pool = f.type === 'text' ? textPool : gfxPool
+        usedNames.add(getCompName(pool[f.idx]))
+      }
+    })
+  }
+
+  // ── Audio-Garantie: GENAU EIN Audio-Panel pro Layout ───────────────────────
+  // Das Audio-Konzept (Erst-Klick-Election in audio-focus.ts) wählt zufällig
+  // einen der drei Player {AllYourBase-Video, SID, MOD}. Dafür muss mindestens
+  // einer im Layout vorhanden sein. Wir erzwingen exakt einen — nicht mehrere,
+  // damit nicht zwei Player gleichzeitig sichtbar um den Audio-Fokus konkurrieren.
+  const isAudioIdx = (idx?: number) =>
+    idx != null && AUDIO_PANELS.has(getCompName(gfxPool[idx]))
+
+  // Alle gfx-Audio-Indizes, die nicht per Review (Daumen runter) ausgefiltert sind.
+  const audioPool = gfxIndices.filter(idx => AUDIO_PANELS.has(getCompName(gfxPool[idx])))
+
+  if (audioPool.length > 0) {
+    // Aktuell vergebene gfx-Indizes sammeln (für Dedup beim Umwidmen).
+    const usedGfx = new Set<number>()
+    cells.forEach(c => { if (c.type === 'gfx' && c.panelIdx != null) usedGfx.add(c.panelIdx) })
+
+    const audioCells = cells.filter(c => c.type === 'gfx' && isAudioIdx(c.panelIdx))
+
+    if (audioCells.length === 0) {
+      // Kein Audio-Player platziert → einen Slot dafür umwidmen.
+      // Bevorzugt eine kleine gfx-Zelle; sonst irgendeine gfx-Zelle; sonst eine
+      // Text-Zelle zu gfx umwandeln (Fallback, falls das Layout keine gfx-Zelle hat).
+      let target = cells.find(c => c.type === 'gfx' && c.panelIdx != null && !isCellLarge(c))
+                || cells.find(c => c.type === 'gfx' && c.panelIdx != null)
+      if (!target) {
+        const t = cells.find(c => c.type === 'text' && c.panelIdx != null)
+        if (t) { t.type = 'gfx'; target = t }
+      }
+      if (target) {
+        const freeAudio = audioPool.find(idx => !usedGfx.has(idx)) ?? audioPool[0]
+        if (target.panelIdx != null) usedGfx.delete(target.panelIdx)
+        target.panelIdx = freeAudio
+        usedGfx.add(freeAudio)
+      }
+    } else if (audioCells.length > 1) {
+      // Mehr als ein Audio-Panel → Überzählige durch unbenutzte NICHT-Audio-gfx
+      // ersetzen (oder deaktivieren, falls kein Ersatz frei ist).
+      for (let i = 1; i < audioCells.length; i++) {
+        const cell = audioCells[i]
+        const replacement = gfxIndices.find(idx =>
+          !usedGfx.has(idx) && !AUDIO_PANELS.has(getCompName(gfxPool[idx])))
+        usedGfx.delete(cell.panelIdx!)
+        if (replacement != null) {
+          cell.panelIdx = replacement
+          usedGfx.add(replacement)
+        } else {
+          cell.panelIdx = undefined  // wird unten herausgefiltert
+        }
+      }
+    }
   }
 
   // Zellen ohne gültigen panelIdx entfernen (sollte nie passieren)
@@ -522,105 +586,8 @@ function generateLayout(id: number, reviews: ReviewEntry[]): GeneratedLayout {
   return { id, gridTemplateColumns, gridTemplateRows, cells: finalCells }
 }
 
-// ── Review-Modus: alle Panels als geordnete Liste ─────────────────────────────
-// Jeder Eintrag hat einen stabilen Namen (Funktionsname) als ID für localStorage.
-const ALL_PANELS: { name: string; Component: React.ComponentType }[] = [
-  // --- Recently Worked-On / Overhauled Panels (First in list) ---
-  { name: 'MetaAgentPanel',     Component: MetaAgentPanel },
-  { name: 'FractalJulia',       Component: FractalJulia },
-  { name: 'C64Panel',           Component: C64Panel },
-  { name: 'FractalSeahorse',    Component: FractalSeahorse },
-  { name: 'FractalSpiral',      Component: FractalSpiral },
-  { name: 'FractalTendril',     Component: FractalTendril },
-  { name: 'FractalLightning',   Component: FractalLightning },
-  { name: 'FractalElephant',    Component: FractalElephant },
-  { name: 'FractalMini',        Component: FractalMini },
-  { name: 'FractalSatellite',   Component: FractalSatellite },
-  { name: 'FractalDragon',      Component: FractalDragon },
-  { name: 'FractalDendrite',    Component: FractalDendrite },
-  { name: 'FractalSwirl',       Component: FractalSwirl },
-  { name: 'AmiModPanel',        Component: AmiModPanel },
-  { name: 'SolarSystemPanel',   Component: SolarSystemPanel },
-  { name: 'FractalView',        Component: FractalView },
-
-  // --- Other Graphics Panels ---
-  { name: 'ThreeBodyScene',     Component: ThreeBodyScene },
-  { name: 'FireScene',          Component: FireScene },
-  { name: 'LissajousScene',     Component: LissajousScene },
-  { name: 'TunnelScene',        Component: TunnelScene },
-  { name: 'RotozoomScene',      Component: RotozoomScene },
-  { name: 'PlasmaDemo',         Component: PlasmaDemo },
-  { name: 'EnhanceView',        Component: EnhanceView },
-  { name: 'VoxelDemoColor',     Component: VoxelDemoColor },
-  { name: 'VoxelDemoBW',        Component: VoxelDemoBW },
-  { name: 'GlobePanel',         Component: GlobePanel },
-  { name: 'VoxelThermal',       Component: VoxelThermal },
-  { name: 'VoxelLava',          Component: VoxelLava },
-  { name: 'VoxelNeon',          Component: VoxelNeon },
-  { name: 'VoxelMatrix',        Component: VoxelMatrix },
-  { name: 'StarfieldScene',     Component: StarfieldScene },
-  { name: 'OscilloscopePanel',  Component: OscilloscopePanel },
-  { name: 'MetaballsScene',     Component: MetaballsScene },
-  { name: 'DotCloudScene',      Component: DotCloudScene },
-  { name: 'AllYourBase',        Component: AllYourBase },
-  { name: 'ParallaxPanel',      Component: ParallaxPanel },
-  { name: 'ElitePanel',         Component: ElitePanel },
-  { name: 'CADRobotPanel',      Component: CADRobotPanel },
-  { name: 'RetroErrorPanel',    Component: RetroErrorPanel },
-  { name: 'RadarSweepPanel',    Component: RadarSweepPanel },
-  { name: 'DNAHelix',           Component: DNAHelix },
-  { name: 'ShaderHackingCore',  Component: ShaderHackingCore },
-  { name: 'ShaderMandelbox',    Component: ShaderMandelbox },
-  { name: 'ShaderRetroWave',    Component: ShaderRetroWave },
-  { name: 'DaggerfallPanel',    Component: DaggerfallPanel },
-  { name: 'LidarScanPanel',     Component: LidarScanPanel },
-  { name: 'NeuralLinkDecoderPanel', Component: NeuralLinkDecoderPanel },
-  { name: 'TixyPanel',          Component: TixyPanel },
-  { name: 'IQSmoothMin',        Component: IQSmoothMin },
-  { name: 'IQDigitalStorm',     Component: IQDigitalStorm },
-  { name: 'LovebyteShowcasePanel', Component: LovebyteShowcasePanel },
-  { name: 'MoonPanel',          Component: MoonPanel },
-  { name: 'PhysicsSandboxPanel', Component: PhysicsSandboxPanel },
-  { name: 'NuclearExplosionPanel', Component: NuclearExplosionPanel },
-  { name: 'ThermonuclearWarPanel', Component: ThermonuclearWarPanel },
-  { name: 'SupervolcanoPanel',   Component: SupervolcanoPanel },
-  { name: 'MandelbulbScene',     Component: MandelbulbScene },
-  { name: 'ApollonianGasketScene', Component: ApollonianGasketScene },
-  { name: 'MengerSpongeScene',   Component: MengerSpongeScene },
-
-  // --- Text Panels ---
-  { name: 'ICQChatPanel',       Component: ICQChatPanel },
-  { name: 'VisitorProfilePanel',Component: VisitorProfilePanel },
-  { name: 'SatellitePanel',     Component: SatellitePanel },
-  { name: 'BitcoinMinerPanel',  Component: BitcoinMinerPanel },
-  { name: 'SystemLog',          Component: SystemLog },
-  { name: 'DataStream',         Component: DataStream },
-  { name: 'SocialEngineering',  Component: SocialEngineering },
-  { name: 'Vitals',             Component: Vitals },
-  { name: 'TrafficMonitor',     Component: TrafficMonitor },
-  { name: 'NuclearTargets',     Component: NuclearTargets },
-  { name: 'PwdCracker',         Component: PwdCracker },
-  { name: 'PortScanner',        Component: PortScanner },
-  { name: 'PseudoCode',         Component: PseudoCode },
-  { name: 'AgentCodePanel',     Component: AgentCodePanel },
-  { name: 'DiskCleanupPanel',   Component: DiskCleanupPanel },
-  { name: 'StockTickerPanel',   Component: StockTickerPanel },
-  { name: 'ClassifiedPanel',    Component: ClassifiedPanel },
-]
-
-ALL_PANELS.forEach(p => {
-  p.Component = memo(p.Component) as any
-})
-
-function initComponentNamesMap() {
-  ALL_PANELS.forEach(p => {
-    const base = getBaseComponent(p.Component)
-    if (base) {
-      COMPONENT_NAMES.set(base, p.name)
-    }
-  })
-}
-initComponentNamesMap()
+// ALL_PANELS (vollständige Liste für den Review-Modus) + getCompName kommen jetzt
+// aus der Registry (oben importiert). Hier keine doppelte Liste / kein Namens-Map mehr.
 
 // ── Eingefrorener Review-Slot ────────────────────────────────────────────────
 //
@@ -664,12 +631,9 @@ const SEED_KEY = 'fraktallab_reviews_seeded_2026_05_30'
 const INITIAL_REVIEWS: ReviewEntry[] = [
   { panel: "MetaAgentPanel", rating: "down", comment: "", ts: 1780166214686 },
   { panel: "TunnelScene", rating: "up", comment: "", ts: 1780166236483 },
-  { panel: "EnhanceView", rating: "down", comment: "", ts: 1780166240762 },
   { panel: "VoxelMatrix", rating: "up", comment: "", ts: 1780166250443 },
   { panel: "ParallaxPanel", rating: "down", comment: "", ts: 1780166282783 },
-  { panel: "CADRobotPanel", rating: "down", comment: "", ts: 1780166285762 },
   { panel: "RetroErrorPanel", rating: "up", comment: "", ts: 1780166305343 },
-  { panel: "ShaderHackingCore", rating: "down", comment: "", ts: 1780166337653 },
   { panel: "ShaderMandelbox", rating: "up", comment: "", ts: 1780166339905 },
   { panel: "ShaderRetroWave", rating: "up", comment: "Bitte kein Tal in der Mitte, sondern eine Ebene mit Bergen", ts: 1780166363932 },
   { panel: "DaggerfallPanel", rating: "down", comment: "", ts: 1780166367432 },
@@ -681,17 +645,42 @@ const INITIAL_REVIEWS: ReviewEntry[] = [
   { panel: "MandelbulbScene", rating: "up", comment: "", ts: 1780166406715 },
   { panel: "MengerSpongeScene", rating: "up", comment: "", ts: 1780166412482 },
   { panel: "VisitorProfilePanel", rating: "down", comment: "", ts: 1780166419907 },
-  { panel: "SatellitePanel", rating: "down", comment: "", ts: 1780166423807 },
   { panel: "SystemLog", rating: "down", comment: "", ts: 1780166430132 },
   { panel: "DataStream", rating: "down", comment: "", ts: 1780166432508 },
-  { panel: "Vitals", rating: "down", comment: "", ts: 1780166441532 },
   { panel: "PortScanner", rating: "down", comment: "", ts: 1780166452899 },
   { panel: "PseudoCode", rating: "down", comment: "", ts: 1780166455774 },
   { panel: "AgentCodePanel", rating: "down", comment: "", ts: 1780166458923 },
   { panel: "DiskCleanupPanel", rating: "down", comment: "", ts: 1780166461315 },
-  { panel: "StockTickerPanel", rating: "down", comment: "", ts: 1780166463098 },
-  { panel: "ClassifiedPanel", rating: "down", comment: "", ts: 1780166464590 }
+  { panel: "StockTickerPanel", rating: "down", comment: "", ts: 1780166463098 }
 ]
+
+// Panels, die am 2026-06-01 auf Wunsch des Nutzers REAKTIVIERT wurden (waren als
+// Default down-gevotet → flogen aus der Galerie). Eine einmalige Migration (Key
+// unten) entfernt ihre Down-Votes auch bei bereits geseedeten Nutzern, sodass sie
+// wieder erscheinen (neutral, kein up). Sie werden NIE groß angezeigt (NO_LARGE_PANELS).
+const REACTIVATE_PANELS_2026_06_01 = [
+  'Vitals', 'SatellitePanel', 'ShaderHackingCore',
+  'CADRobotPanel', 'EnhanceView', 'ClassifiedPanel',
+]
+const REACTIVATE_KEY = 'fraktallab_reactivate_2026_06_01'
+
+/** Einmalig die Down-Votes der reaktivierten Panels aus localStorage entfernen. */
+function applyReactivationMigration(): void {
+  if (typeof window === 'undefined') return
+  try {
+    if (localStorage.getItem(REACTIVATE_KEY) === 'true') return
+    const raw = JSON.parse(localStorage.getItem(LS_KEY) ?? '[]') as ReviewEntry[]
+    const reactivate = new Set(REACTIVATE_PANELS_2026_06_01)
+    // Nur die DOWN-Votes dieser Panels entfernen; eigene up-Votes des Nutzers bleiben.
+    const cleaned = Array.isArray(raw)
+      ? raw.filter(r => !(reactivate.has(r.panel) && r.rating === 'down'))
+      : []
+    localStorage.setItem(LS_KEY, JSON.stringify(cleaned))
+    localStorage.setItem(REACTIVATE_KEY, 'true')
+  } catch (e) {
+    console.error('Failed to apply reactivation migration:', e)
+  }
+}
 
 function seedInitialReviewsIfNeeded(): void {
   if (typeof window === 'undefined') return
@@ -721,6 +710,7 @@ function seedInitialReviewsIfNeeded(): void {
 /** Liest alle Reviews aus localStorage. Gibt leeres Array zurück bei Fehler. */
 function loadReviews(): ReviewEntry[] {
   seedInitialReviewsIfNeeded()
+  applyReactivationMigration()
   try {
     return JSON.parse(localStorage.getItem(LS_KEY) ?? '[]') as ReviewEntry[]
   } catch {
@@ -728,42 +718,23 @@ function loadReviews(): ReviewEntry[] {
   }
 }
 
-function getFilteredPools(reviews: ReviewEntry[]) {
-  const downPanels = new Set(reviews.filter(r => r.rating === 'down').map(r => r.panel))
-  
-  const textPool = POOL_TEXT.filter(comp => {
-    const name = getCompName(comp)
-    return !downPanels.has(name)
-  })
-  
-  const gfxPool = POOL_GFX.filter(comp => {
-    const name = getCompName(comp)
-    return !downPanels.has(name)
-  })
-  
+// WICHTIG: Reviews (Daumen) entscheiden NICHT mehr über aktiv/inaktiv oder
+// Anzeige-Häufigkeit. Aktiv/inaktiv kommt ausschließlich aus der Registry
+// (isActive). Der `_reviews`-Parameter bleibt aus Signatur-Kompatibilität,
+// wird aber bewusst nicht mehr ausgewertet.
+function getFilteredPools(_reviews: ReviewEntry[]) {
+  // Doppelte Absicherung: POOL_TEXT/POOL_GFX enthalten ohnehin nur aktive Panels.
+  const allowed = (comp: React.ComponentType<any>) => isActive(getCompName(comp))
+  const textPool = POOL_TEXT.filter(allowed)
+  const gfxPool  = POOL_GFX.filter(allowed)
   return { textPool, gfxPool }
 }
 
-function getWeightedIndices(pool: React.ComponentType<any>[], reviews: ReviewEntry[]): number[] {
-  const scored = pool.map((comp, idx) => {
-    const name = getCompName(comp)
-    const review = reviews.find(r => r.panel === name)
-    
-    let weight = 1.0
-    if (review?.rating === 'up') {
-      weight = 3.0
-    } else if (review?.rating === 'down') {
-      weight = 0.0
-    }
-    
-    const u = Math.random()
-    const score = weight > 0 ? Math.pow(u, 1 / weight) : -1
-    return { idx, score }
-  })
-  
-  return scored
-    .filter(item => item.score >= 0)
-    .sort((a, b) => b.score - a.score)
+// Reine Zufalls-Reihenfolge der Pool-Indizes (keine Review-Gewichtung mehr).
+function getWeightedIndices(pool: React.ComponentType<any>[], _reviews: ReviewEntry[]): number[] {
+  return pool
+    .map((_, idx) => ({ idx, r: Math.random() }))
+    .sort((a, b) => a.r - b.r)
     .map(item => item.idx)
 }
 
@@ -784,12 +755,13 @@ function isAudioPlaying(): boolean {
 // ── Layout-Renderer ───────────────────────────────────────────────────────────
 function LayoutContent({
   layout,
-  onSkipSlot,
+  onNavSlot,
   textPool,
   gfxPool,
 }: {
   layout: GeneratedLayout
-  onSkipSlot: (slotIndex: number) => void
+  // strict=true → Auto-Rotation (kein Duplikat); false → manueller Pillen-Klick.
+  onNavSlot: (slotIndex: number, strict: boolean) => void
   textPool: React.ComponentType<any>[]
   gfxPool: React.ComponentType<any>[]
 }) {
@@ -799,7 +771,10 @@ function LayoutContent({
         display:             'grid',
         gridTemplateColumns: layout.gridTemplateColumns,
         gridTemplateRows:    layout.gridTemplateRows,
-        gap:                 '4px',
+        // Platzsparend: KEINE Lücken zwischen den Kacheln — Panels berühren sich
+        // direkt (rahmenlos). Maximiert die nutzbare Fläche jeder Kachel.
+        gap:                 '0px',
+        padding:             '0px',
         height:              '100%',
         width:               '100%',
       }}
@@ -817,7 +792,8 @@ function LayoutContent({
               key={`${layout.id}-text-${i}`}
               pool={textPool}
               activeIdx={cell.panelIdx!}
-              onSkip={() => onSkipSlot(i)}
+              onNav={(strict) => onNavSlot(i, strict)}
+              fallbackName={getCompName(textPool[cell.panelIdx!])}
               className="h-full"
             />
           )}
@@ -826,8 +802,10 @@ function LayoutContent({
               key={`${layout.id}-gfx-${i}`}
               pool={gfxPool}
               activeIdx={cell.panelIdx!}
-              onSkip={() => onSkipSlot(i)}
+              onNav={(strict) => onNavSlot(i, strict)}
+              fallbackName={getCompName(gfxPool[cell.panelIdx!])}
               className="h-full"
+              locked={AUDIO_PANELS.has(getCompName(gfxPool[cell.panelIdx!]))}
             />
           )}
         </div>
@@ -835,6 +813,49 @@ function LayoutContent({
     </div>
   )
 }
+
+// ── Auslastungs-Wähler (Layout-V2, 2026-05-31) ──────────────────────────────
+type DensityLevel = '25mhz' | 'turbo' | 'overclock' | 'proxima'
+
+const DENSITY_LABELS: Record<DensityLevel, string> = {
+  '25mhz': '25 MHz',
+  'turbo': 'Turbo',
+  'overclock': 'Overdrive',
+  'proxima': 'Proxima Centauri',
+}
+
+// Vollständige (literale) Tailwind-Klassen pro Stufe — literal, damit der
+// Tailwind-JIT sie beim Scannen findet. `active` = aktivierter Look (heller
+// Rahmen + Text + dezenter Hintergrund), `idle` = gedimmt. Proxima bleibt auch
+// im Idle leicht rötlich (Warn-Köder); Glow nur, wenn aktiv.
+// Farb-Rampe grün → gelb → rot → Crazy. Buttons sind IMMER gefüllt (auffälliger),
+// aktiv = kräftige Sättigung + Glow + fett. Proxima aktiv = `.density-crazy`
+// (animiertes Feuer + Neon-Puls, in index.css), Glow daher per CSS, nicht inline.
+const DENSITY_STYLE: Record<DensityLevel, { active: string; idle: string; glow?: string }> = {
+  '25mhz':     { active: 'border-green-300 text-black bg-green-500 font-bold',    idle: 'border-green-700 text-green-300 bg-green-950/70 hover:bg-green-900',     glow: '0 0 10px rgba(34,197,94,0.85)' },
+  'turbo':     { active: 'border-yellow-200 text-black bg-yellow-400 font-bold',  idle: 'border-yellow-700 text-yellow-300 bg-yellow-950/70 hover:bg-yellow-900', glow: '0 0 10px rgba(250,204,21,0.9)' },
+  'overclock': { active: 'border-red-300 text-white bg-red-600 font-bold',        idle: 'border-red-800 text-red-300 bg-red-950/70 hover:bg-red-900',             glow: '0 0 12px rgba(239,68,68,0.9)' },
+  'proxima':   { active: 'density-crazy font-bold',                               idle: 'border-fuchsia-800 text-fuchsia-300 bg-fuchsia-950/70 hover:bg-fuchsia-900' },
+}
+
+const DENSITY_ORDER: DensityLevel[] = ['25mhz', 'turbo', 'overclock', 'proxima']
+
+// FESTE Ziel-Kachelzahl pro Stufe (nicht breitenabhängig). generateLayout leitet
+// daraus cols×rows passend zum Bildschirm-Seitenverhältnis ab. Proxima zielt
+// bewusst Richtung 30 — auf künftiger Hardware bei 120 Hz trotzdem flüssig.
+function densityPanelCount(level: DensityLevel): number {
+  switch (level) {
+    case '25mhz':     return 6
+    case 'turbo':     return 12
+    case 'overclock': return 15
+    // Proxima auf 20 begrenzt — komfortabel unter der Distinct-Untergrenze, damit
+    // keine Löcher/Duplikate entstehen. Höhere Dichte bräuchte Roadmap-Schritt 2
+    // (Freeze-to-Image für GL-Panels).
+    case 'proxima':   return 20
+  }
+}
+
+const LS_DENSITY = 'fraktallab_density'
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 export default function App() {
@@ -846,8 +867,21 @@ export default function App() {
   })
   const [prevLayout, setPrevLayout] = useState<GeneratedLayout | null>(null)
   const [sliding,    setSliding]    = useState(false)
-  // Ambient Sound: standardmäßig eingeschaltet
-  const [soundEnabled, setSoundEnabled] = useState(true)
+  // Globaler Audio-Mute-Zustand (gespiegelt aus audio-focus.ts für das Button-Label).
+  const [audioMuted, setAudioMuted] = useState(() => isAudioMuted())
+
+  // ── Auslastung (Layout-V2) ─────────────────────────────────────────────────
+  // Gewählte Galerie-Dichte. Allererster Start (nichts persistiert) = `turbo`.
+  // Kein Benchmark mehr (sorgte für Verspringen). Wer schwache Hardware hat, geht
+  // manuell auf `25 MHz` runter. Jede Wahl wird in localStorage gemerkt und beim
+  // Reload wiederhergestellt.
+  const [density, setDensity] = useState<DensityLevel>(() => {
+    const saved = localStorage.getItem(LS_DENSITY)
+    return DENSITY_ORDER.includes(saved as DensityLevel) ? (saved as DensityLevel) : 'turbo'
+  })
+  // Ref-Spiegel, damit doSwitch (leere Deps) immer die aktuelle Dichte sieht.
+  const densityRef = useRef<DensityLevel>(density)
+  useEffect(() => { densityRef.current = density }, [density])
 
   const [mobileIndices, setMobileIndices] = useState(() => {
     const reviews = loadReviews()
@@ -869,90 +903,108 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
+  // Erst-Klick irgendwo auf der Seite startet GENAU EINEN Audio-Player (Election).
+  // Capture-Phase, damit es vor Panel-eigenen Handlern feuert. Der Header-AUDIO-
+  // Button ist ausgenommen (data-audio-toggle) — der steuert die Election selbst.
+  useEffect(() => {
+    const onFirstGesture = (e: Event) => {
+      const target = e.target as HTMLElement | null
+      if (target?.closest?.('[data-audio-toggle]')) return
+      handleFirstGesture()
+    }
+    const opts = { capture: true } as const
+    window.addEventListener('click',      onFirstGesture, opts)
+    window.addEventListener('touchstart', onFirstGesture, opts)
+    window.addEventListener('keydown',    onFirstGesture, opts)
+    return () => {
+      window.removeEventListener('click',      onFirstGesture, opts)
+      window.removeEventListener('touchstart', onFirstGesture, opts)
+      window.removeEventListener('keydown',    onFirstGesture, opts)
+    }
+  }, [])
+
+  // Mute-Zustand aus audio-focus.ts spiegeln, damit das Button-Label stimmt.
+  useEffect(() => registerMuteListener(setAudioMuted), [])
+
   const reviews = loadReviews()
   const { textPool, gfxPool } = getFilteredPools(reviews)
 
-  const handleSkipSlot = useCallback((slotIndex: number) => {
+  // ── Zufalls-Panelwechsel pro Slot (R2/R3) ──────────────────────────────────
+  // Wählt für den Slot ein ZUFÄLLIGES kompatibles Panel (keine Vor/Zurück-Pfeile
+  // mehr). Kompatibel heißt: gleiches Seitenverhältnis, gleiche Größenklasse und
+  // (bei GL-Panels) innerhalb des WebGL-Kontingents — dieselben Aspect-/GL-Regeln
+  // wie beim Bauen des Layouts.
+  //
+  // `strict` steuert das Duplikat-Verhalten:
+  //   - strict=true  (Auto-Rotation, Slot-Timer): NIE ein Panel wählen, das bereits
+  //     in einem anderen Slot läuft. Reicht kein freies kompatibles Panel → kein
+  //     Wechsel (return curr). Verhindert "3× AllYourBase nach Auto-Wechseln".
+  //   - strict=false (manueller Pillen-Klick): bevorzugt ein nicht-gezeigtes Panel;
+  //     Duplikat NUR als Notnagel, wenn KEIN freies kompatibles Panel existiert.
+  //
+  // Locked Audio-Panels (AllYourBase/MOD/SID) sind nie Wechselziel, wenn sie schon
+  // irgendwo im Layout laufen — sie sollen nicht dupliziert/verdrängt werden.
+  const handleNavSlot = useCallback((slotIndex: number, strict: boolean) => {
     setLayout(curr => {
       const cell = curr.cells[slotIndex]
-      if (!cell) return curr
+      if (!cell || cell.panelIdx == null || (cell.type !== 'text' && cell.type !== 'gfx')) return curr
 
       const reviews = loadReviews()
       const { textPool, gfxPool } = getFilteredPools(reviews)
       const pool = cell.type === 'text' ? textPool : gfxPool
 
-      // Get all currently active components in OTHER slots of this layout
-      const otherActiveComps = new Set<React.ComponentType<any>>()
+      // GL-Verbrauch der ÜBRIGEN Kacheln (dieser Slot ausgenommen) + Namen aller
+      // anderswo gezeigten Panels (für die Duplikat-Vermeidung).
+      let otherGL = 0
+      const shownElsewhere = new Set<string>()
       curr.cells.forEach((c, idx) => {
-        if (idx !== slotIndex) {
-          if (c.type === 'text') {
-            const comp = textPool[c.panelIdx!]
-            if (comp) otherActiveComps.add(comp)
-          } else if (c.type === 'gfx') {
-            const comp = gfxPool[c.panelIdx!]
-            if (comp) otherActiveComps.add(comp)
-          }
+        if (idx === slotIndex || c.panelIdx == null) return
+        if (c.type === 'gfx') {
+          const name = getCompName(gfxPool[c.panelIdx])
+          if (isGLPanel(name)) otherGL++
+          shownElsewhere.add(name)
+        } else if (c.type === 'text') {
+          shownElsewhere.add(getCompName(textPool[c.panelIdx]))
         }
       })
 
-      const currentComp = pool[cell.panelIdx!]
-      const candidates: number[] = []
+      const cellA = cellAspect(cell)
+      const isLarge = isCellLarge(cell)
+      const currentName = getCompName(pool[cell.panelIdx])
+
+      // Kompatible Kandidaten (ohne das aktuell gezeigte Panel selbst).
+      const cands: number[] = []
       pool.forEach((comp, i) => {
-        if (comp !== currentComp && !otherActiveComps.has(comp)) {
-          if (cell.type === 'gfx') {
-            const isLarge = isCellLarge(cell)
-            const compName = getCompName(comp)
-            const isCompLarge = LARGE_PANELS.has(compName)
-            if (isLarge === isCompLarge) {
-              candidates.push(i)
-            }
-          } else {
-            candidates.push(i)
-          }
+        const name = getCompName(comp)
+        if (name === currentName) return
+        // Locked Audio-Panel, das bereits im Layout läuft → nie Wechselziel.
+        if (AUDIO_PANELS.has(name) && shownElsewhere.has(name)) return
+        if (cell.type === 'gfx') {
+          if (!aspectMatches(panelAspect(name), cellA)) return
+          if (panelMayBeLarge(name) !== isLarge) return
+          if (isGLPanel(name) && otherGL + 1 > MAX_GL_PANELS_PER_LAYOUT) return
         }
+        cands.push(i)
       })
+      if (cands.length === 0) return curr
 
-      // Fallback if no matching size candidate was found
-      if (candidates.length === 0) {
-        pool.forEach((comp, i) => {
-          if (comp !== currentComp && !otherActiveComps.has(comp)) {
-            candidates.push(i)
-          }
-        })
-      }
+      // Bevorzugt nicht-gezeigte Panels (distinct gegen alle anderen Slots).
+      const distinct = cands.filter(i => !shownElsewhere.has(getCompName(pool[i])))
 
-      let chosenIdx = 0
-      if (candidates.length > 0) {
-        const candidateScores = candidates.map(i => {
-          const comp = pool[i]
-          const name = getCompName(comp)
-          const review = reviews.find(r => r.panel === name)
-          let weight = 1.0
-          if (review?.rating === 'up') {
-            weight = 3.0
-          } else if (review?.rating === 'down') {
-            weight = 0.0
-          }
-          const u = Math.random()
-          const score = weight > 0 ? Math.pow(u, 1 / weight) : -1
-          return { i, score }
-        })
-        candidateScores.sort((a, b) => b.score - a.score)
-        chosenIdx = candidateScores[0].i
+      let chosen: number
+      if (distinct.length > 0) {
+        chosen = distinct[Math.floor(Math.random() * distinct.length)]
+      } else if (strict) {
+        // Auto-Rotation: kein freies kompatibles Panel → nicht wechseln.
+        return curr
       } else {
-        chosenIdx = Math.floor(Math.random() * pool.length)
+        // Manueller Klick: Duplikat als Notnagel.
+        chosen = cands[Math.floor(Math.random() * cands.length)]
       }
 
       const newCells = [...curr.cells]
-      newCells[slotIndex] = {
-        ...cell,
-        panelIdx: chosenIdx,
-      }
-
-      return {
-        ...curr,
-        cells: newCells,
-      }
+      newCells[slotIndex] = { ...cell, panelIdx: chosen }
+      return { ...curr, cells: newCells }
     })
   }, [])
 
@@ -1073,13 +1125,13 @@ export default function App() {
     localStorage.setItem('fraktallab_hide_archived', String(hideArchived))
   }, [hideArchived])
 
+  // Review-Liste: "HIDE ARCHIVED" blendet jetzt die DEAKTIVIERTEN Panels aus
+  // (Registry-Status), NICHT mehr die down-gevoteten. Reviews spielen hier keine
+  // Rolle mehr.
   const activeAllPanels = React.useMemo(() => {
     if (!hideArchived) return ALL_PANELS
-    return ALL_PANELS.filter(p => {
-      const review = reviews.find(r => r.panel === p.name)
-      return review?.rating !== 'down'
-    })
-  }, [hideArchived, reviews])
+    return ALL_PANELS.filter(p => isActive(p.name))
+  }, [hideArchived])
 
   // Ensure index is within range of activeAllPanels
   useEffect(() => {
@@ -1150,7 +1202,8 @@ export default function App() {
     // Neue ID vergeben und neues Layout generieren
     layoutIdRef.current += 1
     const reviews = loadReviews()
-    const next = generateLayout(layoutIdRef.current, reviews)
+    // Aktuelle Dichte → feste Ziel-Kachelzahl.
+    const next = generateLayout(layoutIdRef.current, reviews, densityPanelCount(densityRef.current))
 
     setPrevLayout(current)
     setSliding(true)
@@ -1167,6 +1220,35 @@ export default function App() {
       setPaused(false)
     }, 520)
   }, [])
+
+  // Dichte-Stufe wählen → State setzen, persistieren und Layout mit der festen
+  // Ziel-Kachelzahl neu würfeln. `persist=false` nur für die einmalige Mount-
+  // Synchronisierung des Initial-Layouts (kein neuer localStorage-Schreib nötig).
+  const applyDensity = useCallback((level: DensityLevel, persist: boolean) => {
+    setDensity(level)
+    densityRef.current = level
+    // Speed-System v2: das effektive Tempo pro Panel ergibt sich aus Panel-Typ +
+    // Stufe (siehe panel-speed.ts / AGENTS R1). Hier nur die aktive Stufe melden;
+    // raf-coordinator + Panels mit eigener Schleife lesen getSpeed(name) selbst.
+    // Da generateLayout das Layout neu baut (Panels re-mounten), greifen auch
+    // intervall-basierte Panels die neue Stufe beim nächsten Mount auf.
+    setSpeedDensity(level)
+    if (persist) {
+      try { localStorage.setItem(LS_DENSITY, level) } catch { /* Private-Mode etc. */ }
+    }
+    layoutIdRef.current += 1
+    const reviews = loadReviews()
+    const next = generateLayout(layoutIdRef.current, reviews, densityPanelCount(level))
+    setLayout(next)
+    resetAudioFocus()
+  }, [])
+
+  // Mount: Initial-Layout wurde ohne Ziel-Kachelzahl gewürfelt → einmalig mit der
+  // aktuellen Dichte (persistiert oder Default `turbo`) neu aufbauen, damit die
+  // Kachelzahl von Anfang an zur gewählten Stufe passt. Kein Benchmark.
+  useEffect(() => {
+    applyDensity(densityRef.current, false)
+  }, [applyDensity])
 
   // Versucht Layout zu wechseln — wartet, falls ein Audio-Panel läuft
   const trySwitch = useCallback(() => {
@@ -1188,11 +1270,12 @@ export default function App() {
     autoTimerRef.current = setTimeout(trySwitch, delay)
   }, [trySwitch])
 
-  // Immer wenn sich layout ändert, neuen Auto-Switch-Timer setzen
-  useEffect(() => {
-    scheduleNext()
-    return () => { if (autoTimerRef.current) clearTimeout(autoTimerRef.current) }
-  }, [layout, scheduleNext])
+  // Galerie (Relaunch 2026-05-31): KEIN automatischer Komplett-Layout-Wechsel mehr.
+  // Der Nutzer erkundet selbst — Layout wechselt nur manuell (⟳-Button / Leertaste).
+  // Senkt zusätzlich die Last (kein periodisches Neu-Mounten aller Panels).
+  // `scheduleNext`/`trySwitch` bleiben für den manuellen Pfad erhalten, werden hier
+  // aber nicht mehr automatisch angestoßen.
+  void scheduleNext
 
   // Leertaste → sofortiger Layout-Wechsel (nicht im Review-Modus oder in Textfeldern)
   useEffect(() => {
@@ -1243,9 +1326,6 @@ export default function App() {
         <GlitchOverlay />
       </div>
 
-      {/* Ambient-Sound — rendert nichts, erzeugt nur Töne */}
-      <AmbientSound enabled={soundEnabled} />
-
       {/* Kopfzeile */}
       <header className="border-b border-green-900 px-3 py-1 flex items-center gap-3 shrink-0">
         <span className="text-green-600 text-xs uppercase tracking-widest">
@@ -1253,47 +1333,67 @@ export default function App() {
         </span>
         <span className="ml-auto text-red-800 text-xs animate-pulse">● LIVE</span>
 
-        {/* Ambient-Sound-Toggle */}
+        {/* Audio-Mute-Toggle. Erst-Klick startet einen zufälligen Player (Election),
+            danach schaltet der Button stumm/laut. data-audio-toggle nimmt ihn vom
+            globalen Erst-Geste-Listener aus, damit er sich nicht selbst doppelt feuert. */}
         <button
+          data-audio-toggle
           onClick={() => {
-            if (!soundEnabled) {
-              // AudioContext im User-Gesture-Callstack vorab aufwecken/erstellen
-              try {
-                const ctx = getSharedAudioContext()
-                if (ctx.state === 'suspended') {
-                  ctx.resume().catch(() => {})
-                }
-                const buffer = ctx.createBuffer(1, 1, 22050)
-                const source = ctx.createBufferSource()
-                source.buffer = buffer
-                source.connect(ctx.destination)
-                source.start(0)
-              } catch (e) {
-                console.warn('Failed to unlock AudioContext on click:', e)
-              }
+            // AudioContext im User-Gesture-Callstack aufwecken (iOS/Safari-Unlock).
+            try {
+              const ctx = getSharedAudioContext()
+              if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+              const buffer = ctx.createBuffer(1, 1, 22050)
+              const source = ctx.createBufferSource()
+              source.buffer = buffer
+              source.connect(ctx.destination)
+              source.start(0)
+            } catch (e) {
+              console.warn('Failed to unlock AudioContext on click:', e)
             }
-            setSoundEnabled(e => !e)
+            toggleAudioMuted()
           }}
-          title="Ambient Sound umschalten"
+          title="Audio stummschalten / wieder einschalten"
           className="border border-green-800 text-green-600 text-xs px-2 py-0.5
                      hover:border-green-600 hover:text-green-200 transition-colors"
         >
-          {soundEnabled ? 'AUDIO ON' : 'AUDIO OFF'}
+          {audioMuted ? 'AUDIO OFF' : 'AUDIO ON'}
         </button>
 
-        {/* Layout-Wechsel-Button — nur auf Desktop, im Review-Modus ausgeblendet */}
+        {/* Auslastungs-Wähler (Layout-V2) — nur Desktop, im Review-Modus aus.
+            Label links, dann 4 Stufen-Segmente. Aktive Stufe = aktivierter Look.
+            Klick = Dichte setzen + Layout neu würfeln; erneuter Klick = neu würfeln. */}
         {!reviewMode && (
-          <button
-            onClick={() => {
-              if (isAudioPlaying()) return;
-              setLayout(current => { doSwitch(current); return current });
-            }}
-            title="Zufälliges neues Layout generieren (auch: Leertaste)"
-            className="hidden md:inline-flex border border-green-800 text-green-600 text-xs px-2 py-0.5
-                       hover:border-green-600 hover:text-green-200 transition-colors"
-          >
-            ⟳ LAYOUT
-          </button>
+          <div className="hidden md:flex items-center gap-1">
+            <span
+              className="text-green-200 text-xs font-bold uppercase tracking-widest mr-1"
+              style={{ textShadow: '0 0 6px rgba(74,222,128,0.7)' }}
+            >
+              Auslastung
+            </span>
+            {DENSITY_ORDER.map(level => {
+              const active = density === level
+              const style = DENSITY_STYLE[level]
+              return (
+                <button
+                  key={level}
+                  onClick={() => {
+                    // KEIN isAudioPlaying-Guard: der Erst-Klick startet per
+                    // Election einen Audio-Player → der Guard hätte den allerersten
+                    // (und damit faktisch jeden) Dichte-Klick verschluckt. Dichte
+                    // ändern soll immer gehen; resetAudioFocus läuft in applyDensity.
+                    applyDensity(level, true)   // manuelle Wahl → persistieren
+                  }}
+                  title={`Galerie-Dichte: ${DENSITY_LABELS[level]} (Klick = neu würfeln)`}
+                  className={`border text-xs px-2 py-0.5 transition-colors ${active ? style.active : style.idle}`}
+                  style={active && style.glow ? { boxShadow: style.glow } : undefined}
+                >
+                  {/* Crazy-Modus: Totenkopf, wenn Proxima aktiv ist */}
+                  {active && level === 'proxima' ? '💀 ' : ''}{DENSITY_LABELS[level]}
+                </button>
+              )
+            })}
+          </div>
         )}
 
         {/* Review-Modus-Button — auf allen Geräten sichtbar, zeigt EXIT wenn aktiv, sonst [?] */}
@@ -1351,7 +1451,11 @@ export default function App() {
                       if (idx < totalPanels) {
                         const panel = activeAllPanels[idx]
                         const Comp = panel.Component
-                        const isActive = idx === reviewIdx
+                        const isSelected = idx === reviewIdx
+                        // DEAKTIVIERT (rot) hängt NUR am Registry-Status, NICHT am
+                        // Daumen. Reviews sind reine Notizen und färben den Rahmen
+                        // nicht mehr.
+                        const deactivated = !isActive(panel.name)
                         const review = reviews.find(r => r.panel === panel.name)
                         const isUp = review?.rating === 'up'
                         const isDown = review?.rating === 'down'
@@ -1360,29 +1464,30 @@ export default function App() {
                           <div
                             key={panel.name}
                             className={`flex-1 min-h-0 h-full min-w-0 relative flex flex-col transition-all duration-200 cursor-pointer ${
-                              isActive
-                                ? isUp
-                                  ? 'ring-2 ring-green-400 border border-green-400 z-10'
-                                  : isDown
-                                    ? 'ring-2 ring-red-500 border border-red-500 z-10'
-                                    : 'ring-2 ring-green-500 border border-green-500 z-10'
-                                : isUp
-                                  ? 'border border-green-900/60 bg-green-950/5'
-                                  : isDown
-                                    ? 'border border-red-950/60 bg-red-950/5'
-                                    : ''
+                              isSelected
+                                ? deactivated
+                                  ? 'ring-2 ring-red-500 border border-red-500 z-10'
+                                  : 'ring-2 ring-green-500 border border-green-500 z-10'
+                                : deactivated
+                                  ? 'border border-red-950/60 bg-red-950/5'
+                                  : ''
                             }`}
                             onClick={() => goToPanel(idx)}
                           >
-                            {/* Nur das aktive Panel animiert live (B-4: Main-Thread
+                            {/* Nur das ausgewählte Panel animiert live (B-4: Main-Thread
                                 entlasten). Inaktive Slots zeigen einen statischen
                                 Platzhalter und mounten erst beim Anklicken. */}
-                            {isActive ? <Comp /> : <FrozenReviewSlot name={panel.name} />}
-                            {/* Review-Mode-Marker: Index + Kurzname des Panels. */}
+                            {isSelected ? <Comp /> : <FrozenReviewSlot name={panel.name} />}
+                            {/* Review-Mode-Marker: Index + Kurzname + Status + Notiz-Daumen. */}
                             <div className="absolute top-0.5 right-7 z-20 pointer-events-none select-none flex items-center gap-1 font-mono text-xs tracking-wider bg-black/80 border border-green-700/40 px-1.5 py-[1px] rounded-sm">
                               <span className="text-green-500 font-bold">#{idx + 1}</span>
                               <span className="text-green-700">·</span>
-                              <span className="text-green-300">{panel.name}</span>
+                              <span className={deactivated ? 'text-red-400' : 'text-green-300'}>{panel.name}</span>
+                              <span className="text-green-700">·</span>
+                              {/* Asset-Größe des Panels (prozedurale Panels: 0 KB). */}
+                              <span className="text-green-600">{panelAssetLabel(panel.name)}</span>
+                              {deactivated && <span className="ml-1 text-red-500 font-bold">⊘ AUS</span>}
+                              {/* Daumen = reine Notiz (kein Einfluss auf aktiv/inaktiv). */}
                               {isUp && <span className="ml-1 text-green-400">👍</span>}
                               {isDown && <span className="ml-1 text-red-500">👎</span>}
                             </div>
@@ -1545,7 +1650,8 @@ export default function App() {
                   <PanelSlot
                     pool={textPool}
                     activeIdx={mobileIndices.textIdx}
-                    onSkip={() => handleSkipMobileSlot(0)}
+                    onNav={() => handleSkipMobileSlot(0)}
+                    fallbackName={getCompName(textPool[mobileIndices.textIdx])}
                     className="h-full"
                   />
                 </div>
@@ -1554,8 +1660,10 @@ export default function App() {
                   <PanelSlot
                     pool={gfxPool}
                     activeIdx={mobileIndices.gfxIdx1}
-                    onSkip={() => handleSkipMobileSlot(1)}
+                    onNav={() => handleSkipMobileSlot(1)}
+                    fallbackName={getCompName(gfxPool[mobileIndices.gfxIdx1])}
                     className="h-full"
+                    locked={AUDIO_PANELS.has(getCompName(gfxPool[mobileIndices.gfxIdx1]))}
                   />
                 </div>
                 {/* Panel 3: Grafik-Panel 2 */}
@@ -1563,8 +1671,10 @@ export default function App() {
                   <PanelSlot
                     pool={gfxPool}
                     activeIdx={mobileIndices.gfxIdx2}
-                    onSkip={() => handleSkipMobileSlot(2)}
+                    onNav={() => handleSkipMobileSlot(2)}
+                    fallbackName={getCompName(gfxPool[mobileIndices.gfxIdx2])}
                     className="h-full"
+                    locked={AUDIO_PANELS.has(getCompName(gfxPool[mobileIndices.gfxIdx2]))}
                   />
                 </div>
                 {/* Panel 4: Grafik-Panel 3 */}
@@ -1572,8 +1682,10 @@ export default function App() {
                   <PanelSlot
                     pool={gfxPool}
                     activeIdx={mobileIndices.gfxIdx3}
-                    onSkip={() => handleSkipMobileSlot(3)}
+                    onNav={() => handleSkipMobileSlot(3)}
+                    fallbackName={getCompName(gfxPool[mobileIndices.gfxIdx3])}
                     className="h-full"
+                    locked={AUDIO_PANELS.has(getCompName(gfxPool[mobileIndices.gfxIdx3]))}
                   />
                 </div>
               </div>
@@ -1588,7 +1700,7 @@ export default function App() {
                     aria-hidden="true"
                     style={{ contain: 'paint' }}
                   >
-                    <LayoutContent layout={prevLayout} onSkipSlot={() => {}} textPool={textPool} gfxPool={gfxPool} />
+                    <LayoutContent layout={prevLayout} onNavSlot={() => {}} textPool={textPool} gfxPool={gfxPool} />
                   </div>
                 )}
 
@@ -1597,7 +1709,7 @@ export default function App() {
                   key={`in-${layout.id}`}
                   className={sliding ? 'absolute inset-0 p-1 layout-slide-in' : 'h-full p-1'}
                 >
-                  <LayoutContent layout={layout} onSkipSlot={handleSkipSlot} textPool={textPool} gfxPool={gfxPool} />
+                  <LayoutContent layout={layout} onNavSlot={handleNavSlot} textPool={textPool} gfxPool={gfxPool} />
                 </div>
               </div>
             )}
@@ -1608,3 +1720,22 @@ export default function App() {
     </div>
   )
 }
+
+// ── Aspect-Ratio-Helfer (Zell-Geometrie; Panel-Aspect kommt aus der Registry) ──
+
+function cellAspect(cell: GridCell): Aspect {
+  const colParts = cell.gridColumn.split('/').map(s => parseInt(s.trim(), 10))
+  const rowParts = cell.gridRow.split('/').map(s => parseInt(s.trim(), 10))
+  const colSpan = colParts[1] - colParts[0]
+  const rowSpan = rowParts[1] - rowParts[0]
+  if (colSpan === 1 && rowSpan === 1) return 'SQUARE'
+  if (colSpan > rowSpan) return 'WIDE'
+  if (rowSpan > colSpan) return 'TALL'
+  return 'SQUARE'
+}
+
+function aspectMatches(panelAspect: Aspect, cellAspect: Aspect): boolean {
+  if (panelAspect === 'ANY' || panelAspect === 'TEXT') return true
+  return panelAspect === cellAspect
+}
+

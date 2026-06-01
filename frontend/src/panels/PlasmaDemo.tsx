@@ -93,6 +93,7 @@ function PlasmaDemo() {
     <ShaderPanel
       fragmentShader={PLASMA_SHADER}
       title="PLASMA CORE // RENDERING Ω"
+      speedName="PlasmaDemo"
     />
   )
 }

@@ -117,7 +117,7 @@ function StockTickerPanel() {
       // Rekursiver rAF-Aufruf entfaellt: subscribe ruft loop() bei jedem Tick.
     }
 
-    unsubscribe = subscribe(loop)
+    unsubscribe = subscribe(loop, 'StockTickerPanel')
     return () => {
       alive = false
       if (unsubscribe) unsubscribe()
@@ -129,9 +129,15 @@ function StockTickerPanel() {
   return (
     <Panel title="MARKET DATA // LIVE FEED">
       {/* ── Ticker-Liste ─────────────────────────────────────────────────── */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-2 py-1">
+      {/* fontSize-clamp am Listen-Container: Header und Zeilen (text-[1em]) skalieren
+          mit der Kachelgröße. Die Spaltenbreite 5ch ist font-relativ und schrumpft
+          dadurch automatisch mit. Untergrenze ~7,5px. */}
+      <div
+        className="flex-1 min-h-0 overflow-y-auto px-2 py-1"
+        style={{ fontSize: 'clamp(7.5px, 3.2cqmin, 13px)' }}
+      >
         {/* Spalten-Header */}
-        <div className="text-xs font-mono text-green-700 grid grid-cols-[5ch_1fr_1fr_1fr] gap-x-2 pb-1 border-b border-green-900">
+        <div className="text-[1em] font-mono text-green-700 grid grid-cols-[5ch_1fr_1fr_1fr] gap-x-2 pb-1 border-b border-green-900">
           <span>SYM</span>
           <span className="text-right">PRICE</span>
           <span className="text-right">CHG</span>
@@ -152,7 +158,7 @@ function StockTickerPanel() {
           return (
             <div
               key={t.symbol}
-              className={`text-xs font-mono grid grid-cols-[5ch_1fr_1fr_1fr] gap-x-2 py-0.5 border-b border-green-950 ${colorClass}`}
+              className={`text-[1em] font-mono grid grid-cols-[5ch_1fr_1fr_1fr] gap-x-2 py-0.5 border-b border-green-950 ${colorClass}`}
             >
               {/* Symbol immer in hellem Grün, unabhängig von Kursrichtung */}
               <span className="text-green-400 font-bold">{t.symbol}</span>
@@ -175,9 +181,12 @@ function StockTickerPanel() {
       </div>
 
       {/* ── Laufband-Marquee ─────────────────────────────────────────────── */}
+      {/* Laufband-Höhe relativ (em) zur skalierbaren Schrift, statt fixem h-5 →
+          die Leiste schrumpft in kleinen Kacheln mit. */}
       <div
         ref={containerRef}
-        className="shrink-0 overflow-hidden border-t border-green-900 bg-green-950/20 h-5 flex items-center"
+        className="shrink-0 overflow-hidden border-t border-green-900 bg-green-950/20 h-[1.6em] flex items-center"
+        style={{ fontSize: 'clamp(7.5px, 3.2cqmin, 13px)' }}
       >
         {/*
           Das Band ist ein <span> dessen translateX per inline-style animiert wird.
@@ -186,7 +195,7 @@ function StockTickerPanel() {
         */}
         <span
           ref={tapeRef}
-          className="text-xs font-mono text-green-500 whitespace-nowrap inline-block"
+          className="text-[1em] font-mono text-green-500 whitespace-nowrap inline-block"
           style={{ transform: `translateX(-${marqueeOffset}px)` }}
         >
           {/* Band-Text zwei Mal: erstes Exemplar scrollt raus, zweites folgt */}

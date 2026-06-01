@@ -137,6 +137,7 @@ export const IQDigitalStorm = React.memo(function IQDigitalStorm() {
       uniforms={uniforms}
       title={`NEURAL FBM DIGITAL STORM [PAL: ${currentPalette.name.toUpperCase()}]`}
       attribution="FBM Digital Storm by Inigo Quilez (Palette-Rework)"
+      speedName="IQDigitalStorm"
     />
   )
 })

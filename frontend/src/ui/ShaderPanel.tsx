@@ -18,6 +18,10 @@ interface ShaderPanelProps {
     height?: number
   }
   noPanel?: boolean
+  // Komponentenname für die Tempo-Zuordnung (Speed-System v2, siehe panel-speed.ts).
+  // Wrapper-Komponenten mit Proxima-Sonderfaktor MÜSSEN ihren Namen liefern, sonst
+  // greift der GFX-Default (Proxima 2×). Leer = GFX-Default.
+  speedName?: string
 }
 
 const VERTEX_SHADER_SOURCE = `
@@ -27,7 +31,7 @@ const VERTEX_SHADER_SOURCE = `
   }
 `
 
-function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData, noPanel = false }: ShaderPanelProps) {
+function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData, noPanel = false, speedName = '' }: ShaderPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -48,6 +52,11 @@ function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData
   // Store custom uniforms in ref to prevent stale closures and avoid unnecessary WebGL teardowns
   const currentUniformsRef = useRef(uniforms)
   currentUniformsRef.current = uniforms
+
+  // speedName in Ref halten → subscribe() liest immer den aktuellen Wert, ohne den
+  // (teuren) WebGL-Init-Effekt neu auszulösen.
+  const speedNameRef = useRef(speedName)
+  speedNameRef.current = speedName
 
   const uniformsKeys = Object.keys(uniforms || {}).join(',')
 
@@ -342,7 +351,7 @@ function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData
         setTimeout(() => {
           if (alive && initGL()) {
             if (!unsubscribeRaf && isVisible) {
-              unsubscribeRaf = subscribe(renderFrame)
+              unsubscribeRaf = subscribe(renderFrame, speedNameRef.current)
             }
           }
         }, 30)
@@ -357,7 +366,7 @@ function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData
       if (isVisible) {
         if (hasContext) {
           if (!unsubscribeRaf) {
-            unsubscribeRaf = subscribe(renderFrame)
+            unsubscribeRaf = subscribe(renderFrame, speedNameRef.current)
           }
         } else {
           acquireAndStart()

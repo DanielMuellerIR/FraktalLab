@@ -1,10 +1,14 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "1.9.0",
+  "version": "1.23.0",
   "type": "module",
   "scripts": {
+    "gen:audio": "node scripts/build-audio-manifest.mjs",
+    "gen:sizes": "node scripts/gen-panel-sizes.mjs",
+    "gen": "node scripts/build-audio-manifest.mjs && node scripts/gen-panel-sizes.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/build-audio-manifest.mjs && node scripts/gen-panel-sizes.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",

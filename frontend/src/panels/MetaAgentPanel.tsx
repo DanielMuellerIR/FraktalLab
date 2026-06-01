@@ -1,4 +1,5 @@
 import { memo,  useEffect, useRef, useState } from 'react'
+import { getTextSpeed } from '../utils/panel-speed'
 
 const AGENT_NAMES = [
   'NetVibe', 'QuantumNexus', 'CyberCoder', 'Antigravity-Omega',
@@ -121,7 +122,9 @@ function MetaAgentPanel() {
         }
         return prev + 1
       })
-    }, 1000)
+      // Speed-System v2: Textpanels laufen auf Proxima 2× schneller (getTextSpeed()).
+      // Layout re-mountet bei Dichte-Wechsel → Wert greift beim nächsten Mount.
+    }, 1000 / getTextSpeed())
 
     return () => clearInterval(timer)
   }, [])
@@ -138,7 +141,9 @@ function MetaAgentPanel() {
           const next = curr + Math.random() * 3.5 + 0.5
           return Math.min(48.9, next)
         })
-      }, 200)
+        // Speed-System v2: Textpanels laufen auf Proxima 2× schneller (getTextSpeed()).
+        // Layout re-mountet bei Dichte-Wechsel → Wert greift beim nächsten Mount.
+      }, 200 / getTextSpeed())
       return () => clearInterval(interval)
     } else if (time === 0) {
       setSubagentsCount(1200)
@@ -186,25 +191,29 @@ function MetaAgentPanel() {
   const activeTheme = session.theme
 
   return (
-    <div 
+    <div
       className={`border rounded flex flex-col h-full w-full overflow-hidden transition-colors duration-500 font-mono`}
       style={{
         borderColor: activeTheme.color,
         backgroundColor: '#000000',
         color: activeTheme.color,
-        boxShadow: flicker ? `0 0 25px ${activeTheme.color}` : 'none'
+        boxShadow: flicker ? `0 0 25px ${activeTheme.color}` : 'none',
+        // fontSize-clamp: bindet die Basis-Schrift (1em) an die Kachelgröße (cqmin).
+        // Alle Texte unten sind relativ in em angegeben und skalieren dadurch mit.
+        // Untergrenze ~7,5px für Lesbarkeit, Obergrenze 13px.
+        fontSize: 'clamp(7.5px, 3.2cqmin, 13px)',
       }}
     >
       {/* Header bar */}
-      <div 
-        className="border-b px-2 py-1 flex items-center gap-2 text-xs shrink-0 select-none font-bold"
+      <div
+        className="border-b px-2 py-1 flex items-center gap-2 text-[1em] shrink-0 select-none font-bold"
         style={{ borderColor: activeTheme.color }}
       >
         <span className="animate-pulse">●</span>
         <span className="uppercase tracking-wider">
           AGENT INTERFACE: {session.currentAgent}
         </span>
-        <span className="ml-auto text-[10px] opacity-75">
+        <span className="ml-auto text-[0.8em] opacity-75">
           STAGE {stage}/3 · CYCLE {session.cycle}
         </span>
       </div>
@@ -212,37 +221,38 @@ function MetaAgentPanel() {
       {/* Main panel viewport */}
       <div className="flex-1 min-h-0 flex flex-col p-2.5 gap-2 justify-between">
         
-        {/* Terminal log logs */}
-        <div className="flex flex-col gap-1 shrink-0 text-xs md:text-sm">
-          <div className="opacity-50 text-[10px]">
+        {/* Terminal log logs — Schriftgrößen relativ (em) zum Root-clamp */}
+        <div className="flex flex-col gap-1 shrink-0 text-[1em]">
+          <div className="opacity-50 text-[0.8em]">
             &gt; HOST_OS: {session.os} · MODEL: {session.model}
           </div>
-          
+
           <div className="leading-tight text-white font-semibold">
             &gt; REQUEST: Implementiere vibe coding agent desktop und starte diesen
           </div>
-          
+
           {time >= 2 && (
-            <div className="text-[11px] leading-tight">
+            <div className="text-[0.85em] leading-tight">
               &gt; SYSTEM: Initializing Antigravity nesting loop engine... OK
             </div>
           )}
           {time >= 4 && (
-            <div className="text-[11px] leading-tight">
+            <div className="text-[0.85em] leading-tight">
               &gt; SYSTEM: Compressing interaction context (0.001s)... 99.9% saved
             </div>
           )}
         </div>
 
         {/* Dynamic graphics view based on stage */}
-        <div className="flex-1 min-h-[120px] border rounded p-1.5 flex flex-col overflow-hidden relative"
+        {/* min-h relativ (em) statt fix 120px → schrumpft in kleinen Kacheln mit */}
+        <div className="flex-1 min-h-[9em] border rounded p-1.5 flex flex-col overflow-hidden relative"
              style={{ borderColor: `${activeTheme.color}33`, backgroundColor: 'rgba(0,0,0,0.4)' }}>
           
           {stage === 0 && (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-3 gap-1 select-none">
-              <span className="text-[15px] font-bold tracking-widest animate-pulse">ANALYSING TARGET</span>
-              <span className="text-[10px] opacity-60">MEASURING SOURCE REPO IMPLICATIONS</span>
-              <div className="flex gap-1 mt-2 text-[10px]">
+              <span className="text-[1.2em] font-bold tracking-widest animate-pulse">ANALYSING TARGET</span>
+              <span className="text-[0.8em] opacity-60">MEASURING SOURCE REPO IMPLICATIONS</span>
+              <div className="flex gap-1 mt-2 text-[0.8em]">
                 <span className="animate-[ping_1.5s_infinite]">[.]</span>
                 <span className="animate-[ping_1.5s_0.3s_infinite]">[.]</span>
                 <span className="animate-[ping_1.5s_0.6s_infinite]">[.]</span>
@@ -255,14 +265,14 @@ function MetaAgentPanel() {
               {/* Stats overlay */}
               <div className="flex justify-between items-center bg-black/60 px-2 py-1 border border-green-900/30 rounded shrink-0">
                 <div className="flex flex-col">
-                  <span className="text-[9px] opacity-60 uppercase font-bold">Subagents</span>
-                  <span className="text-sm font-bold text-white tracking-tight">
+                  <span className="text-[0.7em] opacity-60 uppercase font-bold">Subagents</span>
+                  <span className="text-[1.1em] font-bold text-white tracking-tight">
                     {subagentsCount.toLocaleString()}
                   </span>
                 </div>
                 <div className="flex flex-col text-right">
-                  <span className="text-[9px] opacity-60 uppercase font-bold">Throughput</span>
-                  <span className="text-sm font-bold text-white tracking-tight">
+                  <span className="text-[0.7em] opacity-60 uppercase font-bold">Throughput</span>
+                  <span className="text-[1.1em] font-bold text-white tracking-tight">
                     {tokensPerSecond.toFixed(1)}M tok/s
                   </span>
                 </div>
@@ -283,8 +293,8 @@ function MetaAgentPanel() {
                 ))}
               </div>
 
-              {/* Rapid logs list */}
-              <div className="h-[40px] overflow-hidden text-[9px] opacity-80 leading-none flex flex-col justify-end gap-0.5 select-none font-bold">
+              {/* Rapid logs list — Höhe + Schrift relativ (em), skaliert mit */}
+              <div className="h-[3.2em] overflow-hidden text-[0.7em] opacity-80 leading-none flex flex-col justify-end gap-0.5 select-none font-bold">
                 {currentLogs.map((log, idx) => (
                   <div key={idx} className="truncate">{log}</div>
                 ))}
@@ -294,17 +304,17 @@ function MetaAgentPanel() {
 
           {stage === 2 && (
             <div className="flex flex-col h-full justify-between gap-1">
-              <div className="text-[8px] opacity-60 font-bold uppercase tracking-wider select-none shrink-0 border-b border-green-950/30 pb-0.5">
+              <div className="text-[0.62em] opacity-60 font-bold uppercase tracking-wider select-none shrink-0 border-b border-green-950/30 pb-0.5">
                 EMITTING AUTONOMOUS CODE STREAM
               </div>
-              
-              {/* Scrolling code lines */}
-              <div className="flex-1 overflow-hidden font-mono text-[10px] md:text-[11px] leading-tight text-green-300/90 whitespace-pre p-1 select-none">
+
+              {/* Scrolling code lines — Schrift relativ (em) zum Root-clamp */}
+              <div className="flex-1 overflow-hidden font-mono text-[0.82em] leading-tight text-green-300/90 whitespace-pre p-1 select-none">
                 {displayedCode}
                 <span className="animate-pulse">_</span>
               </div>
 
-              <div className="flex justify-between items-center text-[9px] opacity-75 shrink-0 select-none border-t border-green-950/30 pt-1">
+              <div className="flex justify-between items-center text-[0.7em] opacity-75 shrink-0 select-none border-t border-green-950/30 pt-1">
                 <span>FILES MODIFIED: 147</span>
                 <span className="animate-pulse font-bold">WASM TARGET EMISSION: {Math.min(100, Math.round(((time - 20) / 18) * 100))}%</span>
               </div>
@@ -313,22 +323,23 @@ function MetaAgentPanel() {
 
           {stage === 3 && (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-3 gap-2 select-none">
-              <div 
-                className="text-[14px] font-bold tracking-widest px-3 py-1.5 border animate-pulse"
+              <div
+                className="text-[1.1em] font-bold tracking-widest px-3 py-1.5 border animate-pulse"
                 style={{ borderColor: activeTheme.color }}
               >
                 COMPILATION SUCCESSFUL
               </div>
-              <span className="text-[10px] font-bold text-white">
+              <span className="text-[0.8em] font-bold text-white">
                 BOOTING AGENT &apos;{session.targetAgent}&apos; ON OS...
               </span>
-              <div className="w-[150px] bg-green-950 h-1.5 rounded overflow-hidden mt-1 border border-green-900/30">
+              {/* Fortschrittsbalken-Breite relativ (em) statt fix 150px → skaliert mit */}
+              <div className="w-[12em] bg-green-950 h-1.5 rounded overflow-hidden mt-1 border border-green-900/30">
                 <div 
                   className="h-full animate-[loading_12s_linear]"
                   style={{ backgroundColor: activeTheme.color, width: `${((time - 38) / 12) * 100}%` }}
                 />
               </div>
-              <span className="text-[8px] opacity-60 font-semibold mt-1">
+              <span className="text-[0.62em] opacity-60 font-semibold mt-1">
                 INJECTING NESTED INTERACTIVE CONTEXT
               </span>
             </div>
@@ -337,7 +348,8 @@ function MetaAgentPanel() {
         </div>
 
         {/* Footer info showing nesting path */}
-        <div className="shrink-0 flex items-center justify-between text-[10px] md:text-xs opacity-60 leading-normal py-1 border-t border-green-950/20 select-none">
+        {/* Footer — Schrift relativ (em) zum Root-clamp */}
+        <div className="shrink-0 flex items-center justify-between text-[0.8em] opacity-60 leading-normal py-1 border-t border-green-950/20 select-none">
           <span className="truncate">NESTING PATH: Antigravity -&gt; {session.currentAgent} -&gt; {session.targetAgent}</span>
           <span className="shrink-0 font-bold ml-2">TARGET THEME: {session.targetTheme.name.toUpperCase()}</span>
         </div>

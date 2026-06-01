@@ -102,10 +102,13 @@ function ICQChatPanel() {
       const time  = nowTime()
 
       const el = document.createElement('div')
-      el.style.marginBottom = '4px'
+      el.style.marginBottom = '0.3em'   // relativer Abstand statt fester 4px → skaliert mit
       // Aufbau: [Zeit]  AGENTNAME:  Text
+      // Schriftgrößen relativ (em): der Zeitstempel ist 0.8em des skalierbaren
+      // Container-Werts (siehe fontSize-clamp am chatRef-Div), Name + Text erben 1em.
+      // So schrumpft die ganze Nachricht in kleinen Kacheln mit, statt fix zu bleiben.
       el.innerHTML =
-        `<span style="color:#374151;font-size:0.65rem">[${time}]</span> ` +
+        `<span style="color:#374151;font-size:0.8em">[${time}]</span> ` +
         `<span style="color:${color};font-weight:bold">${escHtml(msg.agent)}:</span> ` +
         `<span style="color:#d1fae5">${escHtml(msg.text)}</span>`
 
@@ -121,7 +124,7 @@ function ICQChatPanel() {
       const indicator = document.createElement('div')
       indicator.style.color = color
       indicator.style.opacity = '0.5'
-      indicator.style.fontSize = '0.65rem'
+      indicator.style.fontSize = '0.8em'   // relativ zum skalierbaren Container
       indicator.textContent = `${agent} tippt...`
       chatRef.current.appendChild(indicator)
       chatRef.current.scrollTop = chatRef.current.scrollHeight
@@ -157,11 +160,11 @@ function ICQChatPanel() {
       if (!chatRef.current) return
       const el = document.createElement('div')
       el.style.color = '#374151'
-      el.style.fontSize = '0.65rem'
+      el.style.fontSize = '0.8em'   // relativ zum skalierbaren Container
       el.style.textAlign = 'center'
       el.style.borderBottom = '1px solid #14532d'
-      el.style.marginBottom = '4px'
-      el.style.paddingBottom = '4px'
+      el.style.marginBottom = '0.3em'
+      el.style.paddingBottom = '0.3em'
       el.textContent = text
       chatRef.current.appendChild(el)
     }
@@ -176,26 +179,36 @@ function ICQChatPanel() {
 
   return (
     <Panel title="ICQ 2.0 // SECURE CHANNEL #WORLDDOMINATION">
-      {/* Online-Status-Leiste */}
-      <div className="flex gap-3 px-2 py-0.5 border-b border-green-900 shrink-0 flex-wrap">
+      {/* Online-Status-Leiste — fontSize-clamp gibt allen Kindern (über text-[1em])
+          eine kachelgrößenabhängige Schrift; der Online-Punkt ist 0.7em davon. */}
+      <div
+        className="flex gap-3 px-2 py-0.5 border-b border-green-900 shrink-0 flex-wrap"
+        style={{ fontSize: 'clamp(7px, 3cqmin, 12px)' }}
+      >
         {(Object.entries(AGENT_COLORS) as [AgentName, string][]).map(([name, color]) => (
-          <span key={name} className="text-xs font-mono flex items-center gap-1">
-            {/* Grüner Online-Punkt */}
-            <span style={{ color, fontSize: '0.5rem' }}>●</span>
+          <span key={name} className="text-[1em] font-mono flex items-center gap-1">
+            {/* Grüner Online-Punkt — relativ zur skalierbaren Leisten-Schrift */}
+            <span style={{ color, fontSize: '0.7em' }}>●</span>
             <span style={{ color }}>{name}</span>
           </span>
         ))}
       </div>
 
-      {/* Scrollbarer Chat-Bereich */}
+      {/* Scrollbarer Chat-Bereich — der wichtigste Fall: die Nachrichten (per
+          innerHTML eingefügt, alle Schriftgrößen relativ in em) skalieren mit der
+          Kachelgröße. In kleinen Kacheln bleibt so mehr (kleinerer) Text lesbar,
+          statt riesiger Schrift in einem winzigen Scrollbereich. Untergrenze 7,5px. */}
       <div
         ref={chatRef}
-        className="flex-1 overflow-y-auto text-xs font-mono leading-relaxed p-1.5 min-h-0"
-        style={{ scrollbarWidth: 'none' }}
+        className="flex-1 overflow-y-auto font-mono leading-snug p-1.5 min-h-0"
+        style={{ scrollbarWidth: 'none', fontSize: 'clamp(7.5px, 3.4cqmin, 14px)' }}
       />
 
-      {/* Untere Status-Zeile im Retro-ICQ-Stil */}
-      <div className="shrink-0 border-t border-green-900 px-2 py-0.5 text-xs font-mono text-green-900">
+      {/* Untere Status-Zeile im Retro-ICQ-Stil — skalierbar, leicht kleiner */}
+      <div
+        className="shrink-0 border-t border-green-900 px-2 py-0.5 font-mono text-green-900"
+        style={{ fontSize: 'clamp(7px, 2.6cqmin, 11px)' }}
+      >
         ENCRYPTION: AES-256-CLASSIFIED · CHANNEL: #WORLDDOMINATION · LOGGED: YES
       </div>
     </Panel>

@@ -40,3 +40,9 @@ archive/
 # Local SID scratch file (duplicate of frontend/public/audio/Turrican.sid, manual testing)
 /Turrican.sid
 
+scripts/_tools/
+
+# Lokale Konfig / interne Doku (nicht veröffentlichen)
+.env.example
+.env
+Rechtliche Einschätzung zu mods und sids.md

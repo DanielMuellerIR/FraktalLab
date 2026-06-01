@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useMemo, useRef } from 'react'
 import Panel from '../ui/Panel'
 import { subscribe } from '../utils/raf-coordinator'
 import ShaderPanel from '../ui/ShaderPanel'
@@ -263,6 +263,7 @@ export const FireScene = React.memo(function FireScene() {
     <ShaderPanel
       fragmentShader={FIRE_SHADER}
       title="CORE MELTDOWN // STATUS: CRITICAL"
+      speedName="FireScene"
     />
   )
 })
@@ -396,15 +397,22 @@ export const StarfieldScene = makeScene(
       }
     }
 
-    // Target tracking HUD position
+    // ── Ego-Perspektive (First-Person-Cockpit) ─────────────────────────────
+    // Wir SIND das Schiff: das eigene Schiff wird NICHT mehr gezeichnet. Der
+    // Betrachter blickt durch die Frontscheibe ins All. Der Feind ("Drohne")
+    // treibt vor uns in der Tiefe, leicht um die Bildmitte schwankend.
     const targetX = cx + Math.sin(t * 0.001) * (W * 0.18)
     const targetY = cy + Math.cos(t * 0.0012) * (H * 0.15)
     const droneSize = 14
 
-    // Chaser interceptor position
-    const chaserX = cx + Math.sin(t * 0.0009 - 0.4) * (W * 0.15)
-    const chaserY = cy + 45 + Math.cos(t * 0.0011 - 0.3) * (H * 0.1)
-    const chaserSize = 28
+    // Mündungspunkte unserer beiden Flügelkanonen. Sie liegen im VORDERGRUND
+    // (unten links und unten rechts, dicht am Bildrand) — genau da, wo bei
+    // einer Cockpit-Sicht die eigenen Waffen sitzen. Von hier aus fliegen die
+    // Schüsse nach VORNE in die Tiefe zum Feind.
+    const gunLX = cx - W * 0.42
+    const gunLY = cy + H * 0.46
+    const gunRX = cx + W * 0.42
+    const gunRY = cy + H * 0.46
 
     if (phase === 'chase' || phase === 'countdown') {
       // Draw locking brackets on target
@@ -460,63 +468,46 @@ export const StarfieldScene = makeScene(
       offCtx.arc(targetX, targetY + droneSize * 0.4, droneEngine, 0, Math.PI * 2)
       offCtx.fill()
 
-      // Draw Chasing Interceptor
-      offCtx.strokeStyle = 'rgba(0, 255, 240, 0.95)'
-      offCtx.lineWidth = 1.8
-      offCtx.beginPath()
-      offCtx.moveTo(chaserX, chaserY - chaserSize * 0.8)
-      offCtx.lineTo(chaserX + chaserSize * 0.15, chaserY - chaserSize * 0.2)
-      offCtx.lineTo(chaserX + chaserSize * 0.2, chaserY + chaserSize * 0.4)
-      offCtx.lineTo(chaserX - chaserSize * 0.2, chaserY + chaserSize * 0.4)
-      offCtx.lineTo(chaserX - chaserSize * 0.15, chaserY - chaserSize * 0.2)
-      offCtx.closePath()
-      offCtx.moveTo(chaserX - chaserSize * 0.15, chaserY + chaserSize * 0.1)
-      offCtx.lineTo(chaserX - chaserSize * 0.9, chaserY - chaserSize * 0.3)
-      offCtx.lineTo(chaserX - chaserSize * 0.7, chaserY + chaserSize * 0.2)
-      offCtx.lineTo(chaserX - chaserSize * 0.2, chaserY + chaserSize * 0.3)
-      offCtx.moveTo(chaserX + chaserSize * 0.15, chaserY + chaserSize * 0.1)
-      offCtx.lineTo(chaserX + chaserSize * 0.9, chaserY - chaserSize * 0.3)
-      offCtx.lineTo(chaserX + chaserSize * 0.7, chaserY + chaserSize * 0.2)
-      offCtx.lineTo(chaserX + chaserSize * 0.2, chaserY + chaserSize * 0.3)
-      offCtx.stroke()
-
-      // Chaser Thrusters
-      const chaserEngine = 4 + Math.sin(t * 0.03) * 1.5
-      offCtx.fillStyle = 'rgba(0, 240, 255, 0.95)'
-      offCtx.beginPath()
-      offCtx.arc(chaserX - chaserSize * 0.15, chaserY + chaserSize * 0.4, chaserEngine * 0.7, 0, Math.PI * 2)
-      offCtx.arc(chaserX + chaserSize * 0.15, chaserY + chaserSize * 0.4, chaserEngine * 0.7, 0, Math.PI * 2)
-      offCtx.fill()
+      // Hinweis: Hier wurde frueher das eigene cyanfarbene Verfolger-Schiff
+      // gezeichnet (Third-Person-Sicht). In der Ego-Perspektive entfaellt das
+      // komplett — wir SIND der Verfolger und sehen nur durch die Scheibe.
     }
 
     if (phase === 'chase') {
+      // ── Eigenes Sperrfeuer: VON UNS nach VORNE zum Feind ──────────────────
+      // Die Schuesse starten an den Fluegelkanonen im Vordergrund (gunLX/gunRX,
+      // unten am Bildrand) und fliegen in die Tiefe zur Drohne (targetX/targetY).
+      // Frueher lief der Schuss vom Verfolger-Schiff aus — die Richtung ist jetzt
+      // also bewusst umgekehrt: Mündung vorne unten -> Ziel hinten in der Mitte.
       const shootInterval = 1200
       const timeInInterval = t % shootInterval
       if (timeInInterval < 150) {
         const progress = timeInInterval / 150
-        offCtx.strokeStyle = 'rgba(255, 50, 50, 0.95)'
+        offCtx.strokeStyle = 'rgba(0, 255, 255, 0.95)'
         offCtx.lineWidth = 2
+        offCtx.lineCap = 'round'
 
-        const lx1 = chaserX - chaserSize * 0.9
-        const ly1 = chaserY - chaserSize * 0.3
-        const lleftX = lx1 + (targetX - lx1) * progress
-        const lleftY = ly1 + (targetY - ly1) * progress
+        // Linker Schuss: aktuelle Spitze entlang der Linie Mündung -> Ziel.
+        const lTipX = gunLX + (targetX - gunLX) * progress
+        const lTipY = gunLY + (targetY - gunLY) * progress
         offCtx.beginPath()
-        offCtx.moveTo(lleftX - (targetX - lx1) * 0.15, lleftY - (targetY - ly1) * 0.15)
-        offCtx.lineTo(lleftX, lleftY)
+        // Kurzer "Tracer"-Schweif HINTER der Spitze (Richtung Mündung), damit
+        // der Schuss als fliegender Strahl statt als statische Linie wirkt.
+        offCtx.moveTo(lTipX - (targetX - gunLX) * 0.15, lTipY - (targetY - gunLY) * 0.15)
+        offCtx.lineTo(lTipX, lTipY)
         offCtx.stroke()
 
-        const rx1 = chaserX + chaserSize * 0.9
-        const ry1 = chaserY - chaserSize * 0.3
-        const lrightX = rx1 + (targetX - rx1) * progress
-        const lrightY = ry1 + (targetY - ry1) * progress
+        // Rechter Schuss: spiegelbildlich von der rechten Kanone aus.
+        const rTipX = gunRX + (targetX - gunRX) * progress
+        const rTipY = gunRY + (targetY - gunRY) * progress
         offCtx.beginPath()
-        offCtx.moveTo(lrightX - (targetX - rx1) * 0.15, lrightY - (targetY - ry1) * 0.15)
-        offCtx.lineTo(lrightX, lrightY)
+        offCtx.moveTo(rTipX - (targetX - gunRX) * 0.15, rTipY - (targetY - gunRY) * 0.15)
+        offCtx.lineTo(rTipX, rTipY)
         offCtx.stroke()
 
+        // Einschlag-Ring am Feind, sobald die Schuesse fast angekommen sind.
         if (progress > 0.8) {
-          offCtx.strokeStyle = 'rgba(0, 255, 255, 0.8)'
+          offCtx.strokeStyle = 'rgba(255, 80, 80, 0.85)'
           offCtx.lineWidth = 1
           offCtx.beginPath()
           offCtx.arc(targetX, targetY, droneSize * 1.5 * (progress - 0.8) * 5, 0, Math.PI * 2)
@@ -544,13 +535,13 @@ export const StarfieldScene = makeScene(
     }
 
     if (phase === 'jump') {
+      // Der Feind (die Drohne) flieht in die Bildmitte und reisst dann in den
+      // Warp. Unser eigenes Schiff wird in der Ego-Perspektive nicht gezeichnet
+      // — wir springen ja "mit" und sehen alles durch unsere Scheibe.
       const p = (cycleTime - 12) / 2
-      const shipScale = 1 - p
 
       const targetJumpX = targetX + (cx - targetX) * p
       const targetJumpY = targetY + (cy - targetY) * p
-      const chaserJumpX = chaserX + (cx - chaserX) * (p * 0.8)
-      const chaserJumpY = chaserY + (cy - chaserY) * (p * 0.8)
 
       if (p < 0.6) {
         const droneSizeJ = droneSize * (1 - p / 0.6)
@@ -563,17 +554,6 @@ export const StarfieldScene = makeScene(
         offCtx.closePath()
         offCtx.stroke()
       }
-
-      const chaserSizeJ = chaserSize * shipScale
-      offCtx.strokeStyle = `rgba(0, 255, 240, ${shipScale})`
-      offCtx.beginPath()
-      offCtx.moveTo(chaserJumpX, chaserJumpY - chaserSizeJ * 0.8)
-      offCtx.lineTo(chaserJumpX + chaserSizeJ * 0.15, chaserJumpY - chaserSizeJ * 0.2)
-      offCtx.lineTo(chaserJumpX + chaserSizeJ * 0.2, chaserJumpY + chaserSizeJ * 0.4)
-      offCtx.lineTo(chaserJumpX - chaserSizeJ * 0.2, chaserJumpY + chaserSizeJ * 0.4)
-      offCtx.lineTo(chaserJumpX - chaserSizeJ * 0.15, chaserJumpY - chaserSizeJ * 0.2)
-      offCtx.closePath()
-      offCtx.stroke()
 
       const flashRad = p * Math.max(W, H) * 0.8
       offCtx.strokeStyle = `rgba(255, 255, 255, ${1 - p})`
@@ -611,10 +591,10 @@ export const StarfieldScene = makeScene(
       offCtx.font = 'bold 12px monospace'
       offCtx.fillText(`WARP DESYNCHRONIZATION IN PROGRESS`, cx - 110, cy + 50)
 
+      // Beim Warp-Austritt taucht der Feind wieder aus der Bildmitte auf und
+      // gleitet zurueck auf seine Position. Eigenes Schiff erneut nicht gezeichnet.
       const targetJumpX = cx + (targetX - cx) * p
       const targetJumpY = cy + (targetY - cy) * p
-      const chaserJumpX = cx + (chaserX - cx) * p
-      const chaserJumpY = cy + (chaserY - cy) * p
 
       const droneSizeJ = droneSize * p
       offCtx.strokeStyle = `rgba(255, 60, 60, ${p})`
@@ -623,17 +603,6 @@ export const StarfieldScene = makeScene(
       offCtx.lineTo(targetJumpX + droneSizeJ * 0.3, targetJumpY)
       offCtx.lineTo(targetJumpX, targetJumpY + droneSizeJ * 0.4)
       offCtx.lineTo(targetJumpX - droneSizeJ * 0.3, targetJumpY)
-      offCtx.closePath()
-      offCtx.stroke()
-
-      const chaserSizeJ = chaserSize * p
-      offCtx.strokeStyle = `rgba(0, 255, 240, ${p})`
-      offCtx.beginPath()
-      offCtx.moveTo(chaserJumpX, chaserJumpY - chaserSizeJ * 0.8)
-      offCtx.lineTo(chaserJumpX + chaserSizeJ * 0.15, chaserJumpY - chaserSizeJ * 0.2)
-      offCtx.lineTo(chaserJumpX + chaserSizeJ * 0.2, chaserJumpY + chaserSizeJ * 0.4)
-      offCtx.lineTo(chaserJumpX - chaserSizeJ * 0.2, chaserJumpY + chaserSizeJ * 0.4)
-      offCtx.lineTo(chaserJumpX - chaserSizeJ * 0.15, chaserJumpY - chaserSizeJ * 0.2)
       offCtx.closePath()
       offCtx.stroke()
 
@@ -723,6 +692,34 @@ export const StarfieldScene = makeScene(
     offCtx.moveTo(cx - 8, cy); offCtx.lineTo(cx + 8, cy)
     offCtx.moveTo(cx, cy - 8); offCtx.lineTo(cx, cy + 8)
     offCtx.stroke()
+
+    // ── Cockpit-Kanzel (verstaerkt die Ego-Perspektive) ────────────────────
+    // Zwei diagonale Streben laufen von den unteren Ecken zur oberen Bildmitte
+    // — wie der Rahmen einer Frontscheibe, durch die wir blicken. Dazu kleine
+    // Marker an den Fluegelkanonen unten, aus denen unsere Schuesse kommen.
+    offCtx.strokeStyle = 'rgba(74, 222, 128, 0.18)'
+    offCtx.lineWidth = 2
+    offCtx.beginPath()
+    // Linke Kanzelstrebe: untere linke Ecke -> oben Mitte
+    offCtx.moveTo(0, H)
+    offCtx.lineTo(cx - W * 0.12, H * 0.18)
+    // Rechte Kanzelstrebe: untere rechte Ecke -> oben Mitte
+    offCtx.moveTo(W, H)
+    offCtx.lineTo(cx + W * 0.12, H * 0.18)
+    // Oberer Querholm der Kanzel
+    offCtx.moveTo(cx - W * 0.12, H * 0.18)
+    offCtx.lineTo(cx + W * 0.12, H * 0.18)
+    offCtx.stroke()
+
+    // Fluegelkanonen-Marker (kleine Klammern an den Muendungen unten).
+    offCtx.strokeStyle = 'rgba(0, 255, 255, 0.45)'
+    offCtx.lineWidth = 1.5
+    offCtx.beginPath()
+    offCtx.moveTo(gunLX - 5, gunLY); offCtx.lineTo(gunLX + 5, gunLY)
+    offCtx.moveTo(gunLX, gunLY - 5); offCtx.lineTo(gunLX, gunLY + 5)
+    offCtx.moveTo(gunRX - 5, gunRY); offCtx.lineTo(gunRX + 5, gunRY)
+    offCtx.moveTo(gunRX, gunRY - 5); offCtx.lineTo(gunRX, gunRY + 5)
+    offCtx.stroke()
   },
 )
 
@@ -801,6 +798,7 @@ export const TunnelScene = React.memo(function TunnelScene() {
     <ShaderPanel
       fragmentShader={TUNNEL_SHADER}
       title="WORMHOLE // TRANSIT ACTIVE"
+      speedName="TunnelScene"
     />
   )
 })
@@ -814,6 +812,31 @@ const ROTOZOOM_SHADER = `
     return c.z + c.y * (rgb - 0.5) * (1.0 - abs(2.0 * c.z - 1.0));
   }
 
+  // Liefert ein "Muster" fuer Texel-Koordinaten (sx, sy). Welches Muster
+  // verwendet wird, haengt von iPattern ab (per-Mount-Zufall, 0..3). So
+  // sieht jeder Panel-Aufbau anders aus, statt immer dasselbe Schachbrett
+  // zu zeigen.
+  //   0 = klassisches Schachbrett
+  //   1 = diagonale Streifen
+  //   2 = konzentrische Ringe (Bullseye)
+  //   3 = Karo-/Diamant-Gitter
+  float patternValue(float sx, float sy) {
+    if (iPattern < 0.5) {
+      // Schachbrett: abwechselnd 0/1 pro Gitterzelle
+      return abs(mod(floor(sx) + floor(sy), 2.0));
+    } else if (iPattern < 1.5) {
+      // Diagonale Streifen: Summe der Koordinaten in Baender zerlegt
+      return step(0.5, fract((sx + sy) * 0.5));
+    } else if (iPattern < 2.5) {
+      // Konzentrische Ringe: Abstand zum Ursprung in Baender zerlegt
+      return step(0.5, fract(length(vec2(sx, sy)) * 0.5));
+    } else {
+      // Karo-Gitter: Betraege der Bruchteile, ergibt Diamant-Kacheln
+      vec2 f = abs(fract(vec2(sx, sy) * 0.5) - 0.5);
+      return step(0.5, f.x + f.y);
+    }
+  }
+
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float ts = iTime;
 
@@ -825,6 +848,27 @@ const ROTOZOOM_SHADER = `
 
     float cx = p.x - originalW / 2.0;
     float cy = p.y - originalH / 2.0;
+
+    // ── Per-Mount-Zufall aus iSeed ableiten ─────────────────────────────────
+    // iSeed kommt als Uniform aus React (ein zufaelliger Wert pro Panel-Mount).
+    // Daraus berechnen wir mehrere unabhaengige Pseudo-Zufallszahlen 0..1,
+    // indem wir den Seed leicht verschoben durch eine fract(sin())-Hash-Funktion
+    // schicken. Ergebnis: bei jedem Neuladen andere Geschwindigkeit, Drehrichtung,
+    // Zoom-Tiefe und Farbpalette.
+    float r0 = fract(sin(iSeed * 12.9898) * 43758.5453);
+    float r1 = fract(sin(iSeed * 78.2330 + 1.7) * 43758.5453);
+    float r2 = fract(sin(iSeed * 39.4250 + 4.3) * 43758.5453);
+    float r3 = fract(sin(iSeed * 93.9890 + 7.1) * 43758.5453);
+
+    // Drehrichtung: 50/50 links- oder rechtsherum.
+    float spinDir = r0 < 0.5 ? -1.0 : 1.0;
+    // Rotationsgeschwindigkeit: variiert von langsam (0.08) bis zuegig (0.32).
+    float spinSpeed = 0.08 + 0.24 * r1;
+    // Zoom-Bandbreite: wie stark der Trampolin-Bounce hinein-/herauszoomt.
+    float zoomAmp = 0.045 + 0.05 * r2;
+    // Farb-Offset: verschiebt die komplette Palette pro Mount.
+    float hueShift = r3;
+
     // Trampolin ease-in-out snap bounce physics
     float period = 5.0;
     float cycle = mod(ts, period);
@@ -839,43 +883,65 @@ const ROTOZOOM_SHADER = `
       float x = (cycle - 3.5) / 1.5;
       bounce = mix(1.0, 0.0, smoothstep(0.0, 1.0, x));
     }
-    float z = 0.012 + 0.068 * bounce;
-    float angle = ts * 0.15 + bounce * 2.356;
+    float z = 0.012 + zoomAmp * bounce;
+    float angle = ts * spinSpeed * spinDir + bounce * 2.356;
     float cVal = cos(angle) * z;
-    float sVal = sin(angle) * z;    
-    // 2x2 grid supersampling on checker function to smooth edges
-    float checkerSum = 0.0;
+    float sVal = sin(angle) * z;
+    // 2x2 grid supersampling on pattern function to smooth edges
+    float patternSum = 0.0;
     float offsets[2];
     offsets[0] = -0.25;
     offsets[1] = 0.25;
-    
+
     for (int i = 0; i < 2; i++) {
       float subCy = cy + offsets[i];
       for (int j = 0; j < 2; j++) {
         float subCx = cx + offsets[j];
         float sx = subCx * cVal - subCy * sVal;
         float sy = subCx * sVal + subCy * cVal;
-        float checker = mod(floor(sx) + floor(sy), 2.0);
-        checkerSum += abs(checker);
+        // Statt fest Schachbrett: das per-Mount gewaehlte Muster abfragen.
+        patternSum += patternValue(sx, sy);
       }
     }
-    float checkerAvg = checkerSum * 0.25;
-    
+    float patternAvg = patternSum * 0.25;
+
     float centerSx = cx * cVal - cy * sVal;
     float centerSy = cx * sVal + cy * cVal;
-    
-    float hue = mod(abs((centerSx + centerSy) * 10.0 + ts * 40.0), 360.0) / 360.0;
-    float lightness = 0.05 + 0.50 * checkerAvg;
-    
+
+    // Hue bekommt zusaetzlich den per-Mount-Offset (hueShift) und eine
+    // langsame Eigen-Drift ueber die Zeit, damit die Farben nicht statisch wirken.
+    float hue = fract(
+        abs((centerSx + centerSy) * 10.0 + ts * 40.0) / 360.0
+      + hueShift
+      + ts * 0.01
+    );
+    float lightness = 0.05 + 0.50 * patternAvg;
+
     vec3 col = hsl2rgb(vec3(hue, 1.0, lightness));
     fragColor = vec4(col, 1.0);
   }
 `
 
 export const RotozoomScene = React.memo(function RotozoomScene() {
+  // Pro Mount einmalig zufaellige Uniforms erzeugen. useMemo mit leerer
+  // Dependency-Liste sorgt dafuer, dass diese Werte ueber die gesamte
+  // Lebensdauer der Komponente stabil bleiben (kein Flackern bei Re-renders),
+  // sich aber bei jedem Neuladen/Neueinbau des Panels unterscheiden.
+  //   iSeed    — beliebiger Zufallswert, im Shader zu Geschwindigkeit,
+  //              Drehrichtung, Zoom-Tiefe und Farb-Offset verrechnet.
+  //   iPattern — waehlt 1 von 4 Textur-Mustern (0..3): Schachbrett,
+  //              Diagonal-Streifen, Ringe oder Karo-Gitter.
+  const uniforms = useMemo(
+    () => ({
+      iSeed: Math.random() * 1000,
+      iPattern: Math.floor(Math.random() * 4),
+    }),
+    [],
+  )
   return (
     <ShaderPanel
       fragmentShader={ROTOZOOM_SHADER}
+      uniforms={uniforms}
       title="TESSERACT ROTATION // DECRYPTING"
     />
   )

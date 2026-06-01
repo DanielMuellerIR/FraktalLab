@@ -320,10 +320,12 @@ function DiskCleanupPanel() {
 
   return (
     <Panel title="DISK CLEANUP // PURGING DATA">
+      {/* fontSize-clamp: der Lösch-Log skaliert mit der Kachelgröße (cqmin),
+          Untergrenze ~7,5px. text-xs entfernt, leading-snug für mitschrumpfende Zeilen. */}
       <div
         ref={outputRef}
-        className="flex-1 overflow-y-auto text-xs font-mono leading-relaxed p-1.5 min-h-0"
-        style={{ scrollbarWidth: 'none' }}
+        className="flex-1 overflow-y-auto font-mono leading-snug p-1.5 min-h-0"
+        style={{ scrollbarWidth: 'none', fontSize: 'clamp(7.5px, 3.4cqmin, 13px)' }}
       />
     </Panel>
   )

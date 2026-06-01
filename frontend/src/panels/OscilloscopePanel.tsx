@@ -1,8 +1,9 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import Panel from '../ui/Panel'
 import { subscribe } from '../utils/raf-coordinator'
-import { registerAudioFocusListener, requestAudioFocus, releaseAudioFocus } from '../utils/audio-focus'
+import { registerAudioFocusListener, requestAudioFocus, releaseAudioFocus, registerAudioCandidate } from '../utils/audio-focus'
 import { SidPlayer, type SidMetadata, type SidVisuals } from '../utils/sidplayer'
+import { SID_TRACKS, BOTB_SOURCE, BOTB_LICENSE_SHORT, BOTB_LICENSE_URL } from '../utils/botb-tracks.generated'
 
 const AUDIO_ID = 'sid-player'
 const BASE = import.meta.env.BASE_URL
@@ -50,15 +51,27 @@ interface Track {
   url: string
   composer: string
   year: string
+  // BotB-Attribution (CC BY-NC-SA): Quelle, Lizenz-Kürzel, Entry-Link.
+  source?: string
+  license?: string
+  entryUrl?: string
   isUser?: boolean
   buffer?: Uint8Array
 }
 
-const DEFAULT_TRACKS: Track[] = [
-  { id: 'cyber', name: 'Cybernoid', url: `${BASE}audio/Cybernoid.sid`, composer: 'Jeroen Tel', year: '1988' },
-  { id: 'cyber2', name: 'Cybernoid II', url: `${BASE}audio/Cybernoid_II.sid`, composer: 'Jeroen Tel', year: '1988' },
-  { id: 'turrican', name: 'Turrican', url: `${BASE}audio/Turrican.sid`, composer: 'Ramiro Vaca', year: '1990' },
-]
+// Mitgelieferte SIDs von Battle of the Bits (CC BY-NC-SA). Aus dem Manifest
+// (botb-tracks.generated.ts) abgeleitet → Tracks/Attribution/Größen bleiben bei
+// Änderungen synchron (Skript: scripts/build-audio-manifest.mjs).
+const DEFAULT_TRACKS: Track[] = SID_TRACKS.map(t => ({
+  id:        `botb-${t.id}`,
+  name:      t.title,
+  url:       `${BASE}${t.file}`,
+  composer:  t.author,
+  year:      `Entry ${t.id}`,
+  source:    BOTB_SOURCE,
+  license:   BOTB_LICENSE_SHORT,
+  entryUrl:  t.entryUrl,
+}))
 
 function isSidName(name: string): boolean {
   return name.toLowerCase().endsWith('.sid')
@@ -102,7 +115,7 @@ async function collectSidFilesFromEntries(entries: any[]): Promise<File[]> {
 }
 
 function OscilloscopePanel() {
-  const [trackIdx, setTrackIdx] = useState(0)
+  const [trackIdx, setTrackIdx] = useState(() => Math.floor(Math.random() * DEFAULT_TRACKS.length))
   const [playing, setPlaying] = useState(false)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -295,6 +308,37 @@ function OscilloscopePanel() {
     }
   }, [player])
 
+  // Als Election-Kandidat registrieren. Beim Mount ist bereits ein zufälliger
+  // Default-Track geladen (siehe Effekt unten) → start() spielt diesen ab.
+  // setMuted() stoppt/startet, behält aber den Audio-Fokus (Pause-Verhalten).
+  useEffect(() => {
+    return registerAudioCandidate(AUDIO_ID, {
+      start: () => {
+        const p = playerRef.current
+        requestAudioFocus(AUDIO_ID)
+        p.resumeContext()
+        if (p.loaded) {
+          p.play().then(() => setPlaying(true)).catch(console.error)
+        } else {
+          // Track noch nicht fertig geladen → nach dem Laden automatisch starten.
+          shouldAutoPlayRef.current = true
+        }
+      },
+      setMuted: (m) => {
+        const p = playerRef.current
+        if (m) {
+          p.stop()
+          setPlaying(false)
+        } else {
+          requestAudioFocus(AUDIO_ID)
+          p.resumeContext()
+          if (p.loaded) p.play().then(() => setPlaying(true)).catch(console.error)
+          else shouldAutoPlayRef.current = true
+        }
+      },
+    })
+  }, [])
+
   // Keep playingRef readable by the RAF loop (which captures stale state).
   useEffect(() => { playingRef.current = playing }, [playing])
 
@@ -417,7 +461,7 @@ function OscilloscopePanel() {
     // IntersectionObserver to pause loop when scrolled out of view
     const io = new IntersectionObserver(([e]) => {
       if (e.isIntersecting) {
-        if (!unsubscribe && alive) unsubscribe = subscribe(loop)
+        if (!unsubscribe && alive) unsubscribe = subscribe(loop, 'OscilloscopePanel')
       } else {
         if (unsubscribe) {
           unsubscribe()
@@ -584,7 +628,7 @@ function OscilloscopePanel() {
       )
     }
 
-    unsubscribe = subscribe(loop)
+    unsubscribe = subscribe(loop, 'OscilloscopePanel')
 
     return () => {
       alive = false
@@ -598,7 +642,8 @@ function OscilloscopePanel() {
   const totalSubtunes = metadata?.subtunesCount || 1
   const displayComposer = metadata?.author || allTracks[trackIdx]?.composer || 'Unknown'
   const displayTitle = metadata?.title || allTracks[trackIdx]?.name || 'Unknown'
-  const displayInfo = metadata?.info || (allTracks[trackIdx]?.year ? `Hewson © ${allTracks[trackIdx].year}` : 'C64 Chiptune')
+  const curTrack = allTracks[trackIdx]
+  const displayInfo = metadata?.info || (curTrack?.source ? `${curTrack.source} · ${curTrack.year}` : 'C64 Chiptune')
 
   return (
     <Panel title="C64 SID MUSIC PLAYER // DUAL-TRACE MULTI-OSCILLOSCOPE">
@@ -724,6 +769,19 @@ function OscilloscopePanel() {
             <span className="text-neutral-400">Composer: <strong className="text-[#38bdf8]">{displayComposer}</strong></span>
           </div>
           <div className="text-neutral-500 italic truncate">{displayInfo}</div>
+          {/* CC-Attribution (TASL) — nur für mitgelieferte BotB-Tracks, nicht für
+              User-Uploads. Autoscroll-Laufschrift bei zu wenig Platz (.marquee). */}
+          {curTrack?.license && !curTrack?.isUser && (
+            <div className="marquee text-[#6ee7b7]/80 border-t border-[#111827] pt-0.5">
+              <span className="marquee__inner">
+                {curTrack.name} — {curTrack.composer}, {curTrack.source} {curTrack.year},
+                {' '}{curTrack.license} · No changes made ·{' '}
+                <a href={curTrack.entryUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-white">BotB-Entry</a>
+                {' · '}
+                <a href={BOTB_LICENSE_URL} target="_blank" rel="noopener noreferrer" className="underline hover:text-white">Lizenz</a>
+              </span>
+            </div>
+          )}
           {loadError && <div className="text-red-500 font-bold mt-0.5">ERROR: {loadError}</div>}
         </div>
 

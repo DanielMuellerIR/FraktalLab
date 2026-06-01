@@ -1,5 +1,6 @@
 import { memo,  useEffect, useRef, useState } from 'react'
 import Panel from '../ui/Panel'
+import { getTextSpeed } from '../utils/panel-speed'
 
 // ── Typen ──────────────────────────────────────────────────────────────────────
 
@@ -273,7 +274,9 @@ function ClassifiedPanel() {
             setDocIdx(prev => (prev + 1) % DOCS.length)
           }, wait)
         }
-      }, 30) // ~30ms pro Zeichen → ca. 33 Zeichen/Sekunde
+        // Speed-System v2: Textpanels laufen auf Proxima 2× schneller (getTextSpeed()).
+        // Layout re-mountet bei Dichte-Wechsel → Wert greift beim nächsten Mount.
+      }, 30 / getTextSpeed()) // ~30ms pro Zeichen → ca. 33 Zeichen/Sekunde
     }, 600) // 600ms Anlauf-Pause nach Dokument-Wechsel
 
     // Cleanup wenn Komponente unmountet oder docIdx sich erneut ändert
@@ -344,7 +347,13 @@ function ClassifiedPanel() {
 
   return (
     <Panel title="CLASSIFIED // EYES ONLY">
-      <div className="flex flex-col h-full w-full overflow-hidden p-2 gap-1 text-xs font-mono">
+      {/* fontSize-clamp am Wurzel-Container: Banner, Header, Body und Footer erben
+          die kachelgrößenabhängige Schrift (text-xs entfernt). In kleinen Kacheln
+          schrumpft das ganze Dokument mit – Untergrenze ~7,5px. */}
+      <div
+        className="flex flex-col h-full w-full overflow-hidden p-2 gap-1 font-mono"
+        style={{ fontSize: 'clamp(7.5px, 3.2cqmin, 13px)' }}
+      >
 
         {/* ── Klassifizierungs-Banner oben ── */}
         <div className={`text-center font-bold tracking-widest border border-current py-0.5 shrink-0 ${levelColor}`}>
@@ -373,7 +382,7 @@ function ClassifiedPanel() {
             {/* Blinkender Cursor am Tipp-Punkt, nur solange das Tippen läuft */}
             {revealed < rawText.length && (
               <span
-                className="inline-block w-1.5 h-3 bg-green-400 ml-px align-middle"
+                className="inline-block w-[0.5em] h-[1em] bg-green-400 ml-px align-middle"
                 style={{ animation: 'pulse 800ms step-end infinite' }}
               />
             )}

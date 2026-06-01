@@ -274,25 +274,31 @@ function AgentCodePanel() {
 
   return (
     <Panel title="AGENTIC DEV TERMINAL // SYSTEM ARCHITECT">
-      {/* Äußeres Wrapper-Div: füllt den Panel-Inhalt komplett */}
-      <div className="flex flex-col h-full w-full overflow-hidden p-1 gap-0.5">
+      {/* Äußeres Wrapper-Div: füllt den Panel-Inhalt komplett.
+          fontSize-clamp bindet die Terminal-Schrift an die Kachelgröße (cqmin) —
+          in kleinen Kacheln klein, aber nie unter ~7,5px. Output- und Eingabezeile
+          erben über text-[1em]. */}
+      <div
+        className="flex flex-col h-full w-full overflow-hidden p-1 gap-0.5"
+        style={{ fontSize: 'clamp(7.5px, 3.2cqmin, 13px)' }}
+      >
 
         {/* Scrollbarer Ausgabe-Bereich */}
         <div
           ref={outputRef}
-          className="flex-1 overflow-y-auto text-xs font-mono leading-relaxed min-h-0 whitespace-pre-wrap"
+          className="flex-1 overflow-y-auto text-[1em] font-mono leading-snug min-h-0 whitespace-pre-wrap"
           style={{ scrollbarWidth: 'none' }}
         />
 
         {/* Aktuelle Eingabezeile mit blinkendem Cursor */}
-        <div className="flex items-center text-xs font-mono text-green-300 shrink-0 border-t border-green-900 pt-0.5">
+        <div className="flex items-center text-[1em] font-mono text-green-300 shrink-0 border-t border-green-900 pt-0.5">
           <span
             ref={inputLineRef}
             className="flex-1 whitespace-pre-wrap break-all"
           />
-          {/* Blinkender Block-Cursor */}
+          {/* Blinkender Block-Cursor — Maße relativ (em) zur Schrift, skaliert mit */}
           <span
-            className="inline-block w-1.5 h-3 bg-green-400 ml-px animate-pulse"
+            className="inline-block w-[0.5em] h-[1em] bg-green-400 ml-px animate-pulse"
             style={{ animationDuration: '800ms' }}
           />
         </div>

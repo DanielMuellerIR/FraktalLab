@@ -16,6 +16,17 @@ interface Circle {
   mass: number
   color: string
   glowColor: string
+  // ── Energieaufbau-Mechanik ───────────────────────────────────────────────
+  // "energy" steigt, solange diese Kugel dicht von Nachbarn umgeben ist, und
+  // faellt wieder, sobald sie frei steht. Erreicht sie die Entlade-Schwelle,
+  // wird die Kugel (samt naher Nachbarn) explosiv nach aussen geschleudert.
+  energy: number
+  // Pro Kugel leicht zufaellige Entlade-Schwelle -> sorgt fuer Varianz, damit
+  // nicht alle Kugeln synchron im selben Frame entladen.
+  dischargeThreshold: number
+  // Kurzer Cooldown direkt nach einer Entladung. Verhindert, dass eine gerade
+  // entladene (und noch nah an anderen liegende) Kugel sofort wieder auflaedt.
+  dischargeCooldown: number
 }
 
 interface Particle {
@@ -91,6 +102,16 @@ function PhysicsSandboxPanel() {
     let dischargeRingRadius = 0.0
     let dischargeRingAlpha = 0.0
 
+    // ── Zustand der Energieaufbau-/Entlade-Mechanik ────────────────────────────
+    // Spannungslinien, die in diesem Frame zwischen nahen Kugeln gezeichnet
+    // werden. Wird pro Frame neu befuellt (kein Speicher-Wachstum). "load" ist
+    // 0..1 und bestimmt Helligkeit/Dicke der Linie (wie stark "geladen").
+    interface TensionLine { x1: number; y1: number; x2: number; y2: number; load: number }
+    const tensionLines: TensionLine[] = []
+    // Lokale Entlade-Schockwellen (eine pro Kugel-Entladung), rein visuell.
+    interface Shock { x: number; y: number; radius: number; alpha: number; color: string }
+    const shocks: Shock[] = []
+
     // 12-16 leuchtende Kreise erzeugen
     const circleCount = 14
     for (let i = 0; i < circleCount; i++) {
@@ -107,8 +128,24 @@ function PhysicsSandboxPanel() {
         mass,
         color: PARTICLE_COLORS[colorIdx],
         glowColor: PARTICLE_COLORS[colorIdx],
+        // Energie startet leer; Schwelle bekommt pro Kugel etwas Streuung.
+        energy: 0,
+        dischargeThreshold: rand(2.2, 3.4),
+        dischargeCooldown: 0,
       })
     }
+
+    // ── Parameter der Energieaufbau-/Entlade-Mechanik ──────────────────────────
+    // Abstand (Mittelpunkt zu Mittelpunkt, in Pixel), bis zu dem zwei Kugeln als
+    // "dicht beieinander" zaehlen. Innerhalb dieser Reichweite laedt sich Energie
+    // auf und es wird ein Spannungsfeld (Linie) zwischen den Kugeln gezeichnet.
+    const PROXIMITY_RANGE = 70
+    // Wie schnell Energie pro Sekunde und pro nahem Nachbarn steigt.
+    const ENERGY_GAIN_PER_NEIGHBOR = 0.9
+    // Wie schnell Energie zerfaellt, wenn eine Kugel frei steht (pro Sekunde).
+    const ENERGY_DECAY = 1.1
+    // Cooldown-Dauer nach einer Entladung (in Sekunden).
+    const DISCHARGE_COOLDOWN = 0.6
 
     // ── Hilfsfunktionen ──────────────────────────────────────────────────────
 
@@ -374,6 +411,124 @@ function PhysicsSandboxPanel() {
         }
       }
 
+      // 2b. ENERGIEAUFBAU BEI DICHTEM GEDRAENGE + SCHLAGARTIGE ENTLADUNG
+      //
+      // Idee: Solange eine Kugel von nahen Nachbarn umgeben ist, laedt sich ihre
+      // "energy" auf. Steht sie frei, faellt die Energie wieder ab. Ueberschreitet
+      // die Energie ihre (zufaellig gestreute) Schwelle, entlaedt sie sich: die
+      // Kugel und alle nahen Nachbarn werden radial nach aussen geschleudert.
+      // So entsteht ein wiederkehrender Zyklus aus Verdichtung und Explosion.
+
+      // Spannungslinien-Puffer fuer dieses Frame leeren (kein Wachstum ueber Zeit).
+      tensionLines.length = 0
+
+      // Pro Kugel zaehlen wir nahe Nachbarn und merken uns den dichtesten Druck,
+      // um daraus die Energie-Aufladerate abzuleiten.
+      const neighborCount = new Float32Array(circles.length)
+
+      const proxRangeSq = PROXIMITY_RANGE * PROXIMITY_RANGE
+
+      // Alle Paare einmal durchgehen (gleiche O(n^2)-Struktur wie die Kollision,
+      // bei ~14 Kugeln voellig unkritisch). Nahe Paare erzeugen Energiezuwachs
+      // und eine sichtbare Spannungslinie.
+      for (let i = 0; i < circles.length; i++) {
+        const c1 = circles[i]
+        for (let j = i + 1; j < circles.length; j++) {
+          const c2 = circles[j]
+          const dx = c2.x - c1.x
+          const dy = c2.y - c1.y
+          const dSq = dx * dx + dy * dy
+          if (dSq < proxRangeSq) {
+            const dist = Math.sqrt(dSq) || 0.001
+            // "closeness" 0..1: 1 = quasi beruehrend, 0 = am Rand der Reichweite.
+            const closeness = 1 - dist / PROXIMITY_RANGE
+            // Beide Kugeln spueren den Druck dieses nahen Nachbarn.
+            neighborCount[i] += closeness
+            neighborCount[j] += closeness
+
+            // Spannungslinie nur fuer wirklich relevante Naehe sammeln und nur,
+            // wenn mindestens eine der beiden Kugeln schon etwas geladen ist ->
+            // spart Linien bei lockerem Vorbeiflug und macht das "Laden" sichtbar.
+            const load = Math.min(1, (c1.energy + c2.energy) / (c1.dischargeThreshold + c2.dischargeThreshold))
+            if (closeness > 0.15 && load > 0.05) {
+              tensionLines.push({ x1: c1.x, y1: c1.y, x2: c2.x, y2: c2.y, load: load * closeness })
+            }
+          }
+        }
+      }
+
+      // Energie pro Kugel aktualisieren und ggf. entladen.
+      for (let i = 0; i < circles.length; i++) {
+        const c = circles[i]
+
+        // Cooldown nach einer frischen Entladung herunterzaehlen.
+        if (c.dischargeCooldown > 0) {
+          c.dischargeCooldown = Math.max(0, c.dischargeCooldown - dt)
+        }
+
+        const pressure = neighborCount[i]
+        if (pressure > 0.4 && c.dischargeCooldown <= 0) {
+          // Dicht umgeben -> Energie steigt, skaliert mit dem Nachbar-Druck.
+          c.energy += ENERGY_GAIN_PER_NEIGHBOR * pressure * dt
+        } else {
+          // Frei stehend -> Energie zerfaellt langsam wieder.
+          c.energy = Math.max(0, c.energy - ENERGY_DECAY * dt)
+        }
+
+        // Schwelle erreicht? -> schlagartige Entladung.
+        if (c.energy >= c.dischargeThreshold) {
+          // Energie der entladenden Kugel zuruecksetzen + kurzer Cooldown.
+          c.energy = 0
+          c.dischargeCooldown = DISCHARGE_COOLDOWN
+
+          // Etwas Varianz in der Wucht, damit Entladungen nicht uniform wirken.
+          const blast = rand(260, 420)
+
+          // Alle nahen Nachbarn radial vom Entlade-Zentrum wegschleudern.
+          for (let k = 0; k < circles.length; k++) {
+            if (k === i) continue
+            const o = circles[k]
+            const dx = o.x - c.x
+            const dy = o.y - c.y
+            const dSq = dx * dx + dy * dy
+            if (dSq < proxRangeSq) {
+              const dist = Math.sqrt(dSq) || 0.001
+              // Naehere Kugeln bekommen mehr Impuls (linearer Abfall mit Distanz).
+              const falloff = 1 - dist / PROXIMITY_RANGE
+              const push = blast * falloff
+              o.vx += (dx / dist) * push
+              o.vy += (dy / dist) * push
+              // Nachbarn verlieren beim Stoss einen Teil ihrer eigenen Ladung,
+              // damit eine Entladung den lokalen Cluster wirklich "entspannt".
+              o.energy *= 0.4
+            }
+          }
+
+          // Die entladende Kugel selbst bekommt einen leichten Rueckstoss in eine
+          // zufaellige Richtung (Impulserhaltung nur grob angedeutet, rein optisch).
+          const recoilAngle = Math.random() * Math.PI * 2
+          c.vx += Math.cos(recoilAngle) * blast * 0.3
+          c.vy += Math.sin(recoilAngle) * blast * 0.3
+
+          // Visuelle Effekte: Funken-Explosion + expandierende Schockwelle.
+          createExplosion(c.x, c.y, 22, c.glowColor)
+          createExplosion(c.x, c.y, 10, '#ffffff')
+          shocks.push({ x: c.x, y: c.y, radius: c.radius, alpha: 0.9, color: c.glowColor })
+        }
+      }
+
+      // Lokale Schockwellen weiterbewegen und ausblenden (von hinten nach vorne
+      // iterieren, damit das Entfernen per splice die Indizes nicht durcheinander
+      // bringt).
+      for (let i = shocks.length - 1; i >= 0; i--) {
+        const s = shocks[i]
+        s.radius += 260 * dt
+        s.alpha -= dt * 2.0
+        if (s.alpha <= 0 || s.radius > PROXIMITY_RANGE * 1.6) {
+          shocks.splice(i, 1)
+        }
+      }
+
       // 3. PARTIKEL BEWEGEN & FADEN
       for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i]
@@ -492,8 +647,69 @@ function PhysicsSandboxPanel() {
         ctx.restore()
       }
 
+      // B2. SPANNUNGSFELD zwischen nahen, geladenen Kugeln zeichnen.
+      // Die Linien werden mit additivem Blending (lighter) gezeichnet, damit sich
+      // ueberlappende Felder hell aufaddieren -> "elektrisches" Glimmen.
+      if (tensionLines.length > 0) {
+        ctx.save()
+        ctx.globalCompositeOperation = 'lighter'
+        tensionLines.forEach(l => {
+          // Je staerker geladen, desto heller (cyan -> weiss) und dicker.
+          const a = Math.min(0.85, l.load * 0.85)
+          const g = Math.round(160 + l.load * 95) // Gruenanteil steigt -> Richtung Weiss
+          ctx.strokeStyle = `rgba(120, ${g}, 255, ${a})`
+          ctx.lineWidth = 0.6 + l.load * 2.2
+          ctx.shadowColor = '#66ccff'
+          ctx.shadowBlur = 6 + l.load * 10
+          ctx.beginPath()
+          ctx.moveTo(l.x1, l.y1)
+          ctx.lineTo(l.x2, l.y2)
+          ctx.stroke()
+        })
+        ctx.restore()
+      }
+
+      // B3. Lokale Entlade-Schockwellen (Ringe) zeichnen.
+      if (shocks.length > 0) {
+        ctx.save()
+        ctx.globalCompositeOperation = 'lighter'
+        shocks.forEach(s => {
+          ctx.strokeStyle = s.color
+          ctx.globalAlpha = Math.max(0, s.alpha)
+          ctx.lineWidth = 2.5
+          ctx.shadowColor = s.color
+          ctx.shadowBlur = 12
+          ctx.beginPath()
+          ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2)
+          ctx.stroke()
+        })
+        ctx.restore()
+      }
+
       // C. Kreise zeichnen (mit leichtem Glow)
       circles.forEach(c => {
+        // Auflade-Anteil 0..1 dieser Kugel: steuert ein zusaetzliches Glimmen,
+        // das die aufgebaute Energie sichtbar macht (je voller, desto heisser).
+        const charge = Math.min(1, c.energy / c.dischargeThreshold)
+        if (charge > 0.04) {
+          ctx.save()
+          ctx.globalCompositeOperation = 'lighter'
+          // Pulsieren wird mit steigender Ladung schneller und kraeftiger -> der
+          // Effekt wirkt "kurz vor der Entladung" zunehmend nervoes/instabil.
+          const pulse = 0.65 + 0.35 * Math.sin(t * (0.004 + charge * 0.02))
+          const auraR = c.radius * (1.6 + charge * 1.8)
+          const grad = ctx.createRadialGradient(c.x, c.y, c.radius * 0.4, c.x, c.y, auraR)
+          // Von warmem Weiss (heiss geladen) ueber die Glow-Farbe nach transparent.
+          grad.addColorStop(0, `rgba(255, 255, 255, ${0.5 * charge * pulse})`)
+          grad.addColorStop(0.4, `rgba(180, 230, 255, ${0.45 * charge * pulse})`)
+          grad.addColorStop(1, 'rgba(120, 200, 255, 0)')
+          ctx.fillStyle = grad
+          ctx.beginPath()
+          ctx.arc(c.x, c.y, auraR, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.restore()
+        }
+
         ctx.save()
         ctx.fillStyle = c.color
         ctx.strokeStyle = '#ffffff'
@@ -545,6 +761,16 @@ function PhysicsSandboxPanel() {
       } else {
         ctx.fillText(`ENVIRONMENT  : ZERO-G FLOAT`, 10, 68)
       }
+
+      // Hoechste aktuelle Aufladung im Feld als Balken-Anzeige.
+      let peakCharge = 0
+      for (let i = 0; i < circles.length; i++) {
+        const ch = circles[i].energy / circles[i].dischargeThreshold
+        if (ch > peakCharge) peakCharge = ch
+      }
+      const peakPct = Math.min(100, Math.round(peakCharge * 100))
+      ctx.fillStyle = peakPct > 80 ? 'rgba(255, 220, 120, 0.95)' : 'rgba(0, 190, 255, 0.75)'
+      ctx.fillText(`CLUSTER CHARGE: ${peakPct}% ${peakPct > 80 ? '// DISCHARGE IMMINENT' : ''}`, 10, 80)
 
       ctx.textAlign = 'right'
       ctx.fillText('SYS: PHYSICS SANDBOX 2D', W - 10, 20)

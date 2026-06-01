@@ -4,6 +4,9 @@
 export const MANDELBULB_SHADER = `
   precision highp float;
 
+  // Per-mount hue rotation (uHueShift uniform) for a random start color.
+  vec3 hueShift(vec3 c, float a){ vec3 k=vec3(0.57735); float ca=cos(a); return c*ca + cross(k,c)*sin(a) + k*dot(k,c)*(1.0-ca); }
+
   // Animate power over time
   float getPower() {
     return 7.0 + 3.0 * sin(iTime * 0.15);
@@ -100,6 +103,7 @@ export const MANDELBULB_SHADER = `
     
     // Grid scanlines
     col *= 0.93 + 0.07 * sin(fragCoord.y * 1.6);
+    col = hueShift(col, uHueShift);
     fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
   }
 `;
@@ -134,19 +138,25 @@ export const APOLLONIAN_SHADER = `
 
   void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;
-    float time = iTime * 0.15;
-    
-    // Fly through camera path
-    vec3 ro = vec3(0.1 * sin(time * 0.5), 0.1 * cos(time * 0.3), time * 0.4);
+    // Globale Tempo-Basis. Leicht beruhigt (0.15 -> 0.12), damit der Flug durch
+    // die Struktur plastisch wirkt und nicht hetzt. Alle weiteren Geschwindigkeiten
+    // leiten sich von "time" ab.
+    float time = iTime * 0.12;
+
+    // Kamera-Flug durch den Tunnel. Der Vorwärts-Vortrieb (z-Anteil) wurde von 0.4
+    // auf 0.34 gesenkt, das seitliche Wackeln minimal verstärkt, damit die Bewegung
+    // ruhiger und zugleich lebendiger wirkt.
+    vec3 ro = vec3(0.12 * sin(time * 0.5), 0.12 * cos(time * 0.3), time * 0.34);
     vec3 ta = ro + vec3(0.15 * sin(time * 0.5 + 0.5), 0.15 * cos(time * 0.3 + 0.5), 1.0);
-    
+
     vec3 ww = normalize(ta - ro);
     vec3 uu = normalize(cross(ww, vec3(0.0, 1.0, 0.0)));
     vec3 vv = cross(uu, ww);
     vec3 rd = normalize(uv.x * uu + uv.y * vv + 1.2 * ww);
-    
-    // Roll the camera slightly
-    float roll = sin(time * 0.3) * 0.2;
+
+    // Sanfte Kamera-Rotation. Etwas mehr Amplitude (0.2 -> 0.26) für ein
+    // lebendigeres Rollen, aber dieselbe gemächliche Frequenz.
+    float roll = sin(time * 0.3) * 0.26;
     float cr = cos(roll), sr = sin(roll);
     rd.xy = rd.xy * mat2(cr, -sr, sr, cr);
 
@@ -170,25 +180,52 @@ export const APOLLONIAN_SHADER = `
       vec3 p = ro + rd * d;
       vec3 normal = getNormal(p);
       vec3 lightDir = normalize(vec3(0.5, 1.0, -0.5));
-      
-      // Cyan/Blue cyber palette
-      vec3 matCol = mix(vec3(0.0, 0.85, 0.95), vec3(0.5, 0.0, 1.0), sin(p.z * 10.0) * 0.5 + 0.5);
-      
+      // Zweite, schwache Fülllicht-Richtung von der Gegenseite. Sie hebt die
+      // abgewandten Flächen leicht an, ohne den Kontrast zu killen — dadurch
+      // wirkt die Struktur runder und plastischer statt flach.
+      vec3 fillDir = normalize(vec3(-0.6, -0.3, 0.4));
+
+      // Lebendigere Drei-Farben-Palette statt nur Cyan->Violett.
+      // Wir mischen über die z-Tiefe zwischen Cyan, Magenta und Tiefblau-Violett
+      // und sättigen das Ergebnis zusätzlich entlang der Flächenneigung auf.
+      float band = sin(p.z * 8.0) * 0.5 + 0.5;        // weiche Bänderung in der Tiefe
+      vec3 cyan    = vec3(0.0, 0.95, 1.05);
+      vec3 magenta = vec3(1.0, 0.15, 0.85);
+      vec3 violet  = vec3(0.45, 0.0, 1.0);
+      // Erst Cyan<->Magenta, dann je nach zweitem Band zusätzlich Richtung Violett.
+      vec3 matCol = mix(cyan, magenta, band);
+      matCol = mix(matCol, violet, sin(p.z * 3.0 + 1.5) * 0.5 + 0.5);
+
+      // Beleuchtung: Hauptlicht mit kräftigerem Hell-Dunkel (Kontrast),
+      // Fülllicht dezent dazu.
       float diff = max(0.0, dot(normal, lightDir));
+      float fill = max(0.0, dot(normal, fillDir)) * 0.25;
+      // Ambient Occlusion zugespitzt (Exponent), damit Tiefen/Spalten dunkler
+      // absaufen und die Struktur klarer hervortritt.
       float ao = clamp(1.0 - steps / 90.0, 0.0, 1.0);
-      col = matCol * (0.15 + 0.85 * diff) * ao;
-      
-      // Add neon outline specular
-      col += vec3(0.2, 0.9, 1.0) * pow(max(0.0, 1.0 - dot(-rd, normal)), 4.0) * 0.5 * ao;
+      ao = pow(ao, 1.6);
+      // Etwas dunkleres Ambient (0.15 -> 0.10) + steilere Diffuse-Kennlinie
+      // (pow auf diff) erhöhen den plastischen Kontrast.
+      col = matCol * (0.10 + 0.95 * pow(diff, 1.2) + fill) * ao;
+
+      // Neon-Rand (Fresnel-Specular). Schärfer (Exponent 4 -> 5) und etwas
+      // heller (0.5 -> 0.7) für eine kräftigere Konturen-Kante.
+      float fres = pow(max(0.0, 1.0 - dot(-rd, normal)), 5.0);
+      col += vec3(0.3, 0.95, 1.1) * fres * 0.7 * ao;
     }
-    
-    // Add volumetric blue/cyan glow
-    col += vec3(0.0, 0.7, 0.95) * glow;
-    
-    // Dark depth fog
-    col = mix(col, vec3(0.0, 0.0, 0.02), 1.0 - exp(-0.8 * d * d));
-    
-    // Subtle CRT scanlines
+
+    // Volumetrisches Cyan/Blau-Glühen. Leicht angehoben für mehr Leuchtkraft.
+    col += vec3(0.0, 0.72, 1.0) * glow;
+
+    // Tiefen-Nebel. Minimal violett angehaucht statt rein schwarz, damit die
+    // Ferne nicht tot wirkt.
+    col = mix(col, vec3(0.01, 0.0, 0.04), 1.0 - exp(-0.8 * d * d));
+
+    // Dezenter Kontrast-/Sättigungs-Lift am Schluss: hebt Mitten an und macht
+    // die Farben knackiger, ohne in den Lichtern auszufressen.
+    col = pow(col, vec3(0.92));
+
+    // Dezente CRT-Scanlines (unverändert).
     col *= 0.95 + 0.05 * sin(fragCoord.y * 1.5);
     fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
   }
@@ -196,6 +233,9 @@ export const APOLLONIAN_SHADER = `
 
 export const MENGER_SHADER = `
   precision highp float;
+
+  // Per-mount hue rotation (uHueShift uniform) so Menger isn't always orange.
+  vec3 hueShift(vec3 c, float a){ vec3 k=vec3(0.57735); float ca=cos(a); return c*ca + cross(k,c)*sin(a) + k*dot(k,c)*(1.0-ca); }
 
   float sdBox(vec3 p, vec3 b) {
     vec3 d = abs(p) - b;
@@ -282,6 +322,7 @@ export const MENGER_SHADER = `
     
     // CRT scanlines
     col *= 0.94 + 0.06 * sin(fragCoord.y * 1.5);
+    col = hueShift(col, uHueShift);
     fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
   }
 `;

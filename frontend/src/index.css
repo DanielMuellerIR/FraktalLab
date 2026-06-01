@@ -1,4 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+/* IBM Plex Sans: gut lesbare Sans für die Titel-Pillen (auch klein), kein ALLCAPS. */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -24,4 +26,54 @@ html, body, #root { margin: 0; padding: 0; height: 100%; overflow: hidden; }
 }
 .layout-slide-in {
   animation: slideInRight 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* ── Auslastungs-Wähler "Proxima Centauri" = Crazy-Modus ──────────────────────
+   Wenn aktiv: flackernder Feuer-Gradient als Hintergrund (orange→rot→magenta)
+   plus pulsierender Neon-Glow. Toppt das simple Rot der Overdrive-Stufe. */
+@keyframes densityFire {
+  /* Hintergrund-Gradient wandert + Helligkeit flackert wie eine Flamme */
+  0%   { background-position:   0% 50%; filter: brightness(1.05); }
+  25%  { background-position:  50% 30%; filter: brightness(1.25); }
+  50%  { background-position: 100% 50%; filter: brightness(0.95); }
+  75%  { background-position:  50% 70%; filter: brightness(1.30); }
+  100% { background-position:   0% 50%; filter: brightness(1.05); }
+}
+@keyframes densityNeon {
+  /* Glow pulsiert zwischen Magenta und Weiß-Heiß */
+  0%, 100% { box-shadow: 0 0 6px rgba(255,40,160,0.8), 0 0 14px rgba(255,0,80,0.6); }
+  50%      { box-shadow: 0 0 12px rgba(255,120,255,1), 0 0 26px rgba(255,40,160,0.9); }
+}
+.density-crazy {
+  /* Drei-Farb-Feuer; background-size > 100% gibt der Animation Wanderweg */
+  background-image: linear-gradient(115deg, #7a0033 0%, #ff2d00 30%, #ffb300 50%, #ff2d00 70%, #c2009b 100%);
+  background-size: 300% 300%;
+  animation: densityFire 1.2s ease-in-out infinite, densityNeon 0.9s ease-in-out infinite;
+  color: #fff !important;
+  text-shadow: 0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(255,255,255,0.7);
+  border-color: #ff66cc !important;
+}
+
+/* ── Laufschrift / Marquee (z.B. CC-Attribution der Audio-Player) ──────────────
+   Zeigt lange Texte (Titel/Autor/Quelle/Lizenz) in voller Länge, indem sie
+   kontinuierlich von rechts nach links scrollen. padding-left:100% schiebt den
+   Text zunächst rechts aus dem Sichtfenster; translateX(-100%) scrollt ihn ganz
+   hindurch (mit Lücke = nahtlose Schleife). Hover pausiert, damit Links klickbar
+   bleiben. Greift überall dort, wo der Platz für den vollen Text nicht reicht. */
+.marquee {
+  overflow: hidden;
+  white-space: nowrap;
+}
+.marquee__inner {
+  display: inline-block;
+  padding-left: 100%;
+  animation: marquee-scroll 18s linear infinite;
+  will-change: transform;
+}
+.marquee:hover .marquee__inner {
+  animation-play-state: paused;
+}
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-100%); }
 }

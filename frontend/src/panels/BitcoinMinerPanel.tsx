@@ -242,10 +242,16 @@ function BitcoinMinerPanel() {
 
   return (
     <Panel title="BITCOIN MINER // HASHRATE NOMINAL">
-      <div className="flex flex-col h-full w-full overflow-hidden p-1.5 gap-1 text-xs font-mono">
+      {/* fontSize-clamp am Wurzel-Container: alle Miner-Werte erben die
+          kachelgrößenabhängige Schrift (text-xs entfernt). Einzelne hervorgehobene
+          Werte sind relativ (em) größer. Untergrenze ~7,5px. */}
+      <div
+        className="flex flex-col h-full w-full overflow-hidden p-1.5 gap-1 font-mono"
+        style={{ fontSize: 'clamp(7.5px, 3cqmin, 12px)' }}
+      >
 
         {/* ── Pool-Verbindung ────────────────────────────────────────── */}
-        <div className="text-green-600 text-xs leading-tight">
+        <div className="text-green-600 text-[1em] leading-tight">
           <div>POOL   stratum+tcp://fraktalpool.io:3333</div>
           <div>WORKER fraktallab.rig0  ·  LATENCY {state.poolLatencyMs}ms</div>
         </div>
@@ -307,16 +313,18 @@ function BitcoinMinerPanel() {
         {/* ── Wallet-Balance ──────────────────────────────────────────── */}
         <div>
           <div className="text-green-600">WALLET BALANCE</div>
-          {/* Balance in hellem Grün — wächst langsam sichtbar */}
-          <div className="text-green-300 text-sm">{state.balance.toFixed(8)} BTC</div>
+          {/* Balance in hellem Grün — wächst langsam sichtbar. 1.15em ≈ leicht größer
+              als der Rest, skaliert aber mit (statt fixem text-sm). */}
+          <div className="text-green-300 text-[1.15em]">{state.balance.toFixed(8)} BTC</div>
         </div>
 
         <div className="border-t border-green-900" />
 
         {/* ── Active Hash Attempts (Scrolling list) ────────────────────── */}
         <div className="flex flex-col gap-0.5 bg-black/40 p-1 border border-green-900/50 rounded overflow-hidden shrink-0">
-          <div className="text-green-700 text-[8px] uppercase mb-0.5 border-b border-green-950 pb-0.5">ACTIVE HASH ATTEMPTS</div>
-          <div ref={scramblerRef} className="flex flex-col gap-0.5 min-h-[50px]" />
+          <div className="text-green-700 text-[0.7em] uppercase mb-0.5 border-b border-green-950 pb-0.5">ACTIVE HASH ATTEMPTS</div>
+          {/* min-h relativ (em) statt fix 50px → skaliert mit der Schrift */}
+          <div ref={scramblerRef} className="flex flex-col gap-0.5 min-h-[4.5em]" />
         </div>
 
         <div className="border-t border-green-900" />
@@ -331,7 +339,7 @@ function BitcoinMinerPanel() {
               ? '#f87171'
               : '#22d3ee',
           }}
-          className="text-xs animate-pulse truncate"
+          className="text-[1em] animate-pulse truncate"
         >
           {state.lastEvent}
         </div>

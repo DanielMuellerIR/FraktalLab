@@ -3,6 +3,137 @@
 Universelle Referenz für alle Coding-Agents und KI-Modelle.
 Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 
+---
+
+## ⚖️ Panel-Regelwerk (VERBINDLICH — bei JEDEM künftigen Panel-/Layout-Todo beachten)
+
+Stand 2026-06-01. Diese Regeln gelten dauerhaft, nicht nur für die Speed-Session.
+
+### R1 — Panel-Geschwindigkeit (Animationstempo) je Auslastungs-Stufe
+Effektives Tempo hängt von Panel-Typ UND Dichte-Stufe ab. Realisierung: jedes
+animierte Panel treibt seine Zeit über einen zentralen, skalierten Takt
+(`raf-coordinator`), Faktor = `effectiveSpeed(panelName, densityLevel)`.
+
+- **Player (MOD = `AmiModPanel`, SID = `OscilloscopePanel`): IMMER 1×** — Audio
+  UND Visuals (Tracker-Scroll, Oszilloskop-Kurve, VU). NIE schneller/langsamer,
+  auf KEINER Stufe. Neue Audio-/Player-Panels erben diese Regel automatisch.
+- **Textpanels** (alle 13 TEXT-Panels): 25 MHz **1×** · Turbo/Overdrive **1×** ·
+  Proxima **2×**. (TEXT wird auf 25 MHz NICHT verlangsamt.)
+- **GFX-Panels:** 25 MHz **0.5×** · Turbo/Overdrive **1×** · Proxima = Override
+  (Default **2×**). Proxima-Overrides:
+  - **16×**: MandelbulbScene
+  - **8×**: DNAHelix · PlasmaDemo (Plasma Core) · TixyPanel · IQDigitalStorm (Neural FBM)
+  - **4×**: ShaderRetroWave (RetroOutrun) · LovebyteShowcasePanel · MengerSpongeScene ·
+    TunnelScene (Wormhole) · FireScene (Neural Constellation) · ALLE `Fractal*` +
+    ApollonianGasketScene
+  - **2×**: ShaderMandelbox + alle übrigen GFX (Default)
+- **Bereits gesetzte Faktoren, die hier nicht genannt sind, bleiben bei 2× auf Proxima.**
+
+### R2 — Keine ungewollten Duplikate
+- Beim **Laden** und **Dichte-Wechsel**: NIE Duplikate (distinct-only Bau + Clamp).
+- **Auto-Rotation** (Slot-Timer): dedupt strikt — wechselt nie auf ein Panel, das
+  bereits in einem anderen Slot läuft; ein locked Audio-Panel (AllYourBase/MOD/SID)
+  ist nie Wechselziel, wenn es schon im Layout ist.
+- **Manueller Pille-Klick**: zufälliges kompatibles Panel; bevorzugt nicht-gezeigtes,
+  Duplikat NUR als Notnagel (wenn kein freies kompatibles existiert).
+
+### R3 — Pille-Interaktion
+- Klick auf die Titel-Pille = zufälliges kompatibles Panel (keine Vor/Zurück-Pfeile).
+- Pille: Desktop nur bei Hover, Mobile nach Tap (3 s). Kompatibel = Aspect-/Größen-/
+  GL-Kontingent-Regeln wie beim Layout-Bau.
+
+### R4 — WebGL-Kontingent
+- Max. `MAX_GL_PANELS_PER_LAYOUT` (=11) GL-Panels pro Layout (Browser-Kontextlimit).
+  GL-Klassifikation in `GL_PANELS`. Überzählige Zellen → Nicht-GL-Füller.
+
+---
+
+## ✅ Lizenz/Audio + zentrale Registry + dynamische Größen — ERLEDIGT (App-Version **v1.22.0**, 2026-06-01)
+
+> **WICHTIG für Veröffentlichung:** Die Git-History wurde mit `git-filter-repo`
+> rückwirkend bereinigt (alle copyright-belasteten `*.sid`/`*.mod`/`track_*.dat`
+> aus ALLEN Commits entfernt). Backup als Bundle: `../p_fraktal_PREPURGE_backup.bundle`
+> (Stand vor Purge, HEAD 71cdd9c). Alle Commit-Hashes haben sich geändert. Lokale
+> `.git`-Altobjekte werden durch `git gc`/Ablauf der Reflog entfernt; beim
+> `git push` zu GitHub gehen nur erreichbare (saubere) Objekte raus. **Falls je ein
+> Remote existierte: force-push nötig.** Hier gab es keinen Remote.
+
+**Single Source of Truth — `frontend/src/panels/panel-registry.ts`:** ALLE Panel-Regeln
+(aktiv/inaktiv, Pool, Aspect, Größe, GL-Kontingent, Audio-Exklusivität=nur 1 Player
+gleichzeitig, Proxima-Tempo) leben dort in EINEM `PANELS`-Array. App.tsx + panel-speed.ts
+leiten alles ab → eine zentrale Änderung propagiert automatisch. Reviews (Daumen) sind
+NUR Notizen, entkoppelt von aktiv/inaktiv. Review-Modus: roter Rahmen + „⊘ AUS" = inaktiv.
+Deaktiviert: RadarSweepPanel (Anzeige-Titel „DRADIS"), ThermonuclearWarPanel, FractalView,
+LissajousScene. Reaktiviert (nie groß): PwdCracker + Vitals/Satellite/ShaderHackingCore/
+CADRobotPanel/EnhanceView/ClassifiedPanel.
+
+**Audio (Copyright-Bereinigung):** alte Amiga/C64-Tunes raus, ersetzt durch CC-BY-NC-SA-
+Tracks von Battle of the Bits (`sid_mod_dl/` = Quellen, `public/audio/botb/` = ausgeliefert,
+ASCII-Namen `botb-<id>.<ext>`). Manifest-Skripte (laufen via `npm run prebuild` automatisch):
+- `scripts/build-audio-manifest.mjs` → `src/utils/botb-tracks.generated.ts` (Metadaten + echte Größen)
+- `scripts/gen-panel-sizes.mjs` → `src/panels/panel-sizes.generated.ts` (echte Quell-/Musikgrößen)
+Bei Änderung der sids/mods: `npm run gen` neu laufen lassen. Player zeigen pro Song TASL-
+Attribution (Titel — Autor, BotB Entry, CC BY-NC-SA, „No changes made") + Links, Autoscroll
+(`.marquee`). Review-Größen: echte KB; Player „Code / Code+Musik" (z.B. „89 KB / 1.1 MB").
+**AllYourBase entfernt** (nur per nicht-steuerbarem iframe sauber → unvereinbar mit Election).
+
+## ✅ Speed-System v2 + Bugs — ERLEDIGT (App-Version **v1.20.0**, 2026-06-01)
+
+Alle 5 Todos umgesetzt, tsc + build grün, im Browser verifiziert (Desktop 1440px,
+alle Dichte-Stufen durchgeklickt, 16 Panels Proxima, 0 Konsolen-Fehler/-Warnungen,
+0 Duplikate, 0 GL-Evictions). Umsetzung:
+
+1. [x] **Speed-System je Panel/Stufe (R1)** — neues Modul `utils/panel-speed.ts`:
+   `getSpeed(name)` + `getTextSpeed()` + `setSpeedDensity(level)`. Klassifikation:
+   PLAYER (MOD/SID) immer 1× · TEXT 1× (Proxima 2×) · GFX 25 MHz 0.5× / Turbo+
+   Overdrive 1× / Proxima Override (Map: Mandelbulb 16×, DNA/Plasma/Tixy/DigitalStorm
+   8×, RetroWave/Lovebyte/Menger/Tunnel/Fire/Apollonian + alle `Fractal*` 4×, Rest 2×).
+   - `raf-coordinator` führt jetzt PRO Subscriber eine eigene virtuelle Uhr und
+     skaliert deren Zeit mit `getSpeed(subscriberName)`. `subscribe(cb, name)`.
+   - `ShaderPanel` bekam Prop `speedName`; die Override-Wrapper liefern ihren Namen.
+   - Eigen-getaktete Panels: DNA/Tixy/SID/MOD/StockTicker geben Namen an `subscribe`;
+     intervall-basierte Textpanels teilen ihr Intervall durch `getTextSpeed()`
+     (shared `ScrollingLog`/`StatBar` + Classified/VisitorProfile/Satellite/MetaAgent).
+     Greift beim Re-Mount, da `applyDensity` das Layout neu baut.
+   - Player (MOD/SID) hart auf 1× (Audio + Visuals). Globaler `setTimeScale`-Hack entfernt.
+2. [x] **Pille-Klick = Random-Wechsel (R3)** — `handleNavSlot(slotIndex, strict)` wählt
+   ein zufälliges kompatibles Panel (keine Vor/Zurück-Pfeile mehr). `PanelSlot`: die
+   Titel-Pille ist jetzt EIN klickbarer Button (kein ◂ ▸).
+3. [x] **Auto-Rotation dedupt (R2)** — `strict=true` (Slot-Timer) wählt NIE ein anderswo
+   laufendes Panel; reicht keins → kein Wechsel. Manueller Klick (`strict=false`) bevorzugt
+   nicht-gezeigte Panels, Duplikat nur als Notnagel. Locked Audio-Panel nie Wechselziel,
+   wenn schon im Layout. Fixt „3× AllYourBase".
+4. [x] **BUG MOD-Auto-Start** — Ursache: `playTrack()` entsperrte den AudioContext NICHT
+   während der User-Geste, wenn der MOD beim Erst-Klick noch lud (~1,2 MB async). Der
+   spätere Auto-Start lief im `load().then()` außerhalb einer Geste → Chrome ließ den
+   Context suspended → stumm. SID entsperrt im Geste-Pfad (deshalb nie betroffen). Fix:
+   `p.resumeContext()` im Lade-noch-Zweig von `playTrack()` (AmiModPanel.tsx).
+5. [x] **Verify + Bump + Commit** — s.o.
+
+### Panel-Pflege + DNA-Layout (App-Version **v1.21.0**, 2026-06-01)
+
+- [x] **DNA-Panel (`DNAHelix`) nutzt den rechten Bereich besser** — Schrift-Caps der
+  container-relativen `clamp()`-Größen angehoben (Titel bis 28px, Werte/Text bis 17px,
+  Labels bis 13–14px, Sequenz bis 15px), sodass große Kacheln den Platz füllen statt
+  Mini-Schrift mit Leerraum. Sequenz-Viewer: statt der ~150 bp kurzen Art-Sequenz wird
+  jetzt eine 24× rotierte Kopie (`longSeq`) gerendert (`overflow-hidden` clippt) → der
+  Block füllt jede Kachelgröße ohne Leerfläche. Verifiziert (Review-Modus, Build grün).
+- [x] **Deaktiviert (archiviert):** `RadarSweepPanel`, `ThermonuclearWarPanel` — in
+  `ARCHIVED_PANELS` (registry.ts) + aus `POOL_GFX` entfernt. Imports bleiben (ALL_PANELS/
+  Review-Modus). `ThermonuclearWarPanel` aus `NO_LARGE_PANELS` entfernt (jetzt archiviert).
+- [x] **Reaktiviert, aber NIE groß** (`NO_LARGE_PANELS`): `Vitals`, `SatellitePanel`,
+  `ShaderHackingCore`, `CADRobotPanel`, `EnhanceView`, `ClassifiedPanel`. Waren als
+  Default in `INITIAL_REVIEWS` down-gevotet → aus der Galerie geflogen. Down-Einträge
+  aus `INITIAL_REVIEWS` entfernt + einmalige Migration (`applyReactivationMigration`,
+  Key `fraktallab_reactivate_2026_06_01`) löscht ihre Down-Votes auch bei bereits
+  geseedeten Nutzern (eigene up-Votes bleiben). `CADRobotPanel` zusätzlich aus
+  `LARGE_PANELS` entfernt. Im Browser bestätigt: alle vier sichtbaren erscheinen nur in
+  normalen Kacheln; Radar/Thermo tauchen nicht mehr auf.
+- [x] **Proxima-Speed-Regel** — „wenn nichts vermerkt, 2×" ist bereits der Default in
+  `panel-speed.ts` (GFX-Default = Proxima 2×). Die reaktivierten/geänderten Panels stehen
+  in keiner Override-Map → laufen auf Proxima mit 2× (TEXT-Panels via `getTextSpeed()`).
+  Kein Code-Eingriff nötig, nur bestätigt.
+
 > **Status (Stand 2026-05-31): Panel-Rework abgeschlossen + SID-Player-Session abgeschlossen (App-Version **v1.9.0**). Branch `feat/panel-rework-2026-05-30` wird nach `main` gemergt.** Panel-Rework (RW-01..29) komplett durch, 32 Panels überarbeitet, alle Grafik-Panels auf farbige Paletten migriert, 120 FPS auf Apple GPU nachgewiesen.
 >
 > **SID-Player-Session (2026-05-31) — `OscilloscopePanel`:** Der C64-SID-Player war stumm (kein Ton, keine Visualizer-Animation). Ursachen gefunden + behoben:
@@ -13,7 +144,111 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 > - Lizenz jsSID = WTFPL (Attribution im Worklet-Header + unten dokumentiert). Emulation ist treu zu jsSID; verbleibende Mini-Klangunterschiede (6581-Filter, Combined Waveforms) sind jsSID-inhärent, kein Bug — gegen 2016-Sidplay verifiziert.
 > - Automatisierter Audio-Test: `frontend/test-sid-audio.mjs` (rendert echtes PCM, prüft Oszillation + Song-Fortschritt, Strukturguard gegen den Plain-Class-Bug).
 >
-> **Nächste Schritte — Panel-Rework Phase 2 (priorisiert nach Kritik-Intensität):**
+## Relaunch-Session (2026-05-31) — laufend auf `feat/relaunch-2026-05-31`
+
+**Getroffene Entscheidungen (User):**
+- **Präsentation:** Weg vom dichten Auto-Switch-Dashboard → **kuratierte Galerie** (weniger Panels gleichzeitig, mehr Weißraum, kein automatischer Komplett-Layout-Wechsel mehr, Nutzer erkundet selbst). Senkt auch Last (schwächere Hardware ruckelte).
+- **Name:** FraktalLab passt nicht mehr. Neuer Name wird festgelegt, **wenn das neue Layout steht** (Kandidaten: Wunderkammer / Phosphor / Cathode).
+- **Audio:** Auto-Play beim ersten Klick irgendwo → genau EINES von {AllYourBase, SID, Protracker}. Tippgeräusche (`AmbientSound.tsx`) raus + archivieren. AUDIO-Button → Mute/Play-Toggle. Player wechseln nie mittendrin (`LOCKED_PANELS`), AllYourBase nur nach Videoende.
+- **Inventar:** `frontend/src/panels/registry.ts` als Status-Quelle (ARCHIVED_PANELS, LOCKED_PANELS). Vollständige Code-Registry (Pools, Kategorien, Asset-Größen) wandert beim Layout-Redesign dorthin.
+
+**Erledigt in dieser Session:**
+- [x] **Fake-Text-Panels deaktiviert + archiviert** (Code bleibt, via `registry.ts`/Git wiederholbar): `NeuralLinkDecoderPanel`, `BitcoinMinerPanel`, `SocialEngineering`, `TrafficMonitor`, `NuclearTargets`, `PwdCracker`. Aus Pools + `ALL_PANELS` entfernt.
+
+**Offene Todos (aus User-Brief 2026-05-31):**
+- [x] **Audio-Konzept umgesetzt** (App-Version v1.10.0). Umsetzung:
+  - `utils/audio-focus.ts` um Kandidaten-Registry + Erst-Klick-**Election** + zentrale Mute-Steuerung + `notifyAudioEnded`-Handoff erweitert. Beim ersten Klick irgendwo (globaler Capture-Listener in `App.tsx`, AUDIO-Button via `data-audio-toggle` ausgenommen) startet GENAU EIN zufällig gewählter Player.
+  - **Audio-Garantie:** `generateLayout` (Desktop) und `generateMobileIndices` (Mobile) erzwingen exakt 1 Audio-Panel pro Layout (300×-Self-Test: `{1:300}`). Sonst gäbe es nichts zu elektieren.
+  - **AUDIO-Button** = Mute/Unmute (Pause-Verhalten, Fokus bleibt). Label `AUDIO ON`/`AUDIO OFF`. Ersetzt den alten Ambient-Sound-Toggle.
+  - **Tippgeräusche raus:** `ui/AmbientSound.tsx` nicht mehr gerendert/importiert; Datei bleibt als archivierter Code (Header-Kommentar markiert).
+  - **"Player wechseln nie mittendrin":** `LOCKED_PANELS`/`isLocked` war toter Code — jetzt via neuem `PanelSlot`-Prop `locked` verdrahtet: das Audio-Panel-Slot rotiert nicht (kein Auto-Rotate, kein ⟳-Button).
+  - **Handoff:** MOD-Loop-Ende + Video-`onEnded` rufen `notifyAudioEnded` → anderer Player übernimmt (AllYourBase→SID/MOD nach Video). SID loopt endlos (kein Handoff von dort).
+  - **Random song:** SID/MOD wählen beim Mount einen zufälligen Default-Track; `start()` spielt ihn.
+  - Verifiziert im Browser (Desktop 1440px + Mobile 375px): Garantie, Erst-Klick-Start, Mute-Toggle — keine Konsolen-Fehler.
+> **Batch-Abarbeitung 2026-05-31 (App-Version v1.11.0): alle untenstehenden Todos
+> erledigt, via Parallel-Subagents (Panel-Fixes) + Haupt-Thread (App.tsx-Logik).
+> tsc + build grün, im Browser verifiziert (Desktop 1440px + Review-Modus), keine
+> Konsolen-Fehler. Visuelles Feintuning bleibt Geschmackssache des Nutzers.**
+
+- [x] **Doppel-Panel-Bug (Menger 2×)** behoben: Dedup-Pass in `generateLayout` prüft jetzt nach **Komponenten-NAME** (`getCompName`) statt nur `panelIdx`. Ursache: manche Pool-Einträge lösen über Alias/Re-Export auf denselben sichtbaren Namen auf → reines Index-Dedup ließ Menger 2× zu. `handleSkipSlot` dedupt ohnehin nach Komponenten-Referenz.
+- [x] **Galerie-Layout**: Grid-Dichte grob halbiert (weniger, größere Panels), `gap` 4→10px + Padding (mehr Weißraum), **automatischer Komplett-Layout-Wechsel entfernt** (kein periodisches Neu-Mounten → weniger Last). Manueller Wechsel (⟳-Button/Leertaste) bleibt. Mobile + Desktop. Hinweis: Namens-Wechsel (Wunderkammer/Phosphor/Cathode) steht jetzt an, da Layout steht.
+- [x] **Dateigröße-Anzeige im Reviewmodus**: `PANEL_ASSET_KB`-Map + `panelAssetLabel()`, am Review-Marker angezeigt. Prozedurale Panels = "0 KB · prozedural", Player zeigen Song-Gesamtgröße (MOD ~1,2 MB, SID 30 KB), C64 7 KB, AllYourBase 0 KB (extern gestreamt).
+- [x] **Oppenheimer (`NuclearExplosionPanel`)**: ist ein GLSL-Shader (nicht Canvas2D). Sequenz Terrain→Blitz(3–5s)→Pilz, Nacht-Blitz erhellt + danach weichgezeichnet, Pilz kontrastreicher, **gerade durchgehende Säule** (krumm/Kontaktverlust gefixt), Per-Mount-Varianz, Pilz bleibt stehen, **Name/Variant-Mismatch gefixt** (uMode statt zweier Uhren), Terrain+Himmel (Tag+Nacht) schöner. Im Browser verifiziert: Tag-Pilz korrekt, Shader kompiliert.
+  - [x] **Timing-Fix (v1.13.0)**: Wolken-Aufstieg startet jetzt bei `growStart() = flashStart()+0.5` statt erst bei `flashEnd()`. Der Blitz kommt von der Explosion → Lichtkugel/Pilz ist sichtbar WÄHREND der Blitz noch abklingt (überlappt 0.5s nach Blitz-Start bis flashEnd ~5.2s), nicht erst ~1s danach.
+- [x] **`ThermonuclearWarPanel`**: Endzustand "no survivors" (alle Standorte ausgelöscht), neue Ziele (Pyongyang/Islamabad/New Delhi), Labels gekürzt ("Siberia"), Schrift größer + shadow, kein ALLCAPS.
+- [x] **`SolarSystemPanel`**: Wurzel-komprimierte realistische Größen (Floor 1,5px), Potenz-komprimierte Bahnabstände, Orbit-Ringe nur für Planeten (Mond-Bahnen entfernt).
+- [x] **`StarfieldScene`**: cyan-Verfolgerschiff entfernt, Ego-Cockpit-Perspektive, Schüsse von vorne (uns) in die Tiefe zum Feind.
+- [x] **`RotozoomScene`**: Per-Mount-Varianz (Seed + 4 Muster + Drehrichtung/Zoom/Farbe), Hue-Drift.
+- [x] **`DNAHelix`** + **`MandelbulbScene`/`MengerSpongeScene`** zufällige Start-Spezies/Farbe: bereits in Commit `6b270df` erledigt.
+- [x] **`ApollonianGasketScene`** Feintuning: Kontrast/AO/Fresnel/Gamma + Drei-Farben-Palette, ruhigeres Tempo (`de-fractals-shaders.ts`, nur Apollonian-Abschnitt).
+- [x] **Quantum Gravity (`PhysicsSandboxPanel`)**: Energieaufbau bei dichten Kugeln (Spannungsfeld + Glühen + HUD "CLUSTER CHARGE"), schlagartige Entladung (radiales Wegschleudern + Schockwelle/Funken), zyklisch.
+- [x] **`C64Panel`** Font-Regression: Ursache war **Farb-Snapping** (Wunschfarbe `#a2a2ff` ist keine C64-Palettenfarbe → rastete auf kontrastarmes Cyan/Lila). Fix: Alpha-Maske aus PNG + `source-in`-Tint in exakte Farbe. BASIC-Screen auf exaktes 40×25-Raster mit recherchiertem Original-Bootscreen. Bonus: `mixColors`-Grün-Bug + `imageSmoothingEnabled=false`.
+- [x] **`RetroErrorPanel`**: DOM-Text-Overlay (`<pre>`, System-Monospace, `color:transparent`+`userSelect:text`) → Fehlertext markier-/kopierbar, ohne den Canvas-Look zu stören. Im Browser verifiziert.
+- [x] **`GlobePanel`**: Der rote Rahmen im Reviewmodus ist **korrektes generisches Down-Rating-Highlight** (aktives + 👎-Panel = rot), kein Bug. "Nie im Hauptbereich" = niedrige Pool-Wahrscheinlichkeit (49 GFX-Panels), kein Code-Defekt. Kein Fix nötig.
+- [x] **Panelanzahl/Layout nach Deaktivierung angepasst** — Teil des Galerie-Redesigns (weniger, größere Panels).
+
+### Deko/Dichte/Panel-Politur (App-Version **v1.17.0–v1.18.0**)
+
+- [x] **Titel-Pillen nur bei Bedarf** — Desktop: Pille erscheint nur bei Hover über die Kachel (`md:group-hover`); Mobile: nach Tippen (3 s). Unsichtbar = klick-inert.
+- [x] **Dichte** — Overdrive 15, Proxima 20.
+- [x] **Keine Löcher** — `cols×rows` per Floor + Korrekturschleife nie > Zahl verfügbarer Distinct-Panels (`eff`); vorher erzeugte Aufrunden zu viele Zellen → leere Kacheln.
+- [x] **Duplikate** — beim Laden/Density-Wechsel keine (distinct-only Füll-Pass, Clamp auf `eff`); nur die Pillen-Pfeile dürfen bewusst duplizieren. `data-pname`-Debug bestätigte 0 echte Duplikate (frühere „Menger×2"-Meldung war Pill-Detektions-Artefakt).
+- [x] **MOD-Player** (`AmiModPanel`) — Amiga-Workbench-Look raus, modern/randlos/schwarz wie der SID-Player. Titel jetzt "MOD PLAYER // PROTRACKER".
+- [x] **DNA** (`DNAHelix`) — keine Scrollbar mehr (overflow-hidden, container-relativ skaliert).
+- [x] **Lovebyte** (`LovebyteShowcasePanel`) — Shader-Formel + Credit als zweizeilige Pille am unteren Kachelrand.
+- [x] **ERLEDIGT (v1.20.0): Proxima-Animationstempo** — gelöst durch Speed-System v2
+  (per-Subscriber-Uhr im `raf-coordinator` + `getSpeed(name)`/`getTextSpeed()`, eigen-
+  getaktete Panels eingebunden, Audio-Panel-Visuals hart auf 1×). Siehe Abschnitt oben.
+
+### Layout-V2 — Aspect-Matching + Auslastungs-Wähler (ERLEDIGT, App-Version **v1.13.0**)
+
+Alle Unterpunkte (a-e) umgesetzt. Build grün (tsc + vite), im Browser verifiziert.
+
+- [x] **`SupervolcanoPanel` archiviert** — in `ARCHIVED_PANELS` (registry.ts), Import in App.tsx markiert.
+- [x] **Aspect-Ratio-Gruppen** — `PANEL_ASPECT`-Map mit WIDE/SQUARE/TALL/ANY/TEXT. `cellAspect()` leitet Aspect aus CSS-Grid-Span ab, `aspectMatches()` prüft Kompatibilität. `findGfx` matcht Panel-Aspect auf Cell-Aspect — **auch der Größen-Fallback bleibt aspect-konform** (sonst landete C64/SQUARE in WIDE-Zelle und wurde breitgezogen). Lieber Zelle leer als Aspect brechen; ANY/TEXT-Panels füllen ohnehin alles.
+- [x] **Größen-Deckelung** — `NO_LARGE_PANELS`-Set (WOPR, AllYourBase, C64Panel). `panelMayBeLarge()` statt starres `LARGE_PANELS`. `handleSkipSlot` respektiert auch Aspect.
+- [x] **Auslastungs-Wähler** — 4 Segmente, Label "AUSLASTUNG" links (hell, fett, grüner Text-Glow). Buttons IMMER gefüllt (auffällig), Farb-Rampe grün→gelb→rot→Crazy: `25 MHz`=grün · `Turbo`=gelb · `Overdrive`=rot · `Proxima Centauri`=Crazy-Modus (`.density-crazy` in index.css: animiertes Feuer-Gradient orange→rot→magenta + pulsierender Neon-Magenta-Glow + 💀-Prefix). Aktive Stufe kräftig gesättigt + fett + Glow. Klick = Dichte setzen + Layout neu würfeln (jede Wahl persistiert in `localStorage`, gewinnt beim Reload). `⟳ LAYOUT`-Button ersetzt. Mount-Effekt baut das Initial-Layout einmalig mit der gewählten Dichte auf. **Kein `isAudioPlaying`-Guard am Klick** (sonst verschluckte der durch den Erst-Klick gestartete Audio-Player jeden Dichte-Klick).
+- [x] **FESTE Kachelzahl je Stufe** (nicht mehr breitenabhängig): `25 MHz`=6 · `Turbo`=12 · `Overclock`=20 · `Proxima Centauri`=30. `generateLayout` leitet cols×rows aus Ziel + Bildschirm-Seitenverhältnis ab (`cols≈√(N·ratio)`, Caps 8×6) → hohe Stufen auch auf Laptops erreichbar.
+- [x] **KEIN Benchmark mehr** (sorgte für Verspringen beim Start). Allererster Start = **Turbo**. Schwache Hardware → manuell auf `25 MHz` runter.
+- [x] **WebGL-Kontingent (Fix "SLOT EVICTED")** — Browser deckeln aktive WebGL-Kontexte (~8–16/Tab); bei Proxima (~30 Kacheln) sprengten die GL-Panels den Pool (`utils/webgl-pool.ts`, MAX=12) → verdrängte Kontexte zeigten dauerhaft "SLOT EVICTED TO CONSERVE POWER" (reaktivieren nur bei Sichtbarkeitswechsel, in statischer Galerie nie). Fix: `generateLayout` platziert nie mehr als `MAX_GL_PANELS_PER_LAYOUT=11` GL-Panels (Set `GL_PANELS` listet alle three.js-/Shadertoy-/FractalGL-Komponenten; Puffer 1 für das FractalView-Hintergrundbild). Überzählige Zellen bekommen Canvas-2D-/DOM-Panels. Im Browser verifiziert: Proxima 7×4, 19 Canvases, **0 Evictions**.
+### Duplikate-/Archiv-Feinschliff (App-Version **v1.16.1**)
+
+- [x] **Keine Duplikate beim Laden/Density-Wechsel** — Füll-Pass füllt leere Zellen jetzt NUR mit distinkten Nicht-GL-Panels (kein `allowDup` mehr). Reicht nichts, bleibt eine Zelle leer (selten, da Ziel-Kachelzahl auf verfügbare Distinct-Panels gedeckelt ist). Verifiziert: Proxima/Overdrive 0 Duplikate (auch bei 18 down-gevoteten Panels).
+- [x] **Pfeile dürfen duplizieren** — `handleNavSlot` blättert ohne Dedup gegen andere Slots (nur Aspect-/Größen-/GL-Regeln). Bewusste Ausnahme, damit Durchblättern bei kleinem Pool nicht steckenbleibt.
+- [x] **`getCompName`-Synthetik zurückgenommen** — die synthetische ID war für die Pools unnötig (alle 68 Pool-Komponenten stehen in `ALL_PANELS`/`COMPONENT_NAMES`, liefern also echte Namen) und barg das Risiko falscher Namen → Filter (Down/Archiv) griffen nicht. Wieder echter Name bzw. `''`.
+- [x] **Archiv-Filter** — `getFilteredPools` schließt jetzt zusätzlich `isArchived(name)`-Panels aus (Import aus `panels/registry`). Archivierte Panels können nie wieder in der Galerie erscheinen, selbst wenn sie versehentlich im Pool stehen.
+
+### Echte Schrift-Skalierung der Text-/UI-Panels (App-Version **v1.16.0**)
+
+- [x] **Container-relative Schrift** — Kachel-Wrapper (`PanelSlot`) hat `container-type:size` → Panels nutzen `clamp(MIN, X·cqmin, MAX)` für Schriftgrößen. In dichten Layouts schrumpft die Schrift mit der Kachel (Untergrenze ~7,5px), in großen Kacheln wird sie größer. Geprüft: Font löst je nach Kachelgröße zu 8–11px auf.
+- [x] Betroffen: gemeinsame `ScrollingLog`/`StatBar` (deckt SystemLog/DataStream/PseudoCode/PortScanner/Vitals ab) + `ICQChatPanel` (Hauptfall: Nachrichtenliste skaliert mit, em-relativ), `AgentCodePanel`, `ClassifiedPanel`, `DiskCleanupPanel`, `VisitorProfilePanel`, `StockTickerPanel`, `SatellitePanel`, `BitcoinMinerPanel`, `MetaAgentPanel`. Reine Grafik/Canvas-Panels unangetastet.
+
+### Panel-Deko-Überarbeitung + Dichte-Feinschliff (App-Version **v1.15.0**)
+
+- [x] **Rahmenlos, berührend** — `Panel.tsx` hat keine Rahmen/Titelleiste mehr, füllt die Kachel randlos. `LayoutContent` mit `gap:0`/`padding:0` → Panels berühren sich direkt.
+- [x] **Schwebende Titel-Pille** — `PanelSlot` rendert oben mittig eine Pille (IBM Plex Sans, kein ALLCAPS, klein lesbar). Titel kommen per `PanelChromeContext` aus den Panels (`Panel.tsx` meldet gekürzten Titel: Teil vor `//`, Title-Case, ≤24 Zeichen); Panels ohne `<Panel>` (reine Shader) → Fallback aus Komponentennamen. Pille skaliert via `container-type:size` + `cqmin` mit der Kachelgröße.
+- [x] **Pfeile statt ⟳** — `◂`/`▸` an den Pillen-Rändern blättern deterministisch durch die KOMPATIBLEN Panels (`handleNavSlot`: stabile Index-Liste, gleiche Aspect-/Größen-/GL-Regeln wie der Layout-Bau). Audio-Slots bleiben gesperrt. Alter Skip-Button + `handleSkipSlot` entfernt.
+- [x] **Dichte-Stufen reduziert** — 25 MHz=6 · Turbo=12 · Overdrive(=ex Overclock)=18 · Proxima=24.
+- [x] **Dichte-Clamp auf verfügbare Distinct-Panels** — `generateLayout` deckelt die Ziel-Kachelzahl auf `min(GL,11)+nonGL+text+1`. Down-gevotete Panels verkleinern den Pool → Dichte sinkt automatisch, statt Duplikate zu erzeugen.
+- [x] **Dedup-Bug gefixt** — `getCompName` gab für anonyme/unregistrierte Komponenten `""` zurück → verschiedene Panels kollidierten als „Duplikat", wurden entfernt und vom Füll-Pass als ECHTE Duplikate nachgezogen (z.B. „Lidar Scan ×4"). Jetzt stabile synthetische ID je Komponente (WeakMap). Im Browser verifiziert: Proxima 0 Duplikate, 0 leere Zellen, 0 Evictions.
+- [x] **Füll-Pass gegen leere Zellen** — durch den WebGL-Deckel blieben bei Proxima GFX-Zellen ohne `panelIdx` (kein aspect-passendes Nicht-GL-Panel mehr frei); `LayoutContent` rendert für solche Zellen nichts → Löcher (fast leere unterste Reihe). Neuer Füll-Pass nach Dedup füllt jede leere Zelle mit Nicht-GL-Füllern (Canvas-2D-GFX bevorzugt aspect-passend, sonst TEXT). Distinkte Panels bevorzugt; reichen sie bei extremer Dichte nicht, sind Duplikate erlaubt (besser doppelte Kachel als Loch). Verifiziert: Proxima 7×4 voll belegt (Reihe 4 = 7 Zellen), 0 Evictions, auch nach Reshuffle.
+- [x] **C64Panel-Fix**: aus LARGE_PANELS raus, in NO_LARGE_PANELS rein. SQUARE matcht nur 1×1-Zellen → C64Panel nie breit (auch nicht über Fallback, s.o.).
+
+**Fakten/Notizen:**
+- AllYourBase-Video: extern gestreamt (`archive.org/download/youtube-dIQ53t0gv_4/dIQ53t0gv_4.mp4`), 0 Byte lokal → Seite ohne Assets ~1 MB.
+- `c64_font.png` (`public/`) wird in `C64Panel.tsx:140` aktiv geladen (nicht obsolet).
+- `RetroErrorPanel` ist bereits voll prozedural (Canvas2D), keine statischen Bilder.
+
+### GitHub-Vorbereitung (Todo, eigene Session)
+
+- [ ] **Repo:** https://github.com/DanielMuellerIR/FraktalLab.git
+- [ ] **Erst privat** veröffentlichen — wegen mitgelieferter MOD- und SID-Dateien (urheberrechtlich geschützt, nicht für öffentliches Repo). Vor späterem Public-Schalten klären: Assets entfernen / extern laden / Lizenzlage.
+- [ ] **Deutsches README** erzeugen: alle **aktiven** Panels auflisten + technische Vorzüge (z.B. eigene GPU-Fraktal-Engine mit double-single-Präzision, eigener ProTracker-MOD-Player + C64-SID-Player als AudioWorklet, prozedurale Panels, kleine Bundle-Größe ~1 MB ohne Assets). **Nüchtern/technisch, nichts erfinden**, so formuliert als wäre es public (Umstellung auf public evtl. bald).
+- [ ] **Claude NICHT als Contributor/Autor angeben.** README-Autor = Daniel. Künftige Commits ohne `Co-Authored-By: Claude`-Trailer (ab Commit `f13a2e5` weggelassen).
+  - Befund: git-Autor/Committer ist bei **allen 142 Commits** `DanielMuellerIR <<email>>` (sauber). KI-Spur **nur** im Message-Body als `Co-Authored-By: Claude …`-Trailer in **57 Commits** (Varianten Opus 4.7/4.8, Sonnet 4.6). Andere genutzte KIs haben keinen Trailer hinterlassen.
+  - Entfernen vor Public = History-Rewrite (`git filter-repo --message-callback` o.ä., strippt die Trailer-Zeilen). Alle Hashes ändern sich → nur direkt vor dem ersten Push, nicht ungefragt.
+
+> **Nächste Schritte — Panel-Rework Phase 2 (priorisiert nach Kritik-Intensität, ABGESCHLOSSEN):**
 >
 > ### Tier 1 — Kritische Ausfälle
 > - [x] **RW-01 `NuclearExplosionPanel`** — Shader noch matschig: fBm auf 6 Oktaven, schärfere Turbulenz, Curl-Noise für rollende Kanten, Toroid-Billows, Self-Shadowing

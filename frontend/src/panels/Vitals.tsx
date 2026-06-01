@@ -30,7 +30,13 @@ const METRIC_LINES = [
 function Vitals() {
   return (
     <Panel title="SYSTEM VITALS">
-      <div className="flex flex-col h-full w-full gap-0.5">
+      {/* fontSize-clamp am Wurzel-Container: die Stat-Bars (StatBar nutzt text-[1em])
+          skalieren mit der Kachelgröße. Der ScrollingLog darunter setzt seine eigene
+          skalierbare Größe. */}
+      <div
+        className="flex flex-col h-full w-full gap-0.5"
+        style={{ fontSize: 'clamp(7.5px, 3.4cqmin, 13px)' }}
+      >
         {/* Statische Bars oben */}
         <div className="shrink-0">
           <StatBar label="CPU"  value={72} />

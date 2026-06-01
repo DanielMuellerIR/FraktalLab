@@ -388,6 +388,7 @@ export const ShaderRetroWave = React.memo(function ShaderRetroWave() {
       fragmentShader={RETRO_WAVE_SHADER}
       title="RETRO OUTRUN // HORIZON SCAN"
       attribution="Outrun Landscape by Antigravity"
+      speedName="ShaderRetroWave"
     />
   )
 })
