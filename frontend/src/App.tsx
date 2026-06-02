@@ -885,6 +885,22 @@ function detectMobileLayout(): boolean {
   return window.innerWidth < 768 || window.matchMedia?.('(pointer: coarse)').matches || navigator.maxTouchPoints > 0
 }
 
+function isLowResolutionMobile(): boolean {
+  if (typeof window === 'undefined') return false
+  // Geraete ohne 2x-HQ-Display sind meist schwacher und sollen nicht mit hoher
+  // Dichte starten. Manuelle Klicks auf OD/Proxima bleiben in der Session moeglich.
+  return detectMobileLayout() && (window.devicePixelRatio || 1) < 2
+}
+
+function initialDensityLevel(): DensityLevel {
+  const saved = localStorage.getItem(LS_DENSITY)
+  const level = DENSITY_ORDER.includes(saved as DensityLevel) ? (saved as DensityLevel) : 'turbo'
+  if (isLowResolutionMobile() && (level === 'overclock' || level === 'proxima')) {
+    return 'turbo'
+  }
+  return level
+}
+
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 export default function App() {
   // Aufsteigender ID-Zähler für React-Keys — als Ref, um Stale-Closure-Probleme zu vermeiden
@@ -903,10 +919,7 @@ export default function App() {
   // Kein Benchmark mehr (sorgte für Verspringen). Wer schwache Hardware hat, geht
   // manuell auf `25 MHz` runter. Jede Wahl wird in localStorage gemerkt und beim
   // Reload wiederhergestellt.
-  const [density, setDensity] = useState<DensityLevel>(() => {
-    const saved = localStorage.getItem(LS_DENSITY)
-    return DENSITY_ORDER.includes(saved as DensityLevel) ? (saved as DensityLevel) : 'turbo'
-  })
+  const [density, setDensity] = useState<DensityLevel>(initialDensityLevel)
   // Ref-Spiegel, damit doSwitch (leere Deps) immer die aktuelle Dichte sieht.
   const densityRef = useRef<DensityLevel>(density)
   useEffect(() => { densityRef.current = density }, [density])

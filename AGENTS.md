@@ -85,6 +85,13 @@ Bedienelemente + TASL/Copyright bleiben sichtbar, VU-Meter als begrenztes
 2×2-Raster, dazu Mini-Tracker-Zeilen statt leerer Großbox. Landscape bleibt nach
 Rotation im Mobile-Layout.
 
+### Low-DPR-Mobile-Start (v1.23.6, 2026-06-02)
+
+Mobile Geraete ohne 2x-HQ-Display (`devicePixelRatio < 2`) starten maximal auf
+Turbo, auch wenn aus einer alten Session OD/Proxima in `localStorage` liegt.
+Der gespeicherte Wert wird nicht geloescht; manuelles Hochschalten bleibt in der
+laufenden Session moeglich.
+
 ## ✅ Bugfixes 2026-06-01 (v1.23.1–v1.23.2)
 
 - SID-Loader: PSID mit Header-Ladeadresse ≠ 0 wurde 2 Bytes verschoben geladen → Stille. Gefixt.
