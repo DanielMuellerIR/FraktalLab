@@ -20,10 +20,17 @@
 </FilesMatch>
 
 <IfModule mod_rewrite.c>
+    # AudioWorklet ist auf iOS/Safari nur in sicheren Kontexten verfuegbar.
+    # dm0.de/x muss daher konsequent ueber HTTPS laufen; sonst bleiben SID/MOD
+    # ohne Worklet und damit ohne Audio.
+    RewriteEngine On
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP:X-Forwarded-Proto} !https
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
     # SPA-Routing: unbekannte Pfade auf index.html im selben Verzeichnis umleiten.
     # Relativer Pfad "index.html" (kein führender Slash!) wird von Apache relativ
     # zum Verzeichnis dieser .htaccess aufgelöst → funktioniert in jedem Unterordner.
-    RewriteEngine On
     RewriteRule ^index\.html$ - [L]
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d

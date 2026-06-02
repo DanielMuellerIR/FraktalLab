@@ -290,6 +290,14 @@ function AmiModPanel() {
   // Fokus (Pause-Verhalten). Liest player.mod LIVE statt aus React-State, damit
   // der einmalig registrierte Callback nicht auf veralteten Ladestand zugreift.
   useEffect(() => {
+    const failPlay = (err: unknown) => {
+      console.error('MOD play failed:', err);
+      setPlaying(false);
+      (window as any).fraktallab_mod_playing = false;
+      setLoadError(err instanceof Error ? err.message : String(err));
+      releaseAudioFocus(AUDIO_ID);
+    };
+
     const playTrack = () => {
       const p = playerRef.current;
       requestAudioFocus(AUDIO_ID);
@@ -297,9 +305,12 @@ function AmiModPanel() {
         lastPosRef.current = 0;
         justScrubbedRef.current = false;
         p.resumeContext();
-        p.play();
-        setPlaying(true);
-        (window as any).fraktallab_mod_playing = true;
+        p.play()
+          .then(() => {
+            setPlaying(true);
+            (window as any).fraktallab_mod_playing = true;
+          })
+          .catch(failPlay);
       } else {
         // Track lädt noch → der Load-Finish-Pfad startet dann automatisch.
         // WICHTIG: den (geteilten) AudioContext TROTZDEM schon hier — also
@@ -376,9 +387,18 @@ function AmiModPanel() {
         requestAudioFocus(AUDIO_ID);
         // Atomare Uebergabe: play() schickt myMod explizit ans Worklet,
         // statt aus this.mod zu lesen.
-        player.play(myMod);
-        setPlaying(true);
-        (window as any).fraktallab_mod_playing = true;
+        player.play(myMod)
+          .then(() => {
+            setPlaying(true);
+            (window as any).fraktallab_mod_playing = true;
+          })
+          .catch((err) => {
+            console.error('MOD autoplay failed:', err);
+            setPlaying(false);
+            (window as any).fraktallab_mod_playing = false;
+            setLoadError(err instanceof Error ? err.message : String(err));
+            releaseAudioFocus(AUDIO_ID);
+          });
         shouldAutoPlayRef.current = false;
       }
 
@@ -690,9 +710,18 @@ function AmiModPanel() {
       justScrubbedRef.current = false;
       player.resumeContext();
       requestAudioFocus(AUDIO_ID);
-      player.play();
-      setPlaying(true);
-      (window as any).fraktallab_mod_playing = true;
+      player.play()
+        .then(() => {
+          setPlaying(true);
+          (window as any).fraktallab_mod_playing = true;
+        })
+        .catch((err) => {
+          console.error('MOD play failed:', err);
+          setPlaying(false);
+          (window as any).fraktallab_mod_playing = false;
+          setLoadError(err instanceof Error ? err.message : String(err));
+          releaseAudioFocus(AUDIO_ID);
+        });
     }
   };
 

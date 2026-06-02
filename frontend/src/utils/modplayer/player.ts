@@ -1,6 +1,6 @@
 import { loadMod } from './loader';
 import { Mod } from './mod';
-import { getSharedAudioContext } from '../shared-audio';
+import { getAudioWorkletSupportError, getSharedAudioContext } from '../shared-audio';
 
 // Symbole als private Felder. TypeScript erlaubt private-Felder direkt, aber
 // das Original-Pattern mit Symbol-Keys bleibt erhalten — so muessen Aufrufer
@@ -126,11 +126,12 @@ export class ModPlayer {
     // angesiedelte ScriptProcessor-Fallback lief auf dem Main-Thread und war
     // primaere Ursache fuer das von Nutzern gemeldete "Seite wird ruckelig
     // sobald MOD-Player aktiv" (Audit 2026-05-29).
-    const audioCtx = ctx as any;
-    if (!audioCtx.audioWorklet) {
-      throw new Error('AudioWorklet wird vom Browser nicht unterstuetzt — moderner Browser noetig.');
+    const supportError = getAudioWorkletSupportError(ctx);
+    if (supportError) {
+      throw new Error(supportError);
     }
 
+    const audioCtx = ctx as any;
     if (!audioCtx.__workletAdded) {
       // iOS WebKit (inkl. Firefox/Chrome iOS) loest relative URLs in addModule()
       // nicht korrekt auf. Daher immer eine absolute URL erzeugen — egal ob

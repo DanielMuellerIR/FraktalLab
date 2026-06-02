@@ -1,4 +1,4 @@
-import { getSharedAudioContext } from './shared-audio';
+import { getAudioWorkletSupportError, getSharedAudioContext } from './shared-audio';
 
 export interface SidMetadata {
   title: string;
@@ -101,6 +101,11 @@ export class SidPlayer {
     }
 
     const audioCtxAny = ctx as any;
+    const supportError = getAudioWorkletSupportError(ctx);
+    if (supportError) {
+      throw new Error(supportError);
+    }
+
     if (!audioCtxAny.__sidWorkletAdded) {
       const BASE = import.meta.env.BASE_URL;
       // ?v=<version> bricht den Browser-Cache bei jedem Deploy auf — die Worklet-

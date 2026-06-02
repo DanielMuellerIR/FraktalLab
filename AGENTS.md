@@ -61,6 +61,16 @@ der Kern-Schleife (jsSID kann es nicht; reSID/sidplayfp schon). Aufwändig + ung
 funktionierende SIDs (15743, 23575, 23584, 35682) + 9 MODs. Dateien aus `botb/`,
 `sid_mod_dl/` und Lizenz-Doku-Beispiel entfernt, `npm run gen` neu gelaufen.
 
+## ✅ iOS-AudioWorklet-Fix (v1.23.4, 2026-06-02)
+
+Live-Befund: `http://dm0.de/x/` lieferte `200 OK` statt HTTPS-Redirect. Auf iOS/Safari
+ist `AudioContext.audioWorklet` unter HTTP nicht verfügbar → SID warf
+`TypeError: undefined is not an object (evaluating '...audioWorklet.addModule')`,
+MOD blieb wegen nicht gefangener `player.play()`-Promise stumm. Fix:
+`public/.htaccess` erzwingt HTTPS vor SPA-Fallback; `shared-audio.ts` liefert eine
+zentrale AudioWorklet-Support-Meldung; SID prüft vor `addModule`; MOD fängt
+Play-/Autoplay-Fehler und zeigt sie im Panel statt `playing=true` ohne Ton.
+
 ## ✅ Bugfixes 2026-06-01 (v1.23.1–v1.23.2)
 
 - SID-Loader: PSID mit Header-Ladeadresse ≠ 0 wurde 2 Bytes verschoben geladen → Stille. Gefixt.
