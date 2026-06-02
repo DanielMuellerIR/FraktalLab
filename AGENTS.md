@@ -121,6 +121,23 @@ auf Retina-Desktop-Proxima zu frueh: optisch grosses Panel, aber CSS-Hoehe knapp
 unter 330px → Mini-Tracker mit fester 7em-Hoehe oben und grosse leere Flaeche
 darunter. Mittlere Desktop-Kacheln nutzen wieder den normalen, flexenden Tracker.
 
+### MOD-Player Compact-Tracker mobil animiert (v1.23.11, 2026-06-02)
+
+`AmiModPanel`-Compact-Modus rendert die Tracker-Zeilen wieder als echten
+Scroll-Container mit allen 64 Rows (`data-row-idx`). Der bestehende Worklet-Watcher
+setzt dadurch die aktive Zeile und `scrollTop` auch mobil; vorher wurden nur
+Rows 00..04 statisch gezeigt, obwohl der Song z.B. bei Row 47 lief. Der
+Compact-Hauptbereich ist ausserdem `flex-1` statt feste `7em`, damit iPhone-Portrait
+die vorhandene Panel-Hoehe nutzt statt darunter schwarz leer zu bleiben.
+
+### MOD-Player Tiny-Strip mobil ohne statische Tracks (v1.23.12, 2026-06-02)
+
+Sehr flache breite MOD-Kacheln (typisch Turbo/Proxima auf iPhone Portrait) bekommen
+eine eigene Tiny-Strip-Darstellung: keine Tracker-Zeilen und keine TASL-Laufschrift,
+sondern Song/Status/Position plus vier animierte VU-Meter. Damit gibt es auf Mobile
+keine unbewegten Mini-Tracks mehr; sobald genug Hoehe vorhanden ist, greift weiterhin
+der Compact-Tracker mit echter Row-Animation.
+
 ## ✅ Bugfixes 2026-06-01 (v1.23.1–v1.23.2)
 
 - SID-Loader: PSID mit Header-Ladeadresse ≠ 0 wurde 2 Bytes verschoben geladen → Stille. Gefixt.
@@ -322,14 +339,15 @@ Alle Unterpunkte (a-e) umgesetzt. Build grün (tsc + vite), im Browser verifizie
 - `c64_font.png` (`public/`) wird in `C64Panel.tsx:140` aktiv geladen (nicht obsolet).
 - `RetroErrorPanel` ist bereits voll prozedural (Canvas2D), keine statischen Bilder.
 
-### GitHub-Vorbereitung (Todo, eigene Session)
+### GitHub-Vorbereitung
 
-- [ ] **Repo:** https://github.com/DanielMuellerIR/FraktalLab.git
-- [ ] **Erst privat** veröffentlichen — wegen mitgelieferter MOD- und SID-Dateien (urheberrechtlich geschützt, nicht für öffentliches Repo). Vor späterem Public-Schalten klären: Assets entfernen / extern laden / Lizenzlage.
-- [ ] **Deutsches README** erzeugen: alle **aktiven** Panels auflisten + technische Vorzüge (z.B. eigene GPU-Fraktal-Engine mit double-single-Präzision, eigener ProTracker-MOD-Player + C64-SID-Player als AudioWorklet, prozedurale Panels, kleine Bundle-Größe ~1 MB ohne Assets). **Nüchtern/technisch, nichts erfinden**, so formuliert als wäre es public (Umstellung auf public evtl. bald).
-- [ ] **Claude NICHT als Contributor/Autor angeben.** README-Autor = Daniel. Künftige Commits ohne `Co-Authored-By: Claude`-Trailer (ab Commit `f13a2e5` weggelassen).
-  - Befund: git-Autor/Committer ist bei **allen 142 Commits** `DanielMuellerIR <<email>>` (sauber). KI-Spur **nur** im Message-Body als `Co-Authored-By: Claude …`-Trailer in **57 Commits** (Varianten Opus 4.7/4.8, Sonnet 4.6). Andere genutzte KIs haben keinen Trailer hinterlassen.
-  - Entfernen vor Public = History-Rewrite (`git filter-repo --message-callback` o.ä., strippt die Trailer-Zeilen). Alle Hashes ändern sich → nur direkt vor dem ersten Push, nicht ungefragt.
+- [x] **Repo:** https://github.com/DanielMuellerIR/FraktalLab.git
+- [x] **Deutsches README** erzeugt: aktive Panels, technische Eckdaten, Audio-/Lizenzhinweise, Build/Deploy-Hinweise, sachlich public-tauglich formuliert.
+- [x] **GitHub Social Preview** vorbereitet: `docs/assets/fraktallab-proxima.jpg`, `docs/assets/social-preview.jpg`, Generator `scripts/make-social-preview.py`, Hinweise in `docs/assets/README.md`.
+- [ ] **Repo vorerst privat halten** — mitgelieferte MOD- und SID-Dateien sind CC-BY-NC-SA und damit nicht fuer kommerzielle Nutzung geeignet. Vor spaeterem Public-Schalten klaeren: Assets entfernen / extern laden / Lizenzlage.
+- [x] **Claude NICHT als Contributor/Autor angeben.** README-Autor = Daniel.
+  - Befund nach History-Rewrite (2026-06-02): git-Autor/Committer ist bei **allen 185 Commits** `DanielMuellerIR <<email>>`; `Co-Authored-By:`-Trailer sind nicht mehr vorhanden.
+  - Künftige Commits bleiben ohne `Co-Authored-By`-Trailer.
 
 > **Nächste Schritte — Panel-Rework Phase 2 (priorisiert nach Kritik-Intensität, ABGESCHLOSSEN):**
 >

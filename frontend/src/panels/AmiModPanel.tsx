@@ -244,13 +244,20 @@ function AmiModPanel() {
   const isNarrow = dimensions.width < 500;
   const isUltraNarrow = dimensions.width < 365;
   const isShort = dimensions.height < 320;
+  // Drei Layout-Stufen:
+  // - Tiny-Strip: breite, sehr flache Mobile-Kacheln (z.B. Turbo Portrait).
+  //   Keine Tracker-Zeilen, weil sie dort nur statisch/abgeschnitten wirken.
+  //   Stattdessen: animierte VU-Meter + Status, also sichtbar lebendiger Inhalt.
+  // - Compact: kleine, aber ausreichend hohe Kacheln; echter scrollender Tracker.
+  // - Full: Desktop/hohe Kacheln mit kompletter Tracker-Tabelle.
+  const isTinyStripPlayer = dimensions.height < 210;
   // Compact-Modus ist nur fuer wirklich kleine Mobile-Kacheln gedacht. Auf
   // Retina-Desktop wirken Panels optisch gross, haben in CSS-Pixeln aber oft nur
   // knapp ueber 300 px Hoehe; die alte 330px-Schwelle schaltete dann faelschlich
   // auf den Mini-Tracker mit fester 7em-Hoehe und liess darunter viel Leerraum.
-  const isCompactPlayer = dimensions.height < 240 || (dimensions.width < 330 && dimensions.height < 360);
+  const isCompactPlayer = !isTinyStripPlayer && (dimensions.height < 260 || (dimensions.width < 330 && dimensions.height < 360));
   const hideTrackPicker = dimensions.width < 330 || dimensions.height < 220;
-  const showMainArea = dimensions.height >= 170;
+  const showMainArea = dimensions.height >= 120;
 
   // Defaults + User-Uploads in einer einzigen Liste. Reihenfolge: zuerst
   // Defaults (stabile Indizes), dann User-Uploads in Hinzufuege-Reihenfolge.
@@ -939,12 +946,12 @@ function AmiModPanel() {
         {/* ─── Metadaten-Zeile (Titel / Composer) ───────────────────────────
             Wie beim SID-Player: kompakte Kopfzeile mit Songtitel und
             Urheberangaben statt der Workbench-Titelleiste. */}
-        <div className="flex flex-col gap-0.5 px-1.5 py-1 bg-black/60 border-y border-[#111827] shrink-0" style={{ fontSize: isCompactPlayer ? '0.78em' : '0.85em' }}>
+        <div className="flex flex-col gap-0.5 px-1.5 py-1 bg-black/60 border-y border-[#111827] shrink-0" style={{ fontSize: (isTinyStripPlayer || isCompactPlayer) ? '0.78em' : '0.85em' }}>
           <div className="flex justify-between gap-2">
             <span className="text-neutral-400 truncate">
               Title: <strong className="text-white">{mod?.name?.trim() || 'UNTITLED'}</strong>
             </span>
-            {!isUltraNarrow && !isCompactPlayer && (
+            {!isUltraNarrow && !isCompactPlayer && !isTinyStripPlayer && (
               <span className="text-neutral-400 truncate shrink-0">
                 Composer: <strong className="text-[#38bdf8]">{allTracks[trackIdx]?.composer || '—'}</strong>
               </span>
@@ -953,7 +960,7 @@ function AmiModPanel() {
           {/* Zweite Zeile mit weiteren Metadaten (nur auf breiteren Panels).
               ARRANGER nur, wenn er sich vom Composer unterscheidet
               (z. B. Speedball 2: Simon Rogers / Richard Joseph). */}
-          {!isNarrow && !isCompactPlayer && (
+          {!isNarrow && !isCompactPlayer && !isTinyStripPlayer && (
             <div className="text-neutral-500 italic truncate">
               {allTracks[trackIdx]?.arranger && allTracks[trackIdx]?.arranger !== allTracks[trackIdx]?.composer
                 ? `arr. ${allTracks[trackIdx]?.arranger} · `
@@ -965,7 +972,7 @@ function AmiModPanel() {
           {/* CC-Attribution (TASL: Title/Author/Source/Licence) — bei User-Uploads
               ausgeblendet. Autoscroll-Laufschrift, falls der Text breiter als die
               Kachel ist (siehe .marquee in index.css). Link führt zum BotB-Entry. */}
-          {allTracks[trackIdx]?.license && !allTracks[trackIdx]?.isUser && (
+          {allTracks[trackIdx]?.license && !allTracks[trackIdx]?.isUser && !isTinyStripPlayer && (
             <div className="marquee text-[#6ee7b7]/80 border-t border-[#111827] pt-0.5" style={{ fontSize: '0.92em' }}>
               <span className="marquee__inner">
                 {allTracks[trackIdx]?.name} — {allTracks[trackIdx]?.composer}, {allTracks[trackIdx]?.source} {allTracks[trackIdx]?.year},
@@ -983,11 +990,43 @@ function AmiModPanel() {
             VU-Meter links, Tracker-Tabelle Mitte, Instrumentenliste rechts.
             Alles flach auf Schwarz mit duennen Trennlinien. */}
         {showMainArea && (
-        <div className={`flex overflow-hidden min-h-0 gap-1 ${isCompactPlayer ? 'shrink-0 h-[7em]' : 'flex-1'}`}>
-          {isCompactPlayer ? (
+        <div className="flex flex-1 overflow-hidden min-h-0 gap-1">
+          {isTinyStripPlayer ? (
+            <div className="flex-1 min-w-0 bg-[#050505] border border-[#1f2937] rounded px-1 py-0.5 flex flex-col gap-0.5 overflow-hidden">
+              <div className="flex justify-between gap-2 text-neutral-500 font-bold shrink-0" style={{ fontSize: '0.72em' }}>
+                <span className="truncate">{mod?.name?.trim() || allTracks[trackIdx]?.name || 'UNTITLED'}</span>
+                <span className={playing ? 'text-[#4ade80] animate-pulse' : 'text-neutral-600'}>
+                  {playing ? 'PLAYING' : loading ? 'LOADING' : 'STOPPED'}
+                </span>
+              </div>
+              <div className="flex justify-between text-neutral-500 font-bold tabular-nums shrink-0" style={{ fontSize: '0.68em' }}>
+                <span>POS {mod ? `${String(currentPosition + 1).padStart(2, '0')}/${String(mod.length).padStart(2, '0')}` : '--/--'}</span>
+                <span ref={statusRowRef}>{currentRowRef.current.toString().padStart(2, '0')}/63</span>
+              </div>
+              <div className="grid grid-cols-4 gap-1 flex-1 min-h-0 pt-0.5 border-t border-[#111827]">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="flex flex-col min-h-0 items-center gap-0.5">
+                    <span className="text-neutral-500 font-bold leading-none" style={{ fontSize: '0.62em' }}>
+                      CH{i + 1}
+                    </span>
+                    <div className="w-full max-w-[1.6em] flex-1 min-h-[1.4em] bg-black border border-[#1f2937] relative overflow-hidden">
+                      <div
+                        ref={(el) => { vuBarsRef.current[i] = el; }}
+                        className="absolute bottom-0 left-0 right-0"
+                        style={{
+                          height: '2%',
+                          background: 'linear-gradient(to top, #166534 0%, #4ade80 60%, #38bdf8 85%, #facc15 100%)',
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : isCompactPlayer ? (
             <>
-              {/* Kompaktmodus fuer Mobile/kleine Kacheln: Tracker-Tabelle raus,
-                  dafuer alle vier VU-Meter sichtbar als 2x2-Raster. */}
+              {/* Kompaktmodus fuer Mobile/kleine Kacheln: links kleine VU-Meter,
+                  rechts ein echter scrollender Tracker mit aktiver Row. */}
               <div
                 className="grid grid-cols-2 grid-rows-2 gap-1 px-1 py-1 bg-[#0a0a0a] border border-[#1f2937] shrink-0 w-[5.2em] rounded self-center"
                 style={{ height: 'min(100%, 11em)' }}
@@ -1024,16 +1063,36 @@ function AmiModPanel() {
                   <span>POS {mod ? `${String(currentPosition + 1).padStart(2, '0')}/${String(mod.length).padStart(2, '0')}` : '--/--'}</span>
                   <span ref={statusRowRef}>{currentRowRef.current.toString().padStart(2, '0')}/63</span>
                 </div>
-                <div className="mt-0.5 flex-1 min-h-0 overflow-hidden border-t border-[#111827] pt-0.5" style={{ fontSize: '0.66em' }}>
+                <div
+                  ref={rowsContainerRef}
+                  className="mt-0.5 flex-1 min-h-0 overflow-y-auto no-scrollbar border-t border-[#111827] pt-0.5"
+                  style={{ fontSize: '0.66em', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                >
+                  <style>{`
+                    .mod-compact-row {
+                      line-height: 1.25;
+                      color: #2f7d4f;
+                    }
+                    .mod-compact-row[data-active="true"] {
+                      background-color: rgba(74, 222, 128, 0.16);
+                      color: #ffffff;
+                      box-shadow: inset 2px 0 0 #4ade80;
+                    }
+                    .mod-compact-row[data-active="true"] .mod-compact-row-idx {
+                      color: #4ade80;
+                    }
+                  `}</style>
                   {loading ? (
                     <div className="text-[#38bdf8] animate-pulse">LOADING MODULE...</div>
                   ) : allRows.length > 0 ? (
-                    allRows.slice(0, 5).map((row, absoluteRow) => (
+                    allRows.map((row, absoluteRow) => (
                       <div
                         key={absoluteRow}
-                        className={`flex tabular-nums leading-tight ${absoluteRow === currentRowRef.current ? 'text-white bg-[#12351f]' : 'text-[#2f7d4f]'}`}
+                        data-row-idx={absoluteRow}
+                        data-active={absoluteRow === currentRowRef.current ? 'true' : 'false'}
+                        className="mod-compact-row flex tabular-nums"
                       >
-                        <span className="w-5 shrink-0 text-neutral-500">{absoluteRow.toString(16).toUpperCase().padStart(2, '0')}</span>
+                        <span className="mod-compact-row-idx w-5 shrink-0 text-neutral-500">{absoluteRow.toString(16).toUpperCase().padStart(2, '0')}</span>
                         {row.notes.map((note, ci) => (
                           <span key={ci} className="flex-1 min-w-0 text-center truncate">
                             {getNoteName(note.period)} {formatInstrument(note)} {formatEffect(note)}
