@@ -1,6 +1,7 @@
 <IfModule mod_headers.c>
-    # Diese Header sind zwingend erforderlich, damit WebAssembly (SharedArrayBuffer) funktioniert.
-    # Sie entsprechen den Einstellungen aus netlify.toml
+    # Cross-Origin-Isolation-Header fuer Browser-Features mit strengen
+    # Sicherheitsanforderungen. Der aktuelle Build nutzt kein WASM mehr, die Header
+    # bleiben aber kompatibel mit AudioWorklet/WebAudio und frueheren Deployments.
     Header set Cross-Origin-Opener-Policy "same-origin"
     Header set Cross-Origin-Embedder-Policy "credentialless"
 </IfModule>

@@ -71,7 +71,8 @@ weiterhin bis ~1e9.
 
 Ein Vierfach-Wähler steuert, wie viele Panels gleichzeitig laufen — und wie schnell
 sie animieren. Die gewählte Stufe wird in `localStorage` gespeichert; Startwert ist
-*Turbo*.
+*Turbo*. Mobile Geräte mit niedriger Display-Auflösung (`devicePixelRatio < 2`)
+starten ebenfalls auf *Turbo*, selbst wenn vorher eine höhere Stufe gespeichert war.
 
 | Stufe | Panels (Ziel) | Wirkung auf das Animationstempo |
 |---|---|---|
@@ -85,6 +86,11 @@ dass auch Laptops die hohen Stufen erreichen; `cols×rows` wird passend zum
 Seitenverhältnis abgeleitet und auf die Zahl tatsächlich verfügbarer Panels
 gedeckelt, damit keine leeren Kacheln oder Duplikate entstehen. Audio-Visualisierung
 (MOD-Tracker, Oszilloskop) bleibt auf jeder Stufe bei 1×, synchron zum Klang.
+
+Auf Mobile nutzt die App eigene Raster statt des Desktop-Layouts: 25 MHz zeigt
+1×3 Panels, Turbo 1×5, Overdrive 2×4 und Proxima 3×5; im Querformat werden Spalten
+und Zeilen entsprechend gedreht. Die Kopfzeile wird auf Mobile stark gekürzt, damit
+Bedienung und Auslastungswähler einzeilig bleiben.
 
 ---
 
@@ -181,7 +187,8 @@ Raycasting), inzwischen auf GPU-Raymarching migriert. Heightmaps prozedural aus
   UV-Mapping, FBM-Wolkenschicht, Tag/Nacht-Terminator, Stadtlichter, Fresnel-Limb.
 - **SolarSystemPanel** *(Canvas-2D)* — heliozentrisches Planetarium mit
   wurzelkomprimierten realistischen Maßstäben, Zoom-Sequenzen auf einzelne Körper
-  samt Info-Overlay.
+  samt Info-Overlay. Enge Mobile-Kacheln nutzen eine Vollkachel-Infobox, damit alle
+  Daten sichtbar bleiben.
 - **LidarScanPanel** *(Canvas-2D)* — rotierendes 3D-Punkt-Grid mit vier
   Terrain-Funktionen und radialem Sonar-Sweep.
 - **MoonPanel** *(WebGL-Shader)* — prozeduraler Mond: Höhenfeld mit Kratern,
@@ -204,7 +211,8 @@ Raycasting), inzwischen auf GPU-Raymarching migriert. Heightmaps prozedural aus
 - **RetroErrorPanel** *(Canvas-2D)* — Slideshow klassischer Absturzbildschirme
   (Mac System 7 Bomb, Windows-95-BSOD, Amiga Guru Meditation, Kernel Panic),
   prozedural gezeichnet; ein unsichtbares DOM-Text-Overlay macht den Text
-  markierbar und kopierbar.
+  markierbar und kopierbar. Canvas-Schriften skalieren höhenbewusst, damit kleine
+  Kacheln keine abgeschnittenen Fehlerdialoge zeigen.
 - **EnhanceView** *(Canvas-2D)* — „Enhance"-Slideshow: ein Bild wird über zwölf
   Stufen von grob gepixelt zu scharf hochgezogen — das Hochskalieren selbst ist das
   Stil-Element.
@@ -249,16 +257,17 @@ skalieren container-relativ mit der Kachelgröße.
 - **Main-Thread-Last:** Das Audit zeigte, dass nicht die GPU, sondern Canvas-2D-
   Blits und Pro-Frame-JS der Engpass waren — die richtige Diagnose vor der
   GPU-Migration.
-- **Audio unter iOS/WebKit:** strikt gestengebundener `AudioContext`-Unlock und
-  Umgehung des physischen Lautlos-Schalters.
+- **Audio unter iOS/WebKit:** `AudioContext`-Unlock über eine Nutzergeste und
+  Umgehung des physischen Lautlos-Schalters. AudioWorklet braucht auf iOS einen
+  sicheren Kontext; `.htaccess` erzwingt deshalb HTTPS für `dm0.de/x`.
 
 ---
 
 ## KI-Unterstützung
 
-Die Entwicklung erfolgte mit KI-Unterstützung (Pair-Programming mit großen
-Sprachmodellen). Frei nach dem Motto: *„Viele Millionen Tokens formten diesen
-schönen Körper."*
+Die Entwicklung erfolgte mit KI-Unterstützung beim Pair-Programming, bei Code-
+Reviews und bei der Fehlersuche. Verantwortung für Veröffentlichung, Auswahl der
+Assets und technische Entscheidungen liegt beim Projektinhaber.
 
 ---
 
