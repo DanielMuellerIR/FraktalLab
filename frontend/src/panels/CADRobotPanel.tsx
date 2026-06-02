@@ -745,8 +745,8 @@ function CADRobotPanel() {
     }
 
     // Info-Box oben links
-    function drawInfoOverlay(W: number, model: ModelDef, alpha: number) {
-      const fSize = Math.max(8, Math.min(11, W * 0.028))
+    function drawInfoOverlay(W: number, H: number, model: ModelDef, alpha: number) {
+      const fSize = Math.max(5, Math.min(11, Math.min(W, H * 1.6) * 0.028))
       ctx.font = `${fSize}px monospace`
       ctx.textBaseline = 'top'
 
@@ -764,8 +764,8 @@ function CADRobotPanel() {
       ctx.fillText(`DIMS   : ${model.dimensions}`, 12, 8 + fSize * 2.6)
     }
 
-    function drawModeLabel(W: number, alpha: number) {
-      const fSize = Math.max(8, Math.min(11, W * 0.028))
+    function drawModeLabel(W: number, H: number, alpha: number) {
+      const fSize = Math.max(5, Math.min(11, Math.min(W, H * 1.6) * 0.028))
       ctx.font = `bold ${fSize}px monospace`
       ctx.textBaseline = 'top'
 
@@ -786,7 +786,7 @@ function CADRobotPanel() {
 
     // Statuszeile unten (Amber/Orange)
     function drawStatusBar(W: number, H: number, model: ModelDef) {
-      const fSize = Math.max(7, Math.min(10, W * 0.025))
+      const fSize = Math.max(5, Math.min(10, Math.min(W, H * 1.6) * 0.025))
       ctx.font = `${fSize}px monospace`
       ctx.textBaseline = 'bottom'
 
@@ -865,8 +865,8 @@ function CADRobotPanel() {
 
       drawAxes(centerX, centerY, scale, rx, ry)
       drawModelCADMesh(MODELS[modelIdx], centerX, centerY, scale, rx, ry, modelAlpha)
-      drawInfoOverlay(W, MODELS[modelIdx], modelAlpha)
-      drawModeLabel(W, modelAlpha)
+      drawInfoOverlay(W, H, MODELS[modelIdx], modelAlpha)
+      drawModeLabel(W, H, modelAlpha)
       drawStatusBar(W, H, MODELS[modelIdx])
 
       // Rekursiver rAF-Aufruf entfaellt: subscribe ruft loop() bei jedem Tick.

@@ -826,6 +826,117 @@ function easeInOut(t: number): number {
   return 0.5 - 0.5 * Math.cos(t * Math.PI)
 }
 
+// Canvas-Textumbruch fuer enge Info-Overlays. Canvas kennt keine CSS-Zeilenumbrueche,
+// darum muessen wir die Wortzeilen selbst bauen.
+function wrapCanvasLines(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+  const words = text.split(' ')
+  const lines: string[] = []
+  let current = ''
+
+  for (const word of words) {
+    const test = current ? `${current} ${word}` : word
+    if (ctx.measureText(test).width > maxW && current) {
+      lines.push(current)
+      current = word
+    } else {
+      current = test
+    }
+  }
+
+  if (current) lines.push(current)
+  return lines
+}
+
+function drawWrappedCanvasText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxW: number,
+  lineH: number
+): number {
+  for (const line of wrapCanvasLines(ctx, text, maxW)) {
+    ctx.fillText(line, x, y)
+    y += lineH
+  }
+  return y
+}
+
+function drawCompactInfoBox(
+  ctx: CanvasRenderingContext2D,
+  target: ZoomTarget,
+  W: number,
+  H: number,
+  alpha: number
+) {
+  const minDim = Math.min(W, H)
+  const pad = Math.max(4, Math.min(8, Math.round(minDim * 0.04)))
+  const boxX = pad
+  const boxY = pad
+  const boxW = Math.max(1, W - pad * 2)
+  const boxH = Math.max(1, H - pad * 2)
+  const contentW = boxW - pad * 2
+
+  const baseLines = [
+    `${target.name}${target.isMoon ? ` (${target.parentName} Satellite)` : ''}`,
+    `Classification: ${target.type}`,
+    `Dimension: ${target.stats.diameter}`,
+    `Orbital Range: ${target.stats.distanceOrOrbit}`,
+    `Mass Scale: ${target.stats.mass}`,
+    `Atmospheric Profile: ${target.stats.atmosphere}`,
+    ...(!target.isMoon && target.stats.moonsCount && !target.isSpecial ? [`Confirmed Satellites: ${target.stats.moonsCount}`] : []),
+    `Thermal Profile: ${target.stats.temp} (${target.stats.tempRange[0]}°C..${target.stats.tempRange[1]}°C)`,
+    `Core Composition: ${target.stats.composition.map(item => `${item.label} ${item.pct}%`).join(' / ')}`,
+    `Earth Scale: ${target.stats.sizeScale.toFixed(2)}x`,
+    target.stats.features
+  ]
+
+  // Schrift iterativ verkleinern, bis alle umgebrochenen Zeilen in die Kachel
+  // passen. Minimum 4 px: winzig, aber noch sinnvoller als abgeschnittene Box.
+  let fontSize = Math.max(4, Math.min(9, minDim * 0.045))
+  let titleSize = fontSize + 1.5
+  let lineH = fontSize * 1.35
+  for (let i = 0; i < 8; i++) {
+    let needed = pad
+    baseLines.forEach((line, idx) => {
+      ctx.font = `${idx === 0 ? 'bold ' : ''}${idx === 0 ? titleSize : fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
+      needed += wrapCanvasLines(ctx, line, contentW).length * lineH
+      if (idx === 0 || idx === baseLines.length - 2) needed += lineH * 0.25
+    })
+    if (needed + pad <= boxH || fontSize <= 4.05) break
+    fontSize -= 0.55
+    titleSize = fontSize + 1.2
+    lineH = fontSize * 1.32
+  }
+
+  ctx.save()
+  ctx.globalAlpha = alpha
+  ctx.fillStyle = '#020617'
+  ctx.fillRect(boxX, boxY, boxW, boxH)
+  ctx.strokeStyle = target.isMoon ? 'rgba(217, 119, 6, 0.85)' : 'rgba(37, 99, 235, 0.85)'
+  ctx.lineWidth = 1
+  ctx.strokeRect(boxX + 0.5, boxY + 0.5, boxW - 1, boxH - 1)
+
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'top'
+  let y = boxY + pad
+
+  baseLines.forEach((line, idx) => {
+    const isTitle = idx === 0
+    const isFeature = idx === baseLines.length - 1
+    ctx.font = `${isTitle ? 'bold ' : isFeature ? 'italic ' : ''}${isTitle ? titleSize : fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
+    ctx.fillStyle = isTitle ? '#ffffff' : isFeature ? (target.isMoon ? '#fde047' : '#93c5fd') : '#cbd5e1'
+    y = drawWrappedCanvasText(ctx, line, boxX + pad, y, contentW, lineH)
+    if (idx === 0 || idx === baseLines.length - 2) y += lineH * 0.25
+  })
+
+  ctx.restore()
+}
+
+function usesCompactInfoBox(W: number, H: number): boolean {
+  return W < 560 || H < 260
+}
+
 function drawInfoBox(
   ctx: CanvasRenderingContext2D,
   target: ZoomTarget,
@@ -833,6 +944,13 @@ function drawInfoBox(
   H: number,
   alpha: number
 ) {
+  // In Mobile-Proxima koennen Solar-System-Kacheln sehr flach werden. Dann darf
+  // die Infobox die Szene komplett ersetzen, muss aber vollstaendig im Bild liegen.
+  if (usesCompactInfoBox(W, H)) {
+    drawCompactInfoBox(ctx, target, W, H, alpha)
+    return
+  }
+
   const minDim = Math.min(W, H)
   const fontSize = Math.max(9.5, Math.min(12, Math.round(minDim * 0.024)))
   const titleSize = fontSize + 4
@@ -863,14 +981,14 @@ function drawInfoBox(
   
   // Set tactical info box width & height
   const featMaxW = Math.min(330, W * 0.42)
-  const boxW = Math.max(maxW, featMaxW) + padX * 2 + 10
+  const boxW = Math.min(W - 16, Math.max(maxW, featMaxW) + padX * 2 + 10)
   
   // Dynamic height including stats, visual comparisons, and wrapped features block
   let boxH = 40 + lines.length * lineH + padY * 2 + 120
 
   // Placed centered horizontally on the right half
-  const bx = W * 0.73 - boxW / 2
-  const by = (H - boxH) / 2
+  const bx = Math.max(8, Math.min(W - boxW - 8, W * 0.73 - boxW / 2))
+  const by = Math.max(8, Math.min(H - boxH - 8, (H - boxH) / 2))
 
   // Background Glassmorphism layout (sleek slate/black)
   ctx.globalAlpha = alpha * 0.84
@@ -1511,18 +1629,22 @@ function SolarSystemPanel() {
       }
 
       // ── Solar System Telemetry HUD ─────────────────────────────────────────
-      ctx.fillStyle = 'rgba(74,222,128,0.55)'
-      ctx.font = '10px monospace'
-      ctx.textAlign = 'left'
-      ctx.textBaseline = 'bottom'
-      ctx.fillText('SOLAR SYSTEM // HELIOCENTRIC ORBITAL SURVEY', 10, H - 10)
+      // Compact-Infoboxen ersetzen die Szene komplett; das globale HUD wuerde
+      // sonst unten in die Box hineinmalen.
+      if (!(infoAlpha > 0.01 && usesCompactInfoBox(W, H))) {
+        ctx.fillStyle = 'rgba(74,222,128,0.55)'
+        ctx.font = '10px monospace'
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'bottom'
+        ctx.fillText('SOLAR SYSTEM // HELIOCENTRIC ORBITAL SURVEY', 10, H - 10)
 
-      ctx.textAlign = 'right'
-      ctx.fillText(
-        `TOTAL CLASSIFIED: 8 PLANETS // 2 DWARF PLANETS // 32 featured bodies`,
-        W - 10,
-        H - 10
-      )
+        ctx.textAlign = 'right'
+        ctx.fillText(
+          `TOTAL CLASSIFIED: 8 PLANETS // 2 DWARF PLANETS // 32 featured bodies`,
+          W - 10,
+          H - 10
+        )
+      }
     }
 
     unsubscribe = subscribe(loop)

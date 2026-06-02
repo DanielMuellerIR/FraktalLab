@@ -983,7 +983,7 @@ function DaggerfallPanel() {
 
       // ── Event Overlay Message ──────────────────────────────────────────────
       if (eventAlpha > 0.01) {
-        const evFSize = Math.max(6, Math.min(10, W * 0.038))
+        const evFSize = Math.max(4.5, Math.min(10, Math.min(W, viewH * 1.6) * 0.038))
         ctx.font = `bold ${evFSize}px monospace`
         ctx.textBaseline = 'top'
         const evW = ctx.measureText(eventText).width + 12
@@ -1001,7 +1001,7 @@ function DaggerfallPanel() {
 
       // ── Exit dialog ────────────────────────────────────────────────────────
       if (exitDialogTimer > 0 && exitDialogAlpha > 0.01) {
-        const dlgFSize = Math.max(7, Math.min(9, W * 0.026))
+        const dlgFSize = Math.max(4.5, Math.min(9, Math.min(W, viewH * 1.6) * 0.026))
         ctx.font = `${dlgFSize}px monospace`
         ctx.textBaseline = 'top'
 

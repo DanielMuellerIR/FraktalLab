@@ -104,6 +104,15 @@ Canvas-Schrift (`panelFontSize`) und ein container-relatives Text-Overlay, damit
 flache Mobile-Kacheln den ganzen Fehlerbildschirm statt abgeschnittener Riesenschrift
 zeigen.
 
+### Solar-System-Infobox + klare HUD-Skalierungsfixes (v1.23.8, 2026-06-02)
+
+`SolarSystemPanel`/„HELIOCENTRIC..." hat fuer enge Mobile-Kacheln einen kompakten
+Vollkachel-Infobox-Modus: Szene wird dann von der Infobox ersetzt, alle Daten werden
+als umgebrochener Text gezeigt, dekorative Mini-Charts fallen weg. Zusaetzlich wurden
+eindeutige Breiten-only-HUD-Schriften bei `DaggerfallPanel`, `CADRobotPanel` und
+`LidarScanPanel` auf `min(W, H*1.6)` umgestellt, damit flache Proxima-Kacheln nicht
+von zu grosser Schrift gesprengt werden.
+
 ## ✅ Bugfixes 2026-06-01 (v1.23.1–v1.23.2)
 
 - SID-Loader: PSID mit Header-Ladeadresse ≠ 0 wurde 2 Bytes verschoben geladen → Stille. Gefixt.

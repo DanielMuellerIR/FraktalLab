@@ -245,7 +245,7 @@ function LidarScanPanel() {
       ctx.stroke()
 
       // ── HUD Text Overlays ──────────────────────────────────────────────────
-      const fSize = Math.max(7, Math.min(10, W * 0.024))
+      const fSize = Math.max(4.5, Math.min(10, Math.min(W, H * 1.6) * 0.024))
       ctx.font = `${fSize}px monospace`
       ctx.textBaseline = 'top'
 
