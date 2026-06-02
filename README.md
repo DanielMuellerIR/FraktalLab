@@ -10,6 +10,8 @@ C64-SID-Emulator — überwiegend prozedural, nahezu ohne statische Assets.
 
 Das Bundle ist ohne Audiodateien rund 1 MB groß (Vorbild: Farbrausch *fr-08*).
 
+![FraktalLab Proxima-Centauri-Layout](docs/assets/fraktallab-proxima.jpg)
+
 ---
 
 ## Tech-Stack
