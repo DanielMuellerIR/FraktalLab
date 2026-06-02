@@ -20,7 +20,7 @@ export const PANEL_CODE_BYTES: Record<string, number> = {
   'FractalDragon': 14460,
   'FractalDendrite': 14460,
   'FractalSwirl': 14460,
-  'AmiModPanel': 96619,
+  'AmiModPanel': 96969,
   'SolarSystemPanel': 58357,
   'FractalView': 11128,
   'ThreeBodyScene': 74799,

@@ -113,6 +113,14 @@ eindeutige Breiten-only-HUD-Schriften bei `DaggerfallPanel`, `CADRobotPanel` und
 `LidarScanPanel` auf `min(W, H*1.6)` umgestellt, damit flache Proxima-Kacheln nicht
 von zu grosser Schrift gesprengt werden.
 
+### MOD-Player Desktop-Retina-Compact-Regressionsfix (v1.23.10, 2026-06-02)
+
+`AmiModPanel` schaltet den Mini-Tracker nur noch bei wirklich kleinen Kacheln ein
+(`height < 240` oder sehr schmal + niedrig). Die alte 330px-Hoehenschwelle griff
+auf Retina-Desktop-Proxima zu frueh: optisch grosses Panel, aber CSS-Hoehe knapp
+unter 330px → Mini-Tracker mit fester 7em-Hoehe oben und grosse leere Flaeche
+darunter. Mittlere Desktop-Kacheln nutzen wieder den normalen, flexenden Tracker.
+
 ## ✅ Bugfixes 2026-06-01 (v1.23.1–v1.23.2)
 
 - SID-Loader: PSID mit Header-Ladeadresse ≠ 0 wurde 2 Bytes verschoben geladen → Stille. Gefixt.

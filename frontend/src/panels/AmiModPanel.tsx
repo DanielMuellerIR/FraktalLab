@@ -244,7 +244,11 @@ function AmiModPanel() {
   const isNarrow = dimensions.width < 500;
   const isUltraNarrow = dimensions.width < 365;
   const isShort = dimensions.height < 320;
-  const isCompactPlayer = dimensions.width < 430 || dimensions.height < 330;
+  // Compact-Modus ist nur fuer wirklich kleine Mobile-Kacheln gedacht. Auf
+  // Retina-Desktop wirken Panels optisch gross, haben in CSS-Pixeln aber oft nur
+  // knapp ueber 300 px Hoehe; die alte 330px-Schwelle schaltete dann faelschlich
+  // auf den Mini-Tracker mit fester 7em-Hoehe und liess darunter viel Leerraum.
+  const isCompactPlayer = dimensions.height < 240 || (dimensions.width < 330 && dimensions.height < 360);
   const hideTrackPicker = dimensions.width < 330 || dimensions.height < 220;
   const showMainArea = dimensions.height >= 170;
 
