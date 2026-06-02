@@ -882,7 +882,9 @@ function detectMobileLayout(): boolean {
   // iPhone Pro Max im Querformat ist breiter als 768 px und fiel bisher ins
   // Desktop-Grid. Coarse Pointer/Touch haelt echte Phones auch landscape im
   // Mobile-Layout; Desktop-Browser mit schmalem Fenster bleiben ebenfalls mobil.
-  return window.innerWidth < 768 || window.matchMedia?.('(pointer: coarse)').matches || navigator.maxTouchPoints > 0
+  const uaLooksMobile = /iPhone|iPad|Android|Mobile/i.test(navigator.userAgent)
+  const crampedLandscape = window.innerHeight <= 520 && window.innerWidth / Math.max(1, window.innerHeight) > 1.4
+  return window.innerWidth < 768 || window.matchMedia?.('(pointer: coarse)').matches || navigator.maxTouchPoints > 0 || uaLooksMobile || crampedLandscape
 }
 
 function isLowResolutionMobile(): boolean {

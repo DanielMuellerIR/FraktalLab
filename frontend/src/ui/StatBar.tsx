@@ -17,10 +17,10 @@ export default function StatBar({ label, value }: { label: string; value: number
     // text-[1em] statt text-xs: die Schrift erbt jetzt die skalierbare Größe vom
     // Eltern-Container (Vitals setzt dort einen cqmin-clamp), statt fix bei 12px
     // zu kleben. So schrumpfen die Balken in kleinen Kacheln mit.
-    <div className="font-mono text-[1em] mb-1 flex gap-1">
-      <span className="text-green-600 w-[3.5em] shrink-0">{label}</span>
-      <span className="text-green-400">{'█'.repeat(filled)}{'░'.repeat(10 - filled)}</span>
-      <span className="text-green-700">{Math.round(v)}%</span>
+    <div className="font-mono text-[1em] mb-[0.35em] flex gap-[0.45em] whitespace-nowrap leading-none overflow-hidden">
+      <span className="text-green-600 w-[3.2em] shrink-0">{label}</span>
+      <span className="text-green-400 shrink-0">{'█'.repeat(filled)}{'░'.repeat(10 - filled)}</span>
+      <span className="text-green-700 shrink-0">{Math.round(v)}%</span>
     </div>
   )
 }

@@ -57,6 +57,14 @@ function wrapText(
   return cy
 }
 
+// Viele Fehlerbildschirme sind querformatig gedacht, landen in Proxima auf Mobile
+// aber auch in sehr flachen oder sehr schmalen Kacheln. Darum skaliert die Schrift
+// nicht nur nach Breite, sondern auch nach der verfuegbaren Hoehe.
+function panelFontSize(W: number, H: number, min: number, max: number, scale: number): number {
+  const basis = Math.min(W, H * 1.6)
+  return Math.max(min, Math.min(max, basis * scale))
+}
+
 const SCREENS: Screen[] = [
   // ── 1. Mac System 7 Bomb ──────────────────────────────────────────────────
   {
@@ -102,7 +110,7 @@ const SCREENS: Screen[] = [
         ctx.stroke()
       }
 
-      const fs = Math.max(9, Math.min(13, W * 0.028))
+      const fs = panelFontSize(W, H, 5, 13, 0.028)
       ctx.font = `bold ${fs}px monospace`
       ctx.fillStyle = '#000000'
       ctx.textBaseline = 'top'
@@ -131,7 +139,7 @@ const SCREENS: Screen[] = [
       // Haupttext
       const tx = dx + iconR * 2 + 20
       const ty2 = dy + tbH + 8
-      const fsMed = Math.max(8, Math.min(11, W * 0.024))
+      const fsMed = panelFontSize(W, H, 4.5, 11, 0.024)
       ctx.font = `bold ${fsMed}px monospace`
       ctx.fillStyle = '#000000'
       ctx.fillText('Sorry, a system error occurred.', tx, ty2)
@@ -193,7 +201,7 @@ const SCREENS: Screen[] = [
       ctx.fillStyle = '#0000aa'
       ctx.fillRect(0, 0, W, H)
 
-      const fs = Math.max(8, Math.min(12, W * 0.025))
+      const fs = panelFontSize(W, H, 4.5, 12, 0.025)
       ctx.font = `${fs}px monospace`
       ctx.fillStyle = '#aaaaaa'
       ctx.textBaseline = 'top'
@@ -280,7 +288,7 @@ const SCREENS: Screen[] = [
       ctx.fillStyle = blink ? '#dd0000' : '#aa0000'
       ctx.fillRect(bx + 8, by + 8, bw - 16, bh - 16)
 
-      const fs = Math.max(8, Math.min(12, W * 0.026))
+      const fs = panelFontSize(W, H, 4.5, 12, 0.026)
       ctx.font = `bold ${fs}px monospace`
       ctx.fillStyle = '#ffffff'
       ctx.textBaseline = 'middle'
@@ -318,7 +326,7 @@ const SCREENS: Screen[] = [
       ctx.fillStyle = '#1A3A6A'
       ctx.fillRect(0, 0, W, H)
 
-      const fs = Math.max(7, Math.min(11, W * 0.022))
+      const fs = panelFontSize(W, H, 4.5, 11, 0.022)
       const lineH = fs + 4
       const pad = Math.round(W * 0.07)
       ctx.textBaseline = 'top'
@@ -376,7 +384,7 @@ const SCREENS: Screen[] = [
       ctx.fillStyle = '#000000'
       ctx.fillRect(0, 0, W, H)
 
-      const fs = Math.max(8, Math.min(13, W * 0.028))
+      const fs = panelFontSize(W, H, 4.5, 13, 0.028)
       const lineH = fs + 4
       ctx.font = `${fs}px monospace`
       ctx.fillStyle = '#aaaaaa'
@@ -438,7 +446,7 @@ const SCREENS: Screen[] = [
       ctx.lineWidth = 1
       ctx.stroke()
 
-      const fs = Math.max(7, Math.min(10, W * 0.022))
+      const fs = panelFontSize(W, H, 4.5, 10, 0.022)
       const lineH = fs + 3
       const pad = 14
       ctx.textBaseline = 'top'
@@ -515,7 +523,7 @@ const SCREENS: Screen[] = [
       ctx.fillStyle = '#000080'
       ctx.fillRect(dx + 2, dy + 2, dw - 4, tbH)
 
-      const fs = Math.max(8, Math.min(11, W * 0.024))
+      const fs = panelFontSize(W, H, 4.5, 11, 0.024)
       ctx.font = `bold ${fs}px monospace`
       ctx.fillStyle = '#ffffff'
       ctx.textBaseline = 'middle'
@@ -593,7 +601,7 @@ const SCREENS: Screen[] = [
       ctx.fillStyle = '#000000'
       ctx.fillRect(0, 0, W, H)
 
-      const fs = Math.max(7, Math.min(10, W * 0.02))
+      const fs = panelFontSize(W, H, 4, 10, 0.02)
       const lineH = fs + 3
       ctx.font = `${fs}px monospace`
       ctx.textBaseline = 'top'
@@ -645,7 +653,7 @@ const SCREENS: Screen[] = [
       ctx.fillStyle = '#1a1a2e'
       ctx.fillRect(0, 0, W, H)
 
-      const fs = Math.max(7, Math.min(10, W * 0.02))
+      const fs = panelFontSize(W, H, 4, 10, 0.02)
       const lineH = fs + 3
       ctx.font = `${fs}px monospace`
       ctx.fillStyle = '#00ff88'
@@ -702,7 +710,7 @@ const SCREENS: Screen[] = [
       ctx.fillStyle = '#000080'
       ctx.fillRect(0, 0, W, H)
 
-      const fs = Math.max(8, Math.min(12, W * 0.025))
+      const fs = panelFontSize(W, H, 4.5, 12, 0.025)
       const lineH = fs + 4
       const pad = Math.round(W * 0.07)
       ctx.textBaseline = 'top'
@@ -769,7 +777,7 @@ const SCREENS: Screen[] = [
       ctx.fillStyle = '#0078d7' // Modern Windows Blue
       ctx.fillRect(0, 0, W, H)
 
-      const fs = Math.max(7, Math.min(11, W * 0.023))
+      const fs = panelFontSize(W, H, 4.5, 11, 0.023)
       const lineH = fs + 4
       const pad = Math.round(W * 0.08)
       ctx.textBaseline = 'top'
@@ -892,7 +900,7 @@ const SCREENS: Screen[] = [
       ctx.fill()
 
       // Text in multiple languages
-      const fs = Math.max(8, Math.min(10, W * 0.02))
+      const fs = panelFontSize(W, H, 4.5, 10, 0.02)
       const lineH = fs + 4
       ctx.font = `${fs}px system-ui, -apple-system, sans-serif`
       ctx.textAlign = 'center'
@@ -934,7 +942,7 @@ const SCREENS: Screen[] = [
       ctx.fillStyle = '#000000'
       ctx.fillRect(0, 0, W, H)
 
-      const fs = Math.max(7, Math.min(9.5, W * 0.022))
+      const fs = panelFontSize(W, H, 4, 9.5, 0.022)
       const lineH = fs + 3
       ctx.font = `${fs}px monospace`
       ctx.textBaseline = 'top'
@@ -1112,7 +1120,7 @@ function RetroErrorPanel() {
             margin: 0,
             padding: '6%',
             fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
-            fontSize: 'clamp(7px, 2.2vw, 12px)',
+            fontSize: 'clamp(4px, 2.4cqmin, 11px)',
             lineHeight: 1.35,
             color: 'transparent',
             whiteSpace: 'pre-wrap',

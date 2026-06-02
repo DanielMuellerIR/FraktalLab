@@ -34,8 +34,8 @@ function Vitals() {
           skalieren mit der Kachelgröße. Der ScrollingLog darunter setzt seine eigene
           skalierbare Größe. */}
       <div
-        className="flex flex-col h-full w-full gap-0.5"
-        style={{ fontSize: 'clamp(7.5px, 3.4cqmin, 13px)' }}
+        className="flex flex-col h-full w-full gap-0.5 overflow-hidden"
+        style={{ fontSize: 'clamp(5px, 2.3cqmin, 12px)' }}
       >
         {/* Statische Bars oben */}
         <div className="shrink-0">
@@ -48,7 +48,7 @@ function Vitals() {
         <ScrollingLog
           lines={METRIC_LINES}
           interval={500}
-          className="flex-1 text-green-800 [&>div:last-child]:text-green-500"
+          className="flex-1 text-green-800 [&>div:last-child]:text-green-500 [&>div]:whitespace-nowrap"
         />
       </div>
     </Panel>

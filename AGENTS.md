@@ -92,6 +92,18 @@ Turbo, auch wenn aus einer alten Session OD/Proxima in `localStorage` liegt.
 Der gespeicherte Wert wird nicht geloescht; manuelles Hochschalten bleibt in der
 laufenden Session moeglich.
 
+### Safari-Responsive-Landscape + Vitals-Skalierung (v1.23.7, 2026-06-02)
+
+Safari Responsive Design meldet teils keinen `pointer: coarse`; Mobile-Erkennung
+nutzt daher zusätzlich iPhone/Android-UA und sehr niedrige Landscape-Höhe
+(`innerHeight <= 520`). Header bleibt dann kurz und einzeilig. `Vitals` skaliert
+Schrift stärker nach unten, nutzt `whitespace-nowrap` und kleinere StatBar-Abstände,
+damit schmale Mobile-Proxima-Kacheln das ganze Panel zeigen statt Textumbruch-
+Fragmente. `RetroErrorPanel`/„SYSTEM FAILURE LOG" nutzt jetzt eine hoehenbewusste
+Canvas-Schrift (`panelFontSize`) und ein container-relatives Text-Overlay, damit
+flache Mobile-Kacheln den ganzen Fehlerbildschirm statt abgeschnittener Riesenschrift
+zeigen.
+
 ## ✅ Bugfixes 2026-06-01 (v1.23.1–v1.23.2)
 
 - SID-Loader: PSID mit Header-Ladeadresse ≠ 0 wurde 2 Bytes verschoben geladen → Stille. Gefixt.
