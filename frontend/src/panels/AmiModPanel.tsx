@@ -244,6 +244,9 @@ function AmiModPanel() {
   const isNarrow = dimensions.width < 500;
   const isUltraNarrow = dimensions.width < 365;
   const isShort = dimensions.height < 320;
+  const isCompactPlayer = dimensions.width < 430 || dimensions.height < 330;
+  const hideTrackPicker = dimensions.width < 330 || dimensions.height < 220;
+  const showMainArea = dimensions.height >= 170;
 
   // Defaults + User-Uploads in einer einzigen Liste. Reihenfolge: zuerst
   // Defaults (stabile Indizes), dann User-Uploads in Hinzufuege-Reihenfolge.
@@ -778,48 +781,51 @@ function AmiModPanel() {
             Flach, schwarz, duenne Linien. Track-Auswahl + Datei-/Ordner-Picker
             links, Position + Play/Pause rechts. */}
         <div className="flex flex-wrap items-center justify-between gap-y-1 gap-x-2 px-1.5 py-1 bg-[#0a0a0a] border border-[#1f2937] rounded shrink-0">
-          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-            <span className="text-neutral-400 font-bold" style={{ fontSize: '0.85em' }}>SONG:</span>
-            <select
-              value={trackIdx}
-              onChange={(e) => {
-                player.resumeContext();
-                setTrackIdx(Number(e.target.value));
-                shouldAutoPlayRef.current = true;
-              }}
-              disabled={loading}
-              className={`bg-black border border-[#334155] text-[#4ade80] px-1 py-0.5 focus:outline-none cursor-pointer disabled:opacity-50 truncate rounded-sm ${
-                isUltraNarrow ? 'max-w-[75px]' : isNarrow ? 'max-w-[100px]' : 'max-w-[150px]'
-              }`}
-              style={{ fontSize: '0.85em' }}
-            >
-              {/* Defaults zuerst (Indizes 0..DEFAULT_TRACKS.length-1). */}
-              <optgroup label="Built-in">
-                {DEFAULT_TRACKS.map((t, idx) => (
-                  <option key={t.id} value={idx}>{t.name}</option>
-                ))}
-              </optgroup>
-              {/* User-Uploads danach, Indizes verschoben. Optgroup nur anzeigen,
-                  wenn der Nutzer ueberhaupt etwas hochgeladen hat. */}
-              {userTracks.length > 0 && (
-                <optgroup label="User MODs">
-                  {userTracks.map((t, i) => (
-                    <option key={t.id} value={DEFAULT_TRACKS.length + i}>{t.name}</option>
+          {!hideTrackPicker && (
+            <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+              <span className="text-neutral-400 font-bold" style={{ fontSize: '0.85em' }}>SONG:</span>
+              <select
+                value={trackIdx}
+                onChange={(e) => {
+                  player.resumeContext();
+                  setTrackIdx(Number(e.target.value));
+                  shouldAutoPlayRef.current = true;
+                }}
+                disabled={loading}
+                className={`bg-black border border-[#334155] text-[#4ade80] px-1 py-0.5 focus:outline-none cursor-pointer disabled:opacity-50 truncate rounded-sm ${
+                  isUltraNarrow ? 'max-w-[75px]' : isNarrow ? 'max-w-[100px]' : 'max-w-[150px]'
+                }`}
+                style={{ fontSize: '0.85em' }}
+              >
+                {/* Defaults zuerst (Indizes 0..DEFAULT_TRACKS.length-1). */}
+                <optgroup label="Built-in">
+                  {DEFAULT_TRACKS.map((t, idx) => (
+                    <option key={t.id} value={idx}>{t.name}</option>
                   ))}
                 </optgroup>
-              )}
-            </select>
-            {/* Datei-Picker (einzelne .mod). Klick auf den sichtbaren Button
-                delegiert per .click() an das unsichtbare Input-Element. */}
-            <button
-              type="button"
-              title="Eigene .mod-Datei laden"
-              onClick={() => fileInputRef.current?.click()}
-              className="bg-[#0f172a] border border-[#334155] active:bg-[#1e293b] px-1.5 py-0.5 font-bold text-neutral-300 cursor-pointer rounded-sm"
-              style={{ fontSize: '0.85em' }}
-            >
-              LOAD…
-            </button>
+                {/* User-Uploads danach, Indizes verschoben. Optgroup nur anzeigen,
+                    wenn der Nutzer ueberhaupt etwas hochgeladen hat. */}
+                {userTracks.length > 0 && (
+                  <optgroup label="User MODs">
+                    {userTracks.map((t, i) => (
+                      <option key={t.id} value={DEFAULT_TRACKS.length + i}>{t.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+              {/* Datei-Picker (einzelne .mod). Klick auf den sichtbaren Button
+                  delegiert per .click() an das unsichtbare Input-Element. */}
+              <button
+                type="button"
+                title="Eigene .mod-Datei laden"
+                onClick={() => fileInputRef.current?.click()}
+                className="bg-[#0f172a] border border-[#334155] active:bg-[#1e293b] px-1.5 py-0.5 font-bold text-neutral-300 cursor-pointer rounded-sm"
+                style={{ fontSize: '0.85em' }}
+              >
+                LOAD…
+              </button>
+            </div>
+          )}
             <input
               ref={fileInputRef}
               type="file"
@@ -829,7 +835,7 @@ function AmiModPanel() {
               style={{ display: 'none' }}
             />
             {/* Ordner-Picker. Nur auf größeren Panel-Größen einblenden */}
-            {!isNarrow && (
+            {!isNarrow && !hideTrackPicker && (
               <>
                 <button
                   type="button"
@@ -851,8 +857,12 @@ function AmiModPanel() {
                 />
               </>
             )}
-          </div>
-          <div className="flex items-center gap-1.5">
+          <div className={`flex items-center gap-1.5 ${hideTrackPicker ? 'w-full justify-between' : ''}`}>
+            {hideTrackPicker && (
+              <span className="text-neutral-400 font-bold truncate pr-1" style={{ fontSize: '0.85em' }}>
+                {allTracks[trackIdx]?.name || 'MOD'}
+              </span>
+            )}
             {mod && !isUltraNarrow && (
               <span className="text-neutral-400 font-bold whitespace-nowrap tabular-nums" style={{ fontSize: '0.85em' }}>
                 POS: {String(currentPosition + 1).padStart(2, '0')}/{String(mod.length).padStart(2, '0')}
@@ -878,7 +888,7 @@ function AmiModPanel() {
             Versteckt bei kleinen Panel-Höhen um vertikalen Platz zu sparen.
             Flacher, duenner Slider mit Gruen-Akzent (accent-Property) statt
             Workbench-Bevels. */}
-        {mod && mod.length > 1 && !isShort && (
+        {mod && mod.length > 1 && !isShort && !isCompactPlayer && (
           <div className="flex items-center gap-2 px-1.5 py-0.5 shrink-0">
             <span className="text-neutral-500 font-bold shrink-0" style={{ fontSize: '0.8em' }}>
               POS
@@ -925,12 +935,12 @@ function AmiModPanel() {
         {/* ─── Metadaten-Zeile (Titel / Composer) ───────────────────────────
             Wie beim SID-Player: kompakte Kopfzeile mit Songtitel und
             Urheberangaben statt der Workbench-Titelleiste. */}
-        <div className="flex flex-col gap-0.5 px-1.5 py-1 bg-black/60 border-y border-[#111827] shrink-0" style={{ fontSize: '0.85em' }}>
+        <div className="flex flex-col gap-0.5 px-1.5 py-1 bg-black/60 border-y border-[#111827] shrink-0" style={{ fontSize: isCompactPlayer ? '0.78em' : '0.85em' }}>
           <div className="flex justify-between gap-2">
             <span className="text-neutral-400 truncate">
               Title: <strong className="text-white">{mod?.name?.trim() || 'UNTITLED'}</strong>
             </span>
-            {!isUltraNarrow && (
+            {!isUltraNarrow && !isCompactPlayer && (
               <span className="text-neutral-400 truncate shrink-0">
                 Composer: <strong className="text-[#38bdf8]">{allTracks[trackIdx]?.composer || '—'}</strong>
               </span>
@@ -939,7 +949,7 @@ function AmiModPanel() {
           {/* Zweite Zeile mit weiteren Metadaten (nur auf breiteren Panels).
               ARRANGER nur, wenn er sich vom Composer unterscheidet
               (z. B. Speedball 2: Simon Rogers / Richard Joseph). */}
-          {!isNarrow && (
+          {!isNarrow && !isCompactPlayer && (
             <div className="text-neutral-500 italic truncate">
               {allTracks[trackIdx]?.arranger && allTracks[trackIdx]?.arranger !== allTracks[trackIdx]?.composer
                 ? `arr. ${allTracks[trackIdx]?.arranger} · `
@@ -968,7 +978,75 @@ function AmiModPanel() {
         {/* ─── Hauptbereich ─────────────────────────────────────────────
             VU-Meter links, Tracker-Tabelle Mitte, Instrumentenliste rechts.
             Alles flach auf Schwarz mit duennen Trennlinien. */}
-        <div className="flex flex-1 overflow-hidden min-h-0 gap-1">
+        {showMainArea && (
+        <div className={`flex overflow-hidden min-h-0 gap-1 ${isCompactPlayer ? 'shrink-0 h-[7em]' : 'flex-1'}`}>
+          {isCompactPlayer ? (
+            <>
+              {/* Kompaktmodus fuer Mobile/kleine Kacheln: Tracker-Tabelle raus,
+                  dafuer alle vier VU-Meter sichtbar als 2x2-Raster. */}
+              <div
+                className="grid grid-cols-2 grid-rows-2 gap-1 px-1 py-1 bg-[#0a0a0a] border border-[#1f2937] shrink-0 w-[5.2em] rounded self-center"
+                style={{ height: 'min(100%, 11em)' }}
+              >
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-end gap-0.5 min-h-0">
+                    <span className="text-neutral-500 font-bold leading-none" style={{ fontSize: '0.62em' }}>
+                      {i + 1}
+                    </span>
+                    <div
+                      className="flex-1 min-w-[0.6em] bg-black border border-[#1f2937] relative overflow-hidden"
+                      style={{ height: '100%' }}
+                    >
+                      <div
+                        ref={(el) => { vuBarsRef.current[i] = el; }}
+                        className="absolute bottom-0 left-0 right-0"
+                        style={{
+                          height: '2%',
+                          background: 'linear-gradient(to top, #166534 0%, #4ade80 60%, #38bdf8 85%, #facc15 100%)',
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex-1 min-w-0 bg-[#050505] border border-[#1f2937] rounded px-1 py-0.5 flex flex-col overflow-hidden">
+                <div className="flex justify-between gap-2 text-neutral-500 font-bold shrink-0" style={{ fontSize: '0.72em' }}>
+                  <span className="truncate">{mod?.name?.trim() || allTracks[trackIdx]?.name || 'UNTITLED'}</span>
+                  <span className={playing ? 'text-[#4ade80] animate-pulse' : 'text-neutral-600'}>
+                    {playing ? 'PLAYING' : loading ? 'LOADING' : 'STOPPED'}
+                  </span>
+                </div>
+                <div className="flex justify-between text-neutral-500 font-bold tabular-nums shrink-0" style={{ fontSize: '0.68em' }}>
+                  <span>POS {mod ? `${String(currentPosition + 1).padStart(2, '0')}/${String(mod.length).padStart(2, '0')}` : '--/--'}</span>
+                  <span ref={statusRowRef}>{currentRowRef.current.toString().padStart(2, '0')}/63</span>
+                </div>
+                <div className="mt-0.5 flex-1 min-h-0 overflow-hidden border-t border-[#111827] pt-0.5" style={{ fontSize: '0.66em' }}>
+                  {loading ? (
+                    <div className="text-[#38bdf8] animate-pulse">LOADING MODULE...</div>
+                  ) : allRows.length > 0 ? (
+                    allRows.slice(0, 5).map((row, absoluteRow) => (
+                      <div
+                        key={absoluteRow}
+                        className={`flex tabular-nums leading-tight ${absoluteRow === currentRowRef.current ? 'text-white bg-[#12351f]' : 'text-[#2f7d4f]'}`}
+                      >
+                        <span className="w-5 shrink-0 text-neutral-500">{absoluteRow.toString(16).toUpperCase().padStart(2, '0')}</span>
+                        {row.notes.map((note, ci) => (
+                          <span key={ci} className="flex-1 min-w-0 text-center truncate">
+                            {getNoteName(note.period)} {formatInstrument(note)} {formatEffect(note)}
+                          </span>
+                        ))}
+                      </div>
+                    ))
+                  ) : (
+                    <div className={loadError ? 'text-red-500' : 'text-neutral-600'}>
+                      {loadError ? `ERROR: ${loadError}` : 'NO SEQUENCE DATA'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
 
           {/* ── VU-Meter (links) ─────────────────────────────────────────── */}
           {!isUltraNarrow && (
@@ -1249,7 +1327,10 @@ function AmiModPanel() {
               </div>
             </div>
           )}
+            </>
+          )}
         </div>
+        )}
 
         {/* ── Fußzeile ────────────────────────────────────────────────────── */}
         {!isShort && (

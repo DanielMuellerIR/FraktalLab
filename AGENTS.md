@@ -71,6 +71,20 @@ MOD blieb wegen nicht gefangener `player.play()`-Promise stumm. Fix:
 zentrale AudioWorklet-Support-Meldung; SID prüft vor `addModule`; MOD fängt
 Play-/Autoplay-Fehler und zeigt sie im Panel statt `playing=true` ohne Ton.
 
+## ✅ Mobile-Player + Mobile-Dichte (v1.23.5, 2026-06-02)
+
+iPhone 16 Pro Max: `innerWidth < 768` reichte nicht, weil Landscape breiter als
+768 px ist → App wechselte je nach Start-/Dreh-Reihenfolge zwischen Mobile- und
+Desktop-Layout. Fix: Mobile-Erkennung nutzt zusätzlich `(pointer: coarse)` und
+`navigator.maxTouchPoints`. Mobile-Dichte sichtbar und einzeilig im Kopf:
+25 MHz=1×3, Turbo=1×5, Overdrive=2×4, Proxima=3×5 (Landscape gespiegelt:
+3×1/5×1/4×2/5×3). Slot 1 immer Audio/GFX damit Erst-Klick-Audio auch bei
+25 MHz funktioniert; zusätzliche Mobile-Slots respektieren `MAX_GL_PANELS_PER_LAYOUT`
+(max. 11 GL-Kontexte). `AmiModPanel` hat Kompaktmodus für kleine Kacheln:
+Bedienelemente + TASL/Copyright bleiben sichtbar, VU-Meter als begrenztes
+2×2-Raster, dazu Mini-Tracker-Zeilen statt leerer Großbox. Landscape bleibt nach
+Rotation im Mobile-Layout.
+
 ## ✅ Bugfixes 2026-06-01 (v1.23.1–v1.23.2)
 
 - SID-Loader: PSID mit Header-Ladeadresse ≠ 0 wurde 2 Bytes verschoben geladen → Stille. Gefixt.

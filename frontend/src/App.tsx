@@ -51,17 +51,23 @@ function generateMobileIndices(reviews: ReviewEntry[]): { textIdx: number; gfxId
   const textIndices = getWeightedIndices(textPool, reviews)
   const gfxIndices = getWeightedIndices(gfxPool, reviews)
 
-  // Drei gfx-Slots vorbelegen.
-  const gfx = [gfxIndices[0] ?? 0, gfxIndices[1] ?? 0, gfxIndices[2] ?? 0]
-
-  // Audio-Garantie (wie im Desktop-Layout): genau ein Audio-Panel muss vorhanden
-  // sein, damit die Erst-Klick-Election einen Player starten kann.
+  // Mobile zeigt je nach Auslastung nur 1-4 Panels. Der erste sichtbare Slot
+  // muss daher ein Audio-Panel sein, sonst haette die Erst-Klick-Election keinen
+  // Kandidaten. Danach folgen bevorzugt unterschiedliche GFX-Panels.
   const isAudio = (idx?: number) =>
     idx != null && AUDIO_PANELS.has(getCompName(gfxPool[idx]))
-  if (!gfx.some(isAudio)) {
-    const audioIdx = gfxIndices.find(isAudio)
-    // audioIdx ist garantiert verschieden von gfx[*] (keiner davon war Audio).
-    if (audioIdx != null) gfx[2] = audioIdx
+  const audioIdx = gfxIndices.find(isAudio)
+  const gfx: number[] = []
+  if (audioIdx != null) gfx.push(audioIdx)
+  for (const idx of gfxIndices) {
+    if (gfx.length >= 3) break
+    if (idx == null || gfx.includes(idx)) continue
+    gfx.push(idx)
+  }
+  while (gfx.length < 3) {
+    const fallback = gfx.length % Math.max(1, gfxPool.length)
+    if (!gfx.includes(fallback)) gfx.push(fallback)
+    else break
   }
 
   return {
@@ -855,7 +861,29 @@ function densityPanelCount(level: DensityLevel): number {
   }
 }
 
+function mobileDensityGrid(level: DensityLevel, landscape: boolean): { cols: number; rows: number; count: number } {
+  const spec = (() => {
+    switch (level) {
+      case '25mhz':     return { cols: 1, rows: 3 }
+      case 'turbo':     return { cols: 1, rows: 5 }
+      case 'overclock': return { cols: 2, rows: 4 }
+      case 'proxima':   return { cols: 3, rows: 5 }
+    }
+  })()
+  const cols = landscape ? spec.rows : spec.cols
+  const rows = landscape ? spec.cols : spec.rows
+  return { cols, rows, count: cols * rows }
+}
+
 const LS_DENSITY = 'fraktallab_density'
+
+function detectMobileLayout(): boolean {
+  if (typeof window === 'undefined') return false
+  // iPhone Pro Max im Querformat ist breiter als 768 px und fiel bisher ins
+  // Desktop-Grid. Coarse Pointer/Touch haelt echte Phones auch landscape im
+  // Mobile-Layout; Desktop-Browser mit schmalem Fenster bleiben ebenfalls mobil.
+  return window.innerWidth < 768 || window.matchMedia?.('(pointer: coarse)').matches || navigator.maxTouchPoints > 0
+}
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 export default function App() {
@@ -889,15 +917,12 @@ export default function App() {
   })
 
   const [isMobile, setIsMobile] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return window.innerWidth < 768
-    }
-    return false
+    return detectMobileLayout()
   })
 
   useEffect(() => {
     const handleResize = () => {
-      setIsMobile(window.innerWidth < 768)
+      setIsMobile(detectMobileLayout())
     }
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
@@ -1327,11 +1352,11 @@ export default function App() {
       </div>
 
       {/* Kopfzeile */}
-      <header className="border-b border-green-900 px-3 py-1 flex items-center gap-3 shrink-0">
-        <span className="text-green-600 text-xs uppercase tracking-widest">
-          ◈ FRAKTALLAB // NEURAL INTRUSION DASHBOARD v1.1.0
+      <header className="border-b border-green-900 px-1.5 sm:px-3 py-0.5 sm:py-1 flex items-center gap-1.5 sm:gap-3 shrink-0 overflow-hidden">
+        <span className="text-green-600 text-[10px] sm:text-xs uppercase tracking-widest whitespace-nowrap shrink-0">
+          {isMobile ? `◈ FRAKTALLAB v${__APP_VERSION__}` : `◈ FRAKTALLAB // NEURAL INTRUSION DASHBOARD v${__APP_VERSION__}`}
         </span>
-        <span className="ml-auto text-red-800 text-xs animate-pulse">● LIVE</span>
+        <span className="ml-auto text-red-800 text-[10px] sm:text-xs animate-pulse whitespace-nowrap">● LIVE</span>
 
         {/* Audio-Mute-Toggle. Erst-Klick startet einen zufälligen Player (Election),
             danach schaltet der Button stumm/laut. data-audio-toggle nimmt ihn vom
@@ -1354,23 +1379,25 @@ export default function App() {
             toggleAudioMuted()
           }}
           title="Audio stummschalten / wieder einschalten"
-          className="border border-green-800 text-green-600 text-xs px-2 py-0.5
+          className="border border-green-800 text-green-600 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5
                      hover:border-green-600 hover:text-green-200 transition-colors"
         >
-          {audioMuted ? 'AUDIO OFF' : 'AUDIO ON'}
+          {isMobile ? (audioMuted ? 'OFF' : 'ON') : (audioMuted ? 'AUDIO OFF' : 'AUDIO ON')}
         </button>
 
-        {/* Auslastungs-Wähler (Layout-V2) — nur Desktop, im Review-Modus aus.
+        {/* Auslastungs-Wähler (Layout-V2) — im Review-Modus aus.
             Label links, dann 4 Stufen-Segmente. Aktive Stufe = aktivierter Look.
             Klick = Dichte setzen + Layout neu würfeln; erneuter Klick = neu würfeln. */}
         {!reviewMode && (
-          <div className="hidden md:flex items-center gap-1">
-            <span
-              className="text-green-200 text-xs font-bold uppercase tracking-widest mr-1"
-              style={{ textShadow: '0 0 6px rgba(74,222,128,0.7)' }}
-            >
-              Auslastung
-            </span>
+          <div className="flex items-center gap-0.5 sm:gap-1 min-w-0 shrink-0">
+            {!isMobile && (
+              <span
+                className="text-green-200 text-xs font-bold uppercase tracking-widest mr-1"
+                style={{ textShadow: '0 0 6px rgba(74,222,128,0.7)' }}
+              >
+                Auslastung
+              </span>
+            )}
             {DENSITY_ORDER.map(level => {
               const active = density === level
               const style = DENSITY_STYLE[level]
@@ -1385,11 +1412,12 @@ export default function App() {
                     applyDensity(level, true)   // manuelle Wahl → persistieren
                   }}
                   title={`Galerie-Dichte: ${DENSITY_LABELS[level]} (Klick = neu würfeln)`}
-                  className={`border text-xs px-2 py-0.5 transition-colors ${active ? style.active : style.idle}`}
+                  className={`border text-[9px] sm:text-xs leading-none min-h-[20px] sm:min-h-0 min-w-[28px] sm:min-w-0 px-1 sm:px-2 py-0.5 transition-colors ${active ? style.active : style.idle}`}
                   style={active && style.glow ? { boxShadow: style.glow } : undefined}
                 >
-                  {/* Crazy-Modus: Totenkopf, wenn Proxima aktiv ist */}
-                  {active && level === 'proxima' ? '💀 ' : ''}{DENSITY_LABELS[level]}
+                  {isMobile
+                    ? (level === '25mhz' ? '25MHz' : level === 'overclock' ? 'OD' : level === 'proxima' ? '💀' : 'Turbo')
+                    : `${active && level === 'proxima' ? '💀 ' : ''}${DENSITY_LABELS[level]}`}
                 </button>
               )
             })}
@@ -1643,52 +1671,102 @@ export default function App() {
           /* ── Normaler Modus: Layout-Slides ── */
           <>
             {isMobile ? (
-              /* ── Mobile Layout — nur unter 768px sichtbar ── */
-              <div className="flex flex-col gap-1 h-full p-1">
-                {/* Panel 1: Text-Panel */}
-                <div className="flex-1 min-h-0">
-                  <PanelSlot
-                    pool={textPool}
-                    activeIdx={mobileIndices.textIdx}
-                    onNav={() => handleSkipMobileSlot(0)}
-                    fallbackName={getCompName(textPool[mobileIndices.textIdx])}
-                    className="h-full"
-                  />
-                </div>
-                {/* Panel 2: Grafik-Panel 1 */}
-                <div className="flex-1 min-h-0">
-                  <PanelSlot
-                    pool={gfxPool}
-                    activeIdx={mobileIndices.gfxIdx1}
-                    onNav={() => handleSkipMobileSlot(1)}
-                    fallbackName={getCompName(gfxPool[mobileIndices.gfxIdx1])}
-                    className="h-full"
-                    locked={AUDIO_PANELS.has(getCompName(gfxPool[mobileIndices.gfxIdx1]))}
-                  />
-                </div>
-                {/* Panel 3: Grafik-Panel 2 */}
-                <div className="flex-1 min-h-0">
-                  <PanelSlot
-                    pool={gfxPool}
-                    activeIdx={mobileIndices.gfxIdx2}
-                    onNav={() => handleSkipMobileSlot(2)}
-                    fallbackName={getCompName(gfxPool[mobileIndices.gfxIdx2])}
-                    className="h-full"
-                    locked={AUDIO_PANELS.has(getCompName(gfxPool[mobileIndices.gfxIdx2]))}
-                  />
-                </div>
-                {/* Panel 4: Grafik-Panel 3 */}
-                <div className="flex-1 min-h-0">
-                  <PanelSlot
-                    pool={gfxPool}
-                    activeIdx={mobileIndices.gfxIdx3}
-                    onNav={() => handleSkipMobileSlot(3)}
-                    fallbackName={getCompName(gfxPool[mobileIndices.gfxIdx3])}
-                    className="h-full"
-                    locked={AUDIO_PANELS.has(getCompName(gfxPool[mobileIndices.gfxIdx3]))}
-                  />
-                </div>
-              </div>
+              /* ── Mobile Layout — Dichte steuert feste mobile Raster.
+                  Slot 1 ist immer Audio/GFX, damit Bedienung und Erst-Klick-
+                  Election auch bei 25 MHz funktionieren. GL-Panels bleiben
+                  unter MAX_GL_PANELS_PER_LAYOUT. */
+              (() => {
+                const landscape = typeof window !== 'undefined' && window.innerWidth > window.innerHeight
+                const mobileGrid = mobileDensityGrid(density, landscape)
+                const count = mobileGrid.count
+                type MobileSlot = {
+                  key: string
+                  pool: React.ComponentType<any>[]
+                  activeIdx: number
+                  onNav: () => void
+                  fallbackName: string
+                  locked: boolean
+                }
+                const mobileSlots: MobileSlot[] = [
+                  {
+                    key: 'gfx1',
+                    pool: gfxPool,
+                    activeIdx: mobileIndices.gfxIdx1,
+                    onNav: () => handleSkipMobileSlot(1),
+                    fallbackName: getCompName(gfxPool[mobileIndices.gfxIdx1]),
+                    locked: AUDIO_PANELS.has(getCompName(gfxPool[mobileIndices.gfxIdx1])),
+                  },
+                  {
+                    key: 'text',
+                    pool: textPool,
+                    activeIdx: mobileIndices.textIdx,
+                    onNav: () => handleSkipMobileSlot(0),
+                    fallbackName: getCompName(textPool[mobileIndices.textIdx]),
+                    locked: false,
+                  },
+                  {
+                    key: 'gfx2',
+                    pool: gfxPool,
+                    activeIdx: mobileIndices.gfxIdx2,
+                    onNav: () => handleSkipMobileSlot(2),
+                    fallbackName: getCompName(gfxPool[mobileIndices.gfxIdx2]),
+                    locked: AUDIO_PANELS.has(getCompName(gfxPool[mobileIndices.gfxIdx2])),
+                  },
+                  {
+                    key: 'gfx3',
+                    pool: gfxPool,
+                    activeIdx: mobileIndices.gfxIdx3,
+                    onNav: () => handleSkipMobileSlot(3),
+                    fallbackName: getCompName(gfxPool[mobileIndices.gfxIdx3]),
+                    locked: AUDIO_PANELS.has(getCompName(gfxPool[mobileIndices.gfxIdx3])),
+                  },
+                ]
+
+                const usedNames = new Set(mobileSlots.map(s => s.fallbackName).filter(Boolean))
+                let mobileGLCount = mobileSlots.reduce((n, slot) => n + (isGLPanel(slot.fallbackName) ? 1 : 0), 0)
+                const addExtra = (pool: React.ComponentType<any>[], prefix: string) => {
+                  for (let i = 0; i < pool.length && mobileSlots.length < count; i++) {
+                    const name = getCompName(pool[i])
+                    if (!name || usedNames.has(name)) continue
+                    const isGL = isGLPanel(name)
+                    if (isGL && mobileGLCount >= MAX_GL_PANELS_PER_LAYOUT) continue
+                    usedNames.add(name)
+                    if (isGL) mobileGLCount++
+                    mobileSlots.push({
+                      key: `${prefix}-${i}`,
+                      pool,
+                      activeIdx: i,
+                      onNav: () => applyDensity(densityRef.current, true),
+                      fallbackName: name,
+                      locked: AUDIO_PANELS.has(name),
+                    })
+                  }
+                }
+                addExtra(gfxPool, 'gfx-extra')
+                addExtra(textPool, 'text-extra')
+
+                const gridStyle: React.CSSProperties = {
+                  gridTemplateColumns: `repeat(${mobileGrid.cols}, minmax(0, 1fr))`,
+                  gridTemplateRows: `repeat(${mobileGrid.rows}, minmax(0, 1fr))`,
+                }
+
+                return (
+                  <div className="grid gap-1 h-full p-1" style={gridStyle}>
+                    {mobileSlots.slice(0, count).map(slot => (
+                      <div key={slot.key} className="min-h-0 min-w-0">
+                        <PanelSlot
+                          pool={slot.pool}
+                          activeIdx={slot.activeIdx}
+                          onNav={slot.onNav}
+                          fallbackName={slot.fallbackName}
+                          className="h-full"
+                          locked={slot.locked}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()
             ) : (
               /* ── Desktop Layout — ab 768px sichtbar ── */
               <div className="h-full relative">
@@ -1738,4 +1816,3 @@ function aspectMatches(panelAspect: Aspect, cellAspect: Aspect): boolean {
   if (panelAspect === 'ANY' || panelAspect === 'TEXT') return true
   return panelAspect === cellAspect
 }
-
