@@ -31,7 +31,7 @@ from urllib.parse import quote
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_ENV = "/Users/dm0/local/Beispiele/Templates/Sticky/.env/chili.env"
+DEFAULT_ENV = os.path.expanduser("~/local/Beispiele/Templates/Sticky/.env/chili.env")
 DEFAULT_REMOTE = "/dm0.de/httpdocs/x"
 LOCAL_DIST = os.path.join(SCRIPT_DIR, "frontend", "dist")
 
