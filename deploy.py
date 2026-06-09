@@ -19,6 +19,9 @@ Benutzung:
   python3 deploy.py --env PFAD # andere Env-Datei
   python3 deploy.py --remote /pfad  # anderes Zielverzeichnis
 
+  Umgebungsvariablen (Alternative zu --env):
+    DEPLOY_ENV_FILE=/pfad/zur/chili.env python3 deploy.py
+
 Voraussetzungen: `lftp` (brew install lftp), `npm` (für den Build).
 """
 
@@ -31,7 +34,8 @@ from urllib.parse import quote
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_ENV = os.path.expanduser("~/local/Beispiele/Templates/Sticky/.env/chili.env")
+# Env-Datei-Pfad: über Umgebungsvariable DEPLOY_ENV_FILE setzen, kein Hardcode.
+DEFAULT_ENV = os.environ.get("DEPLOY_ENV_FILE", "")
 DEFAULT_REMOTE = "/dm0.de/httpdocs/x"
 LOCAL_DIST = os.path.join(SCRIPT_DIR, "frontend", "dist")
 
@@ -47,9 +51,13 @@ ALIASES = {
 
 
 def parse_env_file(path):
-    """KEY=VALUE-Datei einlesen. Kommentare (#) und Leerzeilen ignorieren."""
-    if not os.path.isfile(path):
-        sys.exit(f"FEHLER: Env-Datei nicht gefunden: {path}")
+    """KEY=VALUE-Datei einlesen. Kommentare (#) und Leerzeilen ignorieren.
+    Leerer oder fehlender Pfad → leeres Dict (Fehler erscheint später bei fehlenden Pflichtfeldern)."""
+    if not path or not os.path.isfile(path):
+        if path:
+            sys.exit(f"FEHLER: Env-Datei nicht gefunden: {path}\n"
+                     f"  Tipp: DEPLOY_ENV_FILE=/pfad/zur/deploy.env python3 deploy.py")
+        return {}  # kein Pfad gesetzt → leeres Dict; Pflichtfeld-Check gibt Hinweis
     data = {}
     with open(path, "r", encoding="utf-8") as f:
         for line in f:

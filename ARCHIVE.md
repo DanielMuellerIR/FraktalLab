@@ -316,7 +316,7 @@ Shader-Sourcen als `.glsl`-Dateien in `frontend/public/shaders/`, geladen per `f
 >
 > **GlitchOverlay** (`cefcb23`) ebenfalls in Iter. 2 überarbeitet: VHS-Aesthetik (Tracking-Bands, Chroma-Bleed in Magenta/Cyan, Dropouts, Capstan-Wobble), Performance-Refactor (Scanlines als CSS-Gradient statt 360 fillRect/Frame, rAF nur in aktiven Episoden via `raf-coordinator.subscribe`).
 >
-> **Standalone-ProTracker-Projekt:** Der Player wurde nach `~/local/Arbeit/Viben/p_modplayer_singlehtml/` extrahiert (Single-HTML-File, ~36 KB minified, eigene `AGENTS.md`). Verbesserungen wandern bei Bedarf zwischen den Projekten hin und zurück.
+> **Standalone-ProTracker-Projekt:** Der Player wurde als separates Standalone-Projekt `p_modplayer_singlehtml` extrahiert (Single-HTML-File, ~36 KB minified, eigene `AGENTS.md`, ggf. lokal vorhanden). Verbesserungen wandern bei Bedarf zwischen den Projekten hin und zurück.
 
 Diese Punkte ergänzen das bestehende Inventar mit kuratierten Demoszene-Inhalten.
 

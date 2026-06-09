@@ -247,7 +247,7 @@ alle Dichte-Stufen durchgeklickt, 16 Panels Proxima, 0 Konsolen-Fehler/-Warnunge
 ## Relaunch-Session (2026-05-31) — laufend auf `feat/relaunch-2026-05-31`
 
 **Getroffene Entscheidungen (User):**
-- **Präsentation:** Weg vom dichten Auto-Switch-Dashboard → **kuratierte Galerie** (weniger Panels gleichzeitig, mehr Weißraum, kein automatischer Komplett-Layout-Wechsel mehr, Nutzer erkundet selbst). Senkt auch Last (schwächere Hardware ruckelte).
+- **Präsentation:** Weg vom dichten Auto-Switch-Dashboard → **kuratierte Galerie** (weniger Panels gleichzeitig, mehr Weißraum, kein automatischer Komplett-Layout-Wechsel mehr, Nutzer erkundet selbst). Senkt auch Last (auf schwächerer Hardware ruckelte es).
 - **Name:** FraktalLab passt nicht mehr. Neuer Name wird festgelegt, **wenn das neue Layout steht** (Kandidaten: Wunderkammer / Phosphor / Cathode).
 - **Audio:** Auto-Play beim ersten Klick irgendwo → genau EINES von {AllYourBase, SID, Protracker}. Tippgeräusche (`AmbientSound.tsx`) raus + archivieren. AUDIO-Button → Mute/Play-Toggle. Player wechseln nie mittendrin (`LOCKED_PANELS`), AllYourBase nur nach Videoende.
 - **Inventar:** `frontend/src/panels/registry.ts` als Status-Quelle (ARCHIVED_PANELS, LOCKED_PANELS). Vollständige Code-Registry (Pools, Kategorien, Asset-Größen) wandert beim Layout-Redesign dorthin.
@@ -346,7 +346,7 @@ Alle Unterpunkte (a-e) umgesetzt. Build grün (tsc + vite), im Browser verifizie
 - [x] **GitHub Social Preview** vorbereitet: `docs/assets/fraktallab-proxima.jpg`, `docs/assets/social-preview.jpg`, Generator `scripts/make-social-preview.py`, Hinweise in `docs/assets/README.md`.
 - [ ] **Repo vorerst privat halten** — mitgelieferte MOD- und SID-Dateien sind CC-BY-NC-SA und damit nicht fuer kommerzielle Nutzung geeignet. Vor spaeterem Public-Schalten klaeren: Assets entfernen / extern laden / Lizenzlage.
 - [x] **Claude NICHT als Contributor/Autor angeben.** README-Autor = Daniel.
-  - Befund nach History-Rewrite (2026-06-02): git-Autor/Committer ist bei **allen 185 Commits** `DanielMuellerIR <<email>>`; `Co-Authored-By:`-Trailer sind nicht mehr vorhanden.
+  - Befund nach History-Rewrite (2026-06-02): git-Autor/Committer ist bei **allen 185 Commits** `DanielMuellerIR`; `Co-Authored-By:`-Trailer sind nicht mehr vorhanden.
   - Künftige Commits bleiben ohne `Co-Authored-By`-Trailer.
 
 > **Nächste Schritte — Panel-Rework Phase 2 (priorisiert nach Kritik-Intensität, ABGESCHLOSSEN):**
@@ -461,7 +461,7 @@ Voxel-Terrain à la Comanche ist *historisch* aus Hardware-Gründen pixelig, abe
 
 1. **Default-Wahl bei neuen Panels:** Kategorie B. `imageRendering: pixelated` nur einsetzen, wenn das Panel explizit Kategorie A oder C zuzuordnen ist.
 2. **Render-Auflösung in B-Panels:** so nah wie möglich an die CSS-Größe des Canvas, mit einem oberen Cap, der nur greift, wenn das Panel sehr groß wird (z. B. bei einem 4-Panel-Layout auf 4K-Display). Pro Panel-Komponente individuell festzulegen, aber Faustregel: Cap nicht unter 800×600, eher 1280×800 oder höher für die teureren Effekte.
-3. **CPU-Performance vs. Auflösung:** Wenn ein B-Panel auf der Ziel-Hardware (Apple-Silicon-Hardware) bei hoher Auflösung > 4 ms/Frame braucht, ist das ein Migrations-Kandidat für GLSL (siehe GL-03). Nicht durch niedrigere Auflösung lösen — Auflösung bleibt, Renderer wechselt zu GPU.
+3. **CPU-Performance vs. Auflösung:** Wenn ein B-Panel auf moderner Apple-Silicon-Hardware bei hoher Auflösung > 4 ms/Frame braucht, ist das ein Migrations-Kandidat für GLSL (siehe GL-03). Nicht durch niedrigere Auflösung lösen — Auflösung bleibt, Renderer wechselt zu GPU.
 4. **Scaling-Filter:** wenn aus Performance-Gründen doch eine niedrigere interne Auflösung nötig ist, **kein** `imageRendering: pixelated`, sondern Browser-Default (bilinear). Lieber etwas matschig als gepixelt — außer bei Kategorie A.
 5. **`makeScene`-Factory in `DemoScenes.tsx`** akzeptiert bereits einen `pixelated`-Parameter (Default `true`). Default umstellen auf `false`, und Kategorie-A-Panels explizit `pixelated: true` setzen.
 
