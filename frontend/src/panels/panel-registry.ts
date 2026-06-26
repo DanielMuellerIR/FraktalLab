@@ -49,7 +49,7 @@ import PwdCracker          from './PwdCracker'
 
 // ── Grafik-Panels ──
 import { VoxelDemoColor, VoxelDemoBW } from './VoxelDemo'
-import { VoxelThermal, VoxelNeon, VoxelLava, VoxelMatrix } from './VoxelScenes'
+import { VoxelThermal, VoxelNeon, VoxelLava } from './VoxelScenes'
 import PlasmaDemo        from './PlasmaDemo'
 import EnhanceView       from './EnhanceView'
 import GlobePanel        from './GlobePanel'
@@ -177,7 +177,10 @@ const RAW: RawPanel[] = [
   { name: 'VoxelThermal',          Component: VoxelThermal,          pool: 'gfx',  aspect: 'WIDE', gl: true },
   { name: 'VoxelLava',             Component: VoxelLava,             pool: 'gfx',  aspect: 'WIDE', gl: true },
   { name: 'VoxelNeon',             Component: VoxelNeon,             pool: 'gfx',  aspect: 'SQUARE', gl: true },
-  { name: 'VoxelMatrix',           Component: VoxelMatrix,           pool: 'gfx',  aspect: 'ANY',  gl: true, proximaSpeed: 4 }, // = MengerSpongeScene-Alias
+  // VoxelMatrix-Eintrag am 2026-06-26 entfernt: war nur ein Alias auf
+  // MengerSpongeScene (= identische Komponente, anderer Name). Der Dedup-Pass
+  // dedupt nach Name, konnte den Alias also nicht fangen → Menger konnte 2×
+  // gleichzeitig im Layout landen. MengerSpongeScene bleibt der kanonische Eintrag.
   { name: 'StarfieldScene',        Component: StarfieldScene,        pool: 'gfx',  active: false, aspect: 'WIDE', gl: true }, // deaktiviert 2026-06-01
   { name: 'OscilloscopePanel',     Component: OscilloscopePanel,     pool: 'gfx',  aspect: 'WIDE', audio: true },
   { name: 'MetaballsScene',        Component: MetaballsScene,        pool: 'gfx',  aspect: 'SQUARE', gl: true },

@@ -132,7 +132,8 @@ export function toggleAudioMuted(): void {
   setAudioMuted(!muted);
 }
 
-export function setAudioMuted(nextMuted: boolean): void {
+// Nur modul-intern (von toggleAudioMuted) genutzt — kein externer Importer.
+function setAudioMuted(nextMuted: boolean): void {
   if (nextMuted === muted) return;
   muted = nextMuted;
   if (activeId) {

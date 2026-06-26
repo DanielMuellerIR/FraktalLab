@@ -19,7 +19,8 @@
 import { getSpeedInfo } from '../panels/panel-registry'
 
 // Dichte-Stufen — identisch zu den Strings in App.tsx (DensityLevel).
-export type SpeedDensity = '25mhz' | 'turbo' | 'overclock' | 'proxima'
+// Nur modul-intern verwendet (kein externer Importer) — daher nicht exportiert.
+type SpeedDensity = '25mhz' | 'turbo' | 'overclock' | 'proxima'
 
 // Aktuell gewählte Stufe. App.tsx ruft setSpeedDensity() in applyDensity().
 let currentDensity: SpeedDensity = 'turbo'

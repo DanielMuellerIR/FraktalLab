@@ -12,7 +12,7 @@ import {
 import FractalView   from './panels/FractalView'
 import GlitchOverlay from './ui/GlitchOverlay'
 import Panel         from './ui/Panel'
-import { getSharedAudioContext } from './utils/shared-audio'
+import { getSharedAudioContext, unlockAudioContext } from './utils/shared-audio'
 import { setPaused } from './utils/raf-coordinator'
 import { setSpeedDensity } from './utils/panel-speed'
 
@@ -446,10 +446,10 @@ function generateLayout(id: number, reviews: ReviewEntry[], targetCellCount?: nu
   })
 
   // ── Dedup-Pass: kein Panel (nach Komponenten-NAME) doppelt im Layout ────────
-  // Wichtig: NICHT nur nach panelIdx prüfen. Manche Pool-Einträge sind Aliase/
-  // Re-Exports (z.B. VoxelMatrix = NeuralNetPanel), und verschiedene Indizes
-  // können auf denselben sichtbaren Namen auflösen. Reines Index-Dedup ließ
-  // dadurch z.B. Menger 2× gleichzeitig erscheinen. Daher hier nach Name dedupen.
+  // Wichtig: NICHT nur nach panelIdx prüfen. Sollte ein Pool-Eintrag je wieder
+  // ein Alias/Re-Export auf dieselbe Komponente unter anderem Namen sein, ließe
+  // reines Index-Dedup denselben Renderer 2× gleichzeitig erscheinen (so war es
+  // beim früheren VoxelMatrix=MengerSpongeScene-Alias). Daher hier nach Name dedupen.
   for (const poolType of ['text', 'gfx'] as const) {
     const pool = poolType === 'text' ? textPool : gfxPool
     const poolIndices = poolType === 'text' ? textIndices : gfxIndices
@@ -633,11 +633,14 @@ interface ReviewEntry {
 
 const LS_KEY = 'fraktallab_reviews'
 const SEED_KEY = 'fraktallab_reviews_seeded_2026_05_30'
+// One-Shot-Migration: bei Bump werden die gespeicherten Reviews/Seeds einmalig
+// zurueckgesetzt (siehe Effect weiter unten). Als Modul-Konstante neben den
+// uebrigen LS-Schluesseln statt inline im Effect — leichter auffindbar.
+const RESET_VERSION = 'v1.1.0-reset-2'
 
 const INITIAL_REVIEWS: ReviewEntry[] = [
   { panel: "MetaAgentPanel", rating: "down", comment: "", ts: 1780166214686 },
   { panel: "TunnelScene", rating: "up", comment: "", ts: 1780166236483 },
-  { panel: "VoxelMatrix", rating: "up", comment: "", ts: 1780166250443 },
   { panel: "ParallaxPanel", rating: "down", comment: "", ts: 1780166282783 },
   { panel: "RetroErrorPanel", rating: "up", comment: "", ts: 1780166305343 },
   { panel: "ShaderMandelbox", rating: "up", comment: "", ts: 1780166339905 },
@@ -1131,7 +1134,6 @@ export default function App() {
 
   // Automatische Review-Zurücksetzung bei Versionsänderung
   useEffect(() => {
-    const RESET_VERSION = 'v1.1.0-reset-2'
     const currentReset = localStorage.getItem('fraktallab_reset_version')
     if (currentReset !== RESET_VERSION) {
       localStorage.removeItem(LS_KEY)
@@ -1235,9 +1237,6 @@ export default function App() {
     }
   }, [reviewIdx, activeAllPanels])
 
-  // Ref für den laufenden Auto-Switch-Timer — wird bei jedem Wechsel neu gesetzt
-  const autoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
   const doSwitch = useCallback((current: GeneratedLayout) => {
     // Neue ID vergeben und neues Layout generieren
     layoutIdRef.current += 1
@@ -1290,32 +1289,11 @@ export default function App() {
     applyDensity(densityRef.current, false)
   }, [applyDensity])
 
-  // Versucht Layout zu wechseln — wartet, falls ein Audio-Panel läuft
-  const trySwitch = useCallback(() => {
-    setLayout(current => {
-      if (isAudioPlaying()) {
-        // Alle 5 s erneut prüfen, ob das Video noch läuft
-        autoTimerRef.current = setTimeout(trySwitch, 5000)
-        return current
-      }
-      doSwitch(current)
-      return current  // setLayout-Update passiert in doSwitch
-    })
-  }, [doSwitch])
-
-  // Auto-Switch alle 1–3 Minuten
-  const scheduleNext = useCallback(() => {
-    if (autoTimerRef.current) clearTimeout(autoTimerRef.current)
-    const delay = 60_000 + Math.random() * 120_000   // 1–3 Minuten
-    autoTimerRef.current = setTimeout(trySwitch, delay)
-  }, [trySwitch])
-
   // Galerie (Relaunch 2026-05-31): KEIN automatischer Komplett-Layout-Wechsel mehr.
   // Der Nutzer erkundet selbst — Layout wechselt nur manuell (⟳-Button / Leertaste).
-  // Senkt zusätzlich die Last (kein periodisches Neu-Mounten aller Panels).
-  // `scheduleNext`/`trySwitch` bleiben für den manuellen Pfad erhalten, werden hier
-  // aber nicht mehr automatisch angestoßen.
-  void scheduleNext
+  // Senkt zusätzlich die Last (kein periodisches Neu-Mounten aller Panels). Der
+  // frühere Auto-Switch (trySwitch/scheduleNext/autoTimerRef) wurde am 2026-06-26
+  // als toter Code entfernt — der manuelle Pfad nutzt doSwitch direkt (s. u.).
 
   // Leertaste → sofortiger Layout-Wechsel (nicht im Review-Modus oder in Textfeldern)
   useEffect(() => {
@@ -1380,17 +1358,9 @@ export default function App() {
           data-audio-toggle
           onClick={() => {
             // AudioContext im User-Gesture-Callstack aufwecken (iOS/Safari-Unlock).
-            try {
-              const ctx = getSharedAudioContext()
-              if (ctx.state === 'suspended') ctx.resume().catch(() => {})
-              const buffer = ctx.createBuffer(1, 1, 22050)
-              const source = ctx.createBufferSource()
-              source.buffer = buffer
-              source.connect(ctx.destination)
-              source.start(0)
-            } catch (e) {
-              console.warn('Failed to unlock AudioContext on click:', e)
-            }
+            const ctx = getSharedAudioContext()
+            if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+            unlockAudioContext(ctx)
             toggleAudioMuted()
           }}
           title="Audio stummschalten / wieder einschalten"

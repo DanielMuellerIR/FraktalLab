@@ -177,6 +177,13 @@ function FractalGL({
       }
       gl.useProgram(program)
 
+      // Nach dem Linken haelt das Program seine eigene Kopie der Shader — die
+      // einzelnen Shader-Objekte koennen jetzt freigegeben werden (Standard-
+      // WebGL-Hygiene). Buffer/Program selbst werden beim Unmount vom
+      // loseContext() im Effect-Cleanup mit dem Context entsorgt.
+      gl.deleteShader(vs)
+      gl.deleteShader(fs)
+
       // Bildschirmfüllendes Rechteck (zwei Dreiecke)
       const buffer = gl.createBuffer()
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer)

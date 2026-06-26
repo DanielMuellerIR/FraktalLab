@@ -1,4 +1,4 @@
-import { getAudioWorkletSupportError, getSharedAudioContext } from './shared-audio';
+import { getAudioWorkletSupportError, getSharedAudioContext, unlockAudioContext } from './shared-audio';
 
 export interface SidMetadata {
   title: string;
@@ -89,16 +89,8 @@ export class SidPlayer {
       }
     }
 
-    // iOS Safari unlock
-    try {
-      const buffer = ctx.createBuffer(1, 1, 22050);
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-      source.start(0);
-    } catch (e) {
-      console.warn('SidPlayer: iOS unlock buffer failed:', e);
-    }
+    // iOS Safari Web-Audio-Unlock (zentraler Helper).
+    unlockAudioContext(ctx);
 
     const audioCtxAny = ctx as any;
     const supportError = getAudioWorkletSupportError(ctx);
@@ -214,11 +206,15 @@ export class SidPlayer {
         subtune: subtuneToSend,
       });
 
-      // Wait for worklet 'loaded' or 2s safety timeout
+      // Wait for worklet 'loaded' or 2s safety timeout. Timer-Handle merken und
+      // nach dem Race aufraeumen — sonst haelt der noch laufende setTimeout seine
+      // Closure bis zum Ablauf am Leben, auch wenn 'loaded' laengst resolved hat.
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
       await Promise.race([
         this.workletLoadReady,
-        new Promise<void>(r => setTimeout(r, 2000)),
+        new Promise<void>(r => { timeoutId = setTimeout(r, 2000); }),
       ]);
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
     }
 
     this.resumeContext();

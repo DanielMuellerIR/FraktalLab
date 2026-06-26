@@ -45,7 +45,7 @@ function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData
   // Keep a unique ID for the pool registration
   const panelIdRef = useRef<string | null>(null)
   if (!panelIdRef.current) {
-    panelIdRef.current = `shader-panel-${Math.random().toString(36).substr(2, 9)}`
+    panelIdRef.current = `shader-panel-${Math.random().toString(36).slice(2, 11)}`
   }
   const panelId = panelIdRef.current
 
@@ -157,6 +157,13 @@ function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData
       }
 
       gl.useProgram(program)
+
+      // Nach dem Linken haelt das Program seine eigene Kopie der Shader — die
+      // einzelnen Shader-Objekte koennen jetzt freigegeben werden (Standard-
+      // WebGL-Hygiene). Buffer/Program/Texture werden beim Teardown vom
+      // loseContext() im Effect-Cleanup mit dem Context entsorgt.
+      gl.deleteShader(vs)
+      gl.deleteShader(fs)
 
       // Setup screen filling quad buffer
       const vertices = new Float32Array([

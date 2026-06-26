@@ -43,10 +43,24 @@ export function getAudioWorkletSupportError(ctx: AudioContext): string | null {
   return null;
 }
 
-export function hasSharedAudioContext(): boolean {
-  return !!sharedAudioContext;
-}
-
 export function isSharedAudioContextRunning(): boolean {
   return !!sharedAudioContext && sharedAudioContext.state === 'running';
+}
+
+/**
+ * iOS/Safari Web-Audio-Unlock: spielt einen stummen 1-Sample-Buffer ab. Auf einer
+ * User-Geste aufgerufen hebt das die AudioContext-Sperre auf Mobilgeraeten auf.
+ * Best effort — Fehler werden geschluckt (z.B. wenn der Context gerade nicht
+ * verfuegbar ist). Frueher als identischer Inline-Block an 5 Stellen dupliziert.
+ */
+export function unlockAudioContext(ctx: AudioContext): void {
+  try {
+    const buffer = ctx.createBuffer(1, 1, 22050);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start(0);
+  } catch (e) {
+    console.warn('iOS Web-Audio-Unlock (dummy buffer) fehlgeschlagen:', e);
+  }
 }
