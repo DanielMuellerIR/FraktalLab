@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { getSharedAudioContext, isSharedAudioContextRunning } from '../utils/shared-audio'
+import { getSharedAudioContext, isSharedAudioContextRunning, unlockAudioContext } from '../utils/shared-audio'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ARCHIVIERT am 2026-05-31 (Relaunch-Audio-Konzept): Diese Tipp-/Klick-Geräusch-
@@ -222,15 +222,7 @@ export default function AmbientSound({ enabled }: AmbientSoundProps) {
       if (activeCtx.state === 'suspended') {
         activeCtx.resume().catch(() => {})
       }
-      try {
-        const buffer = activeCtx.createBuffer(1, 1, 22050)
-        const source = activeCtx.createBufferSource()
-        source.buffer = buffer
-        source.connect(activeCtx.destination)
-        source.start(0)
-      } catch (e) {
-        console.warn('Failed to play dummy buffer for iOS unlock in AmbientSound:', e)
-      }
+      unlockAudioContext(activeCtx)
       startAudio(activeCtx)
       cleanupUnlockListeners()
     }

@@ -152,6 +152,15 @@ function OscilloscopePanel() {
     () => [...DEFAULT_TRACKS, ...userTracks],
     [userTracks]
   )
+
+  // Der Load-Effect darf NICHT auf die allTracks-Referenz triggern: jeder Upload
+  // erzeugt ein neues Array, wodurch der Effect auch bei UNVERAENDERTEM trackIdx
+  // neu lief und den laufenden Track auf Position 0 zuruecksetzte (z.B. erneutes
+  // Droppen derselben SID). Stattdessen die laufende Liste per Ref lesen und nur
+  // auf die stabile Track-ID triggern.
+  const allTracksRef = useRef(allTracks)
+  allTracksRef.current = allTracks
+  const currentTrackId = allTracks[trackIdx]?.id
   
   // Visualizer data ref updated ~43 times/sec from AudioWorklet
   const lastVisuals = useRef<SidVisuals>({
@@ -365,7 +374,7 @@ function OscilloscopePanel() {
     if (scrubberRef.current) scrubberRef.current.value = '0'
     if (timeLabelRef.current) timeLabelRef.current.textContent = '0:00'
 
-    const track = allTracks[trackIdx]
+    const track = allTracksRef.current[trackIdx]
     if (!track) {
       setLoading(false)
       return
@@ -382,7 +391,9 @@ function OscilloscopePanel() {
         setLoadError(err.message || String(err))
       })
     }
-  }, [trackIdx, allTracks])
+    // allTracks bewusst NICHT in den Deps (siehe allTracksRef oben) — nur die
+    // stabile Track-ID loest ein Neuladen aus.
+  }, [trackIdx, currentTrackId])
 
   // Play/Stop toggle — play() is async and sets up AudioContext on first call
   const handlePlayToggle = async () => {

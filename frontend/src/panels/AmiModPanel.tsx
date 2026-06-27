@@ -3,7 +3,7 @@ import Panel from '../ui/Panel';
 import { ModPlayer } from '../utils/modplayer/player';
 import { Mod, Note } from '../utils/modplayer/mod';
 import { subscribe } from '../utils/raf-coordinator';
-import { registerAudioFocusListener, requestAudioFocus, releaseAudioFocus, registerAudioCandidate, notifyAudioEnded } from '../utils/audio-focus';
+import { registerAudioFocusListener, requestAudioFocus, releaseAudioFocus, registerAudioCandidate, notifyAudioEnded, getAudioFocus } from '../utils/audio-focus';
 import { MOD_TRACKS, BOTB_SOURCE, BOTB_LICENSE_SHORT, BOTB_LICENSE_URL } from '../utils/botb-tracks.generated';
 
 const AUDIO_ID = 'ami-mod-player';
@@ -287,7 +287,6 @@ function AmiModPanel() {
       if (focusedId !== null && focusedId !== AUDIO_ID) {
         player.stop();
         setPlaying(false);
-        (window as any).fraktallab_mod_playing = false;
       }
     });
 
@@ -295,7 +294,6 @@ function AmiModPanel() {
       unsubscribe();
       player.unload();
       releaseAudioFocus(AUDIO_ID);
-      (window as any).fraktallab_mod_playing = false;
     };
   }, [player]);
 
@@ -307,7 +305,6 @@ function AmiModPanel() {
     const failPlay = (err: unknown) => {
       console.error('MOD play failed:', err);
       setPlaying(false);
-      (window as any).fraktallab_mod_playing = false;
       setLoadError(err instanceof Error ? err.message : String(err));
       releaseAudioFocus(AUDIO_ID);
     };
@@ -322,7 +319,6 @@ function AmiModPanel() {
         p.play()
           .then(() => {
             setPlaying(true);
-            (window as any).fraktallab_mod_playing = true;
           })
           .catch(failPlay);
       } else {
@@ -343,7 +339,6 @@ function AmiModPanel() {
         if (m) {
           p.stop();
           setPlaying(false);
-          (window as any).fraktallab_mod_playing = false;
         } else {
           playTrack();
         }
@@ -353,11 +348,14 @@ function AmiModPanel() {
 
   // Caching und Autoplay-Auswahl bei Mount
   useEffect(() => {
-    // Falls kein anderes Video oder Mod-Player läuft, wählen wir einen zufälligen Track aus.
+    // Falls kein anderes Video oder Audio-Player läuft, wählen wir einen zufälligen
+    // Track aus. Früher las das ein window.fraktallab_mod_playing-Global; das war
+    // redundant zum zentralen Audio-Fokus-State — getAudioFocus() liefert dieselbe
+    // Information (hält gerade ein Player den Fokus?) ohne globalen Mutationspfad.
     const isVidPlaying = !!document.querySelector<HTMLVideoElement>('video:not([muted])');
-    const isOtherModPlaying = !!(window as any).fraktallab_mod_playing;
-    
-    if (!isVidPlaying && !isOtherModPlaying) {
+    const isOtherAudioPlaying = getAudioFocus() !== null;
+
+    if (!isVidPlaying && !isOtherAudioPlaying) {
       const randIdx = Math.floor(Math.random() * DEFAULT_TRACKS.length);
       setTrackIdx(randIdx);
       shouldAutoPlayRef.current = false; // Keinen automatischen Start auslösen
@@ -404,12 +402,10 @@ function AmiModPanel() {
         player.play(myMod)
           .then(() => {
             setPlaying(true);
-            (window as any).fraktallab_mod_playing = true;
           })
           .catch((err) => {
             console.error('MOD autoplay failed:', err);
             setPlaying(false);
-            (window as any).fraktallab_mod_playing = false;
             setLoadError(err instanceof Error ? err.message : String(err));
             releaseAudioFocus(AUDIO_ID);
           });
@@ -441,7 +437,6 @@ function AmiModPanel() {
           if (loopedBack || (totalPatterns === 1 && row === 0 && currentRowRef.current === 63)) {
             player.stop();
             setPlaying(false);
-            (window as any).fraktallab_mod_playing = false;
             // Song zu Ende → an einen anderen Player übergeben (z.B. SID/Video).
             notifyAudioEnded(AUDIO_ID);
             return;
@@ -506,7 +501,6 @@ function AmiModPanel() {
       player.watchStop(() => {
         if (active && myGen === loadGenRef.current) {
           setPlaying(false);
-          (window as any).fraktallab_mod_playing = false;
         }
       });
     }).catch((err) => {
@@ -607,50 +601,57 @@ function AmiModPanel() {
   // Dateinamen, erzeugt Object-URLs, dedupliziert per Name+Size. Anschliessend
   // optional den ersten neu hinzugefuegten Track sofort laden.
   const addUserFiles = (files: File[], playFirstAdded: boolean): Track | null => {
-    const fresh: { file: File; track: Track }[] = [];
-    setUserTracks((prev) => {
-      const next: Track[] = [...prev];
-      for (const f of files) {
-        if (!isModName(f.name)) continue;
-        // Duplikate (gleicher Name + gleiche Groesse) ueberspringen — sonst
-        // landen identische Dateien mehrfach im Dropdown.
-        const existing = next.find((t) => t.isUser && t.name === f.name && (t as any).__size === f.size);
-        if (existing) continue;
-        const objUrl = URL.createObjectURL(f);
-        const baseName = f.name.replace(/\.mod$/i, '').replace(/^mod\./i, '');
-        const track: Track = {
-          id: 'user:' + f.name + ':' + f.size,
-          name: baseName || f.name,
-          url: objUrl,
-          isUser: true,
-        };
-        // Groesse als nicht-sichtbares Property mitgeben fuer Dedup-Check.
-        (track as any).__size = f.size;
-        next.push(track);
-        fresh.push({ file: f, track });
-      }
-      return next;
+    const mods = files.filter((f) => isModName(f.name));
+    if (!mods.length) return null;
+
+    // Tracks SYNCHRON (vor setUserTracks) aufbauen. Frueher wurde dieses Array
+    // INNERHALB des setUserTracks-Updaters befuellt und unten ausserhalb gelesen —
+    // React fuehrt Updater aber erst beim naechsten Render aus, sodass das Array
+    // beim synchronen Lesen garantiert leer war und der Autoplay-Pfad nie ansprang.
+    // Object-URL + Dedup-Schluessel (id = name:size) hier direkt erzeugen.
+    const newTracks: Track[] = mods.map((f) => {
+      const baseName = f.name.replace(/\.mod$/i, '').replace(/^mod\./i, '');
+      return {
+        id: 'user:' + f.name + ':' + f.size,
+        name: baseName || f.name,
+        url: URL.createObjectURL(f),
+        isUser: true,
+      };
     });
-    if (!fresh.length) return null;
-    if (playFirstAdded) {
-      // setUserTracks wird asynchron. Index des neuen Tracks ergibt sich nach
-      // dem React-Render. Deshalb Index hier nach Anzahl bestehender Tracks
-      // berechnen — funktioniert weil setUserTracks oben "next" voll baut.
-      // Auswahl per Microtask, damit der State-Update durch ist.
-      const firstAddedName = fresh[0].track.name;
-      const firstAddedSize = (fresh[0].track as any).__size;
-      queueMicrotask(() => {
-        setUserTracks((prev) => {
-          const idxInList = prev.findIndex((t) => t.name === firstAddedName && (t as any).__size === firstAddedSize);
-          if (idxInList >= 0) {
+
+    const playId = newTracks[0].id; // erster neu gewaehlter Track — der wird ggf. autoplayed
+
+    setUserTracks((prev) => {
+      const ids = new Set(prev.map((t) => t.id));
+      const merged = [...prev];
+      for (const t of newTracks) {
+        // Duplikate (gleiche id = gleicher Name + gleiche Groesse) ueberspringen —
+        // sonst landen identische Dateien mehrfach im Dropdown. Die vorab erzeugte
+        // Object-URL des Duplikats wieder freigeben, damit sie nicht leakt.
+        if (ids.has(t.id)) {
+          URL.revokeObjectURL(t.url);
+          continue;
+        }
+        ids.add(t.id);
+        merged.push(t);
+      }
+      if (playFirstAdded) {
+        // Funktioniert fuer frisch hinzugefuegte UND bereits vorhandene (erneut
+        // gedroppte) Tracks: Index in der fertigen Liste per stabiler id finden.
+        const userIdx = merged.findIndex((t) => t.id === playId);
+        if (userIdx >= 0) {
+          const targetIdx = DEFAULT_TRACKS.length + userIdx;
+          // Auswahl per Microtask, damit der State-Update durch ist.
+          queueMicrotask(() => {
             shouldAutoPlayRef.current = true;
-            setTrackIdx(DEFAULT_TRACKS.length + idxInList);
-          }
-          return prev;
-        });
-      });
-    }
-    return fresh[0].track;
+            setTrackIdx(targetIdx);
+          });
+        }
+      }
+      return merged;
+    });
+
+    return newTracks[0];
   };
 
   const onFilePickerChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
@@ -713,7 +714,6 @@ function AmiModPanel() {
     if (playing) {
       player.stop();
       setPlaying(false);
-      (window as any).fraktallab_mod_playing = false;
       releaseAudioFocus(AUDIO_ID);
     } else {
       // Worklet beginnt bei 'play' wieder von Position 0/Row 0. lastPosRef
@@ -727,12 +727,10 @@ function AmiModPanel() {
       player.play()
         .then(() => {
           setPlaying(true);
-          (window as any).fraktallab_mod_playing = true;
         })
         .catch((err) => {
           console.error('MOD play failed:', err);
           setPlaying(false);
-          (window as any).fraktallab_mod_playing = false;
           setLoadError(err instanceof Error ? err.message : String(err));
           releaseAudioFocus(AUDIO_ID);
         });

@@ -92,32 +92,11 @@ export function getPaletteColor(pal: CosinePalette, t: number): [number, number,
   ]
 }
 
-// Convert palette parameter t [0, 1] to CSS rgb/rgba/hex string
-export function getPaletteHex(pal: CosinePalette, t: number): string {
-  const [r, g, b] = getPaletteColor(pal, t)
-  const ir = Math.round(r * 255)
-  const ig = Math.round(g * 255)
-  const ib = Math.round(b * 255)
-  return `#${((1 << 24) + (ir << 16) + (ig << 8) + ib).toString(16).slice(1)}`
-}
-
-export function getPaletteRgbString(pal: CosinePalette, t: number): string {
-  const [r, g, b] = getPaletteColor(pal, t)
-  return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`
-}
-
 // Randomly select a palette name
 export function getRandomPaletteName(): string {
   const keys = Object.keys(PALETTES)
   return keys[Math.floor(Math.random() * keys.length)]
 }
-
-// Get GLSL function definition for cosine palettes
-export const PALETTE_GLSL_FN = `
-vec3 palette(float t, vec3 a, vec3 b, vec3 c, vec3 d) {
-    return a + b * cos(6.28318 * (c * t + d));
-}
-`
 
 // Helper to get uniforms for a given palette
 export function getPaletteUniforms(palName: string, shift: number = 0) {
