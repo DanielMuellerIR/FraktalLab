@@ -29,6 +29,7 @@ const WF_NOISE = 0x80
 // (with its duty cycle) and noise. Combined waveforms fall back to the strongest
 // bit (noise > pulse > saw > tri); a voice with no waveform draws a flat line.
 function sidWaveSample(frac: number, wf: number, duty: number): number {
+  // codereview-ok: Noise-Waveform via Math.random() ist erwartetes Verhalten, kein Befund. (2026-07-01)
   if (wf & WF_NOISE) return Math.random() * 2 - 1                 // noise: random
   if (wf & WF_PULSE) return frac < duty ? 1 : -1                  // pulse / square
   if (wf & WF_SAW) return 2 * frac - 1                            // rising sawtooth

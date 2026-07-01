@@ -55,6 +55,8 @@ export class ModPlayer {
   /// neuen load() gesetzt). Ohne dieses Guarding kann der Worklet
   /// nachtraeglich den falschen Track abspielen.
   async load(url: string, workletUrl: string = 'audio/mod-player-worklet.js') {
+    // codereview-ok: loadGen-Generationszaehler ist by design; ROW/LEVEL/STOP-Callbacks
+    // registriert AmiModPanel per Effect nach jedem load() neu — kein Fehlerpfad. (2026-07-01)
     const myGen = ++this.loadGen;
     this.unload(false);
 

@@ -53,6 +53,7 @@ import { VoxelThermal, VoxelNeon, VoxelLava } from './VoxelScenes'
 import PlasmaDemo        from './PlasmaDemo'
 import EnhanceView       from './EnhanceView'
 import GlobePanel        from './GlobePanel'
+// codereview-ok: nicht tot — Registry-Eintrag (active:false) rendert DaggerfallPanel bewusst im Review-Modus via ALL_PANELS. (2026-07-01)
 import DaggerfallPanel   from './DaggerfallPanel'
 import LidarScanPanel    from './LidarScanPanel'
 import DNAHelix          from './DNAHelix'

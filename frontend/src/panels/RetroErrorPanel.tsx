@@ -14,6 +14,7 @@ type Screen = {
   // damit der Text mit der Maus markiert und kopiert werden kann (Canvas-Pixel
   // sind nicht selektierbar). Inhalt deckt sich Zeile fuer Zeile mit dem,
   // was render() malt — bei Aenderungen am Canvas-Text bitte hier mitpflegen.
+  // codereview-ok: text/Canvas aktuell konsistent — reine Sorgfalts-Anmerkung, kein Guard-Bedarf. (2026-07-01)
   text: string
 }
 

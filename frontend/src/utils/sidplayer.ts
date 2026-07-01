@@ -45,6 +45,8 @@ function parseSidHeader(data: Uint8Array): SidMetadata | null {
   const title = readString(0x16, 32);
   const author = readString(0x36, 32);
   const info = readString(0x56, 32);
+  // codereview-ok: data[0xF] ist korrekt — songs ist ein 16-bit-BE-Wort (0x0E hi, 0x0F lo),
+  // subtune count < 256 steht im Low-Byte 0x0F; der SID-Worklet liest dieselbe Stelle. (2026-07-01)
   const subtunesCount = data[0xF] || 1;
   const prefModel = (data[0x77] & 0x30) >= 0x20 ? 8580 : 6581;
 

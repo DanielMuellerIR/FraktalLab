@@ -6,7 +6,7 @@ import PanelSlot     from './ui/PanelSlot'
 import {
   ALL_PANELS, POOL_TEXT, POOL_GFX, AUDIO_PANELS,
   getCompName, isActive, isGLPanel, MAX_GL_PANELS_PER_LAYOUT,
-  panelAspect, panelMayBeLarge, panelPrefersLarge, panelAssetLabel,
+  panelAspect, panelPrefersLarge, panelAssetLabel,
   type Aspect,
 } from './panels/panel-registry'
 import FractalView   from './panels/FractalView'
@@ -650,7 +650,6 @@ const INITIAL_REVIEWS: ReviewEntry[] = [
   { panel: "TixyPanel", rating: "up", comment: "", ts: 1780166376374 },
   { panel: "IQDigitalStorm", rating: "up", comment: "", ts: 1780166381140 },
   { panel: "NuclearExplosionPanel", rating: "up", comment: "", ts: 1780166397190 },
-  { panel: "SupervolcanoPanel", rating: "down", comment: "", ts: 1780166402282 },
   { panel: "MandelbulbScene", rating: "up", comment: "", ts: 1780166406715 },
   { panel: "MengerSpongeScene", rating: "up", comment: "", ts: 1780166412482 },
   { panel: "VisitorProfilePanel", rating: "down", comment: "", ts: 1780166419907 },
@@ -1012,7 +1011,6 @@ export default function App() {
       })
 
       const cellA = cellAspect(cell)
-      const isLarge = isCellLarge(cell)
       const currentName = getCompName(pool[cell.panelIdx])
 
       // Kompatible Kandidaten (ohne das aktuell gezeigte Panel selbst).
@@ -1023,8 +1021,12 @@ export default function App() {
         // Locked Audio-Panel, das bereits im Layout läuft → nie Wechselziel.
         if (AUDIO_PANELS.has(name) && shownElsewhere.has(name)) return
         if (cell.type === 'gfx') {
+          // Kompatibilität wie im Layout-Generator (findGfx): nur Aspect-Match und
+          // GL-Budget zählen — die Größenklasse (panelMayBeLarge) ist KEIN harter
+          // Filter. Der Generator kombiniert Größenklassen flexibel (large/small mit
+          // Fallback), also darf die Pille dieselbe Panel-Menge anbieten, statt ein
+          // normales GFX-Panel in kleinen Zellen auf no-large-Panels einzuschränken.
           if (!aspectMatches(panelAspect(name), cellA)) return
-          if (panelMayBeLarge(name) !== isLarge) return
           if (isGLPanel(name) && otherGL + 1 > MAX_GL_PANELS_PER_LAYOUT) return
         }
         cands.push(i)
@@ -1636,7 +1638,11 @@ export default function App() {
                   onBlur={() => {
                     if (reviewRating) {
                       saveReview({
-                        panel:   ALL_PANELS[reviewIdx].name,
+                        // reviewIdx indexiert in activeAllPanels (die evtl. gefilterte
+                        // Liste bei aktivem hideArchived) — daher hier NICHT das
+                        // ungefilterte ALL_PANELS verwenden, sonst landet der Kommentar
+                        // am falschen Panel. Konsistent zu handleRating (Z. 1232).
+                        panel:   activeAllPanels[reviewIdx].name,
                         rating:  reviewRating,
                         comment: commentRef.current?.value ?? '',
                         ts:      Date.now(),

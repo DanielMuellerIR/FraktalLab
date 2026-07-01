@@ -72,6 +72,13 @@ export class Pattern {
   public rows: Row[] = [];
 
   constructor(modfile: ArrayBuffer, index: number) {
+    // Bounds-Check wie im Instrument-Konstruktor: bei abgeschnittenen/korrupten
+    // MODs (Datei kürzer als der letzte Pattern-Block) würde new Uint8Array(...)
+    // sonst einen unbehandelten RangeError werfen. Stattdessen sauber werfen,
+    // damit loadMod den Track kontrolliert verwirft (Fehlerpfad wie in loader.ts).
+    if (1084 + (index + 1) * 1024 > modfile.byteLength) {
+      throw new Error('MOD truncated');
+    }
     const data = new Uint8Array(modfile, 1084 + index * 1024, 1024);
     for (let i = 0; i < 64; ++i) {
       const rowData = data.slice(i * 16, i * 16 + 16);

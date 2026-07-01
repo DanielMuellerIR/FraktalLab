@@ -231,6 +231,8 @@ function FractalGL({
 
     // Komplexe Einheiten pro Pixel — repliziert die Koordinaten-Mappings des
     // alten WASM-Renderers (Mandelbrot: 4/(zoom·größe); Julia: 1/zoom).
+    // codereview-ok: h/w hier nie 0 — Aufrufer liefern nur NAV_W/NAV_H (Konstanten)
+    // bzw. canvas.width/height aus 'clientWidth || 300' / 'clientHeight || 200'. (2026-07-01)
     function pixelScale(zoom: number, w: number, h: number): [number, number] {
       // Julia: auflösungsunabhängig + quadratische Pixel. Vertikale Spanne =
       // ~340/zoom (≈ alte Framing-Wirkung), x folgt per Seitenverhältnis.
