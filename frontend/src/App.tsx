@@ -1636,13 +1636,17 @@ export default function App() {
                   rows={1}
                   placeholder="Optional review comment..."
                   onBlur={() => {
-                    if (reviewRating) {
+                    // reviewIdx indexiert in activeAllPanels (die evtl. gefilterte Liste
+                    // bei aktivem hideArchived) — daher hier NICHT das ungefilterte
+                    // ALL_PANELS verwenden, sonst landet der Kommentar am falschen Panel.
+                    // Zusätzlich auf Existenz prüfen (wie handleRating/goToPanel): schrumpft
+                    // die Liste per hideArchived-Toggle, während die Textarea noch Fokus hat
+                    // und der Clamp-Effect reviewIdx noch nicht zurückgesetzt hat, wäre
+                    // activeAllPanels[reviewIdx] undefined -> .name würfe einen TypeError.
+                    const panel = activeAllPanels[reviewIdx]
+                    if (reviewRating && panel) {
                       saveReview({
-                        // reviewIdx indexiert in activeAllPanels (die evtl. gefilterte
-                        // Liste bei aktivem hideArchived) — daher hier NICHT das
-                        // ungefilterte ALL_PANELS verwenden, sonst landet der Kommentar
-                        // am falschen Panel. Konsistent zu handleRating (Z. 1232).
-                        panel:   activeAllPanels[reviewIdx].name,
+                        panel:   panel.name,
                         rating:  reviewRating,
                         comment: commentRef.current?.value ?? '',
                         ts:      Date.now(),
