@@ -5,6 +5,20 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 
 ---
 
+## Datei-Verzeichnis
+
+| Datei | Wozu |
+|---|---|
+| [README.md](README.md) | Projekt-Einstieg, Tech-Stack und Performance-Historie der App. |
+| [AGENTS.md](AGENTS.md) | Diese Datei — Architektur, Todos, Panel-Inventar und Action-Plans. |
+| [DEV_GUIDE.md](DEV_GUIDE.md) | Build-Befehle und Coding-Hinweise speziell für AI-Agents. |
+| [ARCHIVE.md](ARCHIVE.md) | Historische, bereits erledigte Action-Plans (Quick-Wins, Performance). |
+| [frontend/README.md](frontend/README.md) | Standard-Vite-React-Boilerplate-README im Frontend-Ordner. |
+| [docs/assets/README.md](docs/assets/README.md) | Anleitung zum Erzeugen des GitHub-Social-Preview-Bildes. |
+| [sid_mod_dl/wie_lizenz_anzeigen.md](sid_mod_dl/wie_lizenz_anzeigen.md) | Diskussion zu korrekter CC-BY-Lizenz-Attribution (TASL) für Audio-Tracks. |
+
+---
+
 ## ⚖️ Panel-Regelwerk (VERBINDLICH — bei JEDEM künftigen Panel-/Layout-Todo beachten)
 
 Stand 2026-06-01. Diese Regeln gelten dauerhaft, nicht nur für die Speed-Session.
