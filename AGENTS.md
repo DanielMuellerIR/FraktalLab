@@ -5,6 +5,11 @@ Agent-spezifische Einstellungen und Build-Befehle stehen in `DEV_GUIDE.md`.
 
 ---
 
+## Typ & Zweck
+- **Typ:** Web-App
+- **Zweck:** Browserbasiertes Demoscene-Showcase mit GPU-Fraktalen, Raymarching, MOD-Player und SID-Emulator.
+- **Plattform:** Web
+
 ## Datei-Verzeichnis
 
 | Datei | Wozu |
