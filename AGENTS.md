@@ -962,3 +962,23 @@ Falls FraktalLab je außerhalb des privaten Showcases gezeigt wird:
 - **Kein WASM mehr:** Fraktale laufen auf GPU-Shadern (`FractalGL`/`fractal-gl-shader.ts`). Kein Rust/`wasm-pack`-Build. Frühere Audit-Tabellen (AUDIT-01/QW-01 etc.) und Action-Plan-Einträge, die `wasm/src/lib.rs` erwähnen, sind historisch.
 - **Bei Unsicherheit zwischen „CPU-Optimierung" und „GPU-Migration":** wenn das Panel Kategorie B ist und auf großen Layouts > 1 Vollbild-Renderpass macht, ist GPU-Migration der richtige Weg. CPU-Mikro-Optimierungen lohnen sich nur bei Panels, die ohnehin CPU bleiben (Vektor, Text, retro-authentic).
 - **Wenn ein Quick-Win unerwartete Visual-Regressions erzeugt** (anders aussehende Panels im Playwright-Diff): Pixel-Quality-Policy konsultieren, prüfen ob das Panel in Kategorie A oder B fällt, danach entscheiden ob die neue Darstellung gewünscht ist oder ob ein `pixelated: true` Override für dieses Panel die Lösung ist.
+
+## Verzeichnisstruktur
+
+<!-- directory-structure: generated -->
+- [AGENTS.md](AGENTS.md) — Projektprofil, Arbeitsregeln und dieses Datei-Verzeichnis.
+- [ARCHIVE.md](ARCHIVE.md) — Projektdokumentation.
+- [DEV_GUIDE.md](DEV_GUIDE.md) — Projektdokumentation.
+- [README.md](README.md) — Projekt-Einstieg und Nutzerdokumentation.
+- [Rechtliche Einschätzung zu mods und sids.md](Rechtliche Einschätzung zu mods und sids.md) — Projektdokumentation.
+- [docs/assets/README.md](docs/assets/README.md) — Projektdokumentation.
+- `archive/` — Projektbestandteil; Details stehen im Code bzw. in der verlinkten Dokumentation.
+- `docs/` — Projektbestandteil; Details stehen im Code bzw. in der verlinkten Dokumentation.
+- `frontend/` — Projektbestandteil; Details stehen im Code bzw. in der verlinkten Dokumentation.
+- `scratch/` — Projektbestandteil; Details stehen im Code bzw. in der verlinkten Dokumentation.
+- `screenshots/` — Projektbestandteil; Details stehen im Code bzw. in der verlinkten Dokumentation.
+- `scripts/` — Projektbestandteil; Details stehen im Code bzw. in der verlinkten Dokumentation.
+- `server/` — Projektbestandteil; Details stehen im Code bzw. in der verlinkten Dokumentation.
+- `sid_mod_dl/` — Projektbestandteil; Details stehen im Code bzw. in der verlinkten Dokumentation.
+- `test-results/` — Projektbestandteil; Details stehen im Code bzw. in der verlinkten Dokumentation.
+<!-- /directory-structure -->
