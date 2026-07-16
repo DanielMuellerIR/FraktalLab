@@ -12,7 +12,11 @@ const MIN_STDDEV = 1.0
 // Helper function to calculate pixel variance (standard deviation) on canvas
 async function getCanvasStdDev(page: any): Promise<number> {
   return page.evaluate(() => {
-    const activeDiv = document.querySelector('div.ring-2.ring-green-500')
+    // Das ausgewaehlte Panel traegt im Review-Grid immer `ring-2` (Farbe rot ODER
+    // gruen je nach Registry-Aktivierung, siehe App.tsx). Wir matchen deshalb auf
+    // `ring-2`, nicht auf die Farbe — sonst greift der Selektor bei deaktivierten
+    // (roten) Panels ins Leere.
+    const activeDiv = document.querySelector('div.ring-2')
     const canvas = activeDiv?.querySelector('canvas:not([data-testid="glitch-overlay"])') as HTMLCanvasElement | null
     if (!canvas) return -1
 
@@ -83,7 +87,10 @@ test.describe('Review Mode - Visual Panel Verification', () => {
   })
 
   test('Verify and screenshot all panels in review mode', async ({ page }) => {
-    test.setTimeout(300000)
+    // 68 Panels × (Render-Wartezeit + Screenshot + periodische Reloads) liegen
+    // lokal schon bei ~5 min — auf langsameren CI-Runnern reicht das nicht.
+    // Grosszuegiges Budget, damit der Lauf nicht kurz vor dem Ende abbricht.
+    test.setTimeout(600000)
     page.on('console', (msg) => {
       const type = msg.type()
       const text = msg.text()
@@ -130,14 +137,21 @@ test.describe('Review Mode - Visual Panel Verification', () => {
     const failures: string[] = []
 
     for (let i = 0; i < totalPanels; i++) {
-      // Get the name of the active panel from the title
-      const activePanel = page.locator('div.ring-2.ring-green-500')
+      // Get the name of the active panel from the title. Das ausgewaehlte Panel
+      // traegt immer `ring-2` (Rahmenfarbe rot/gruen je nach Registry-Status) —
+      // wir matchen auf `ring-2`, nicht auf die Farbe.
+      const activePanel = page.locator('div.ring-2')
       await expect(activePanel).toBeVisible()
 
-      // Read panel title/name from Panel component header
-      const panelTitleText = await activePanel.locator('span.uppercase').first().innerText()
-      // Title format is: "REVIEW // FractalJulia [1/52]" or similar
-      const panelName = panelTitleText.replace('REVIEW //', '').split('[')[0].trim()
+      // Panelnamen aus dem Review-Marker lesen (App.tsx: direktes Kind des
+      // Ring-Containers, `div.tracking-wider`). Struktur der Spans:
+      //   [0] "#<idx>"  [1] "·"  [2] panel.name  [3] "·"  [4] "<n> KB" …
+      // Frueher las der Test `span.uppercase` aus dem Panel-Body — die existiert
+      // aber nur bei manchen Panels (z.B. FractalJulia hat keine), weshalb der
+      // Lauf dort haengen blieb. Der Marker ist dagegen bei JEDEM Panel da.
+      const panelName = (
+        await page.locator('div.ring-2 > div.tracking-wider span').nth(2).innerText()
+      ).trim()
 
       console.log(`Reviewing panel [${String(i + 1).padStart(2, '0')}/${totalPanels}]: ${panelName}`)
 
