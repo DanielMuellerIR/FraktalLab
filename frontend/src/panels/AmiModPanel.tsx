@@ -269,16 +269,22 @@ function AmiModPanel() {
   // Object-URLs der User-Tracks beim Unmount der Komponente freigeben.
   // Wichtig: nicht jedes Mal beim Update von userTracks, sondern erst beim
   // endgueltigen Verschwinden — sonst wuerde der gerade aktive Track die
-  // URL unter den Fuessen verlieren.
+  // URL unter den Fuessen verlieren. Der Unmount-Cleanup (leere Deps) sieht
+  // in seiner Closure nur den userTracks-Stand vom Mount (das leere
+  // Anfangs-Array) und waere damit ein No-op; deshalb spiegelt dieser Ref
+  // immer die aktuelle Liste, und der Cleanup liest den Ref.
+  const userTracksRef = useRef<Track[]>(userTracks);
+  useEffect(() => {
+    userTracksRef.current = userTracks;
+  }, [userTracks]);
   useEffect(() => {
     return () => {
-      for (const t of userTracks) {
+      for (const t of userTracksRef.current) {
         if (t.isUser && t.url.startsWith('blob:')) {
           try { URL.revokeObjectURL(t.url); } catch (_) {}
         }
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ModPlayer beim Unmount entladen und Audio-Fokus abonnieren
@@ -348,14 +354,15 @@ function AmiModPanel() {
 
   // Caching und Autoplay-Auswahl bei Mount
   useEffect(() => {
-    // Falls kein anderes Video oder Audio-Player läuft, wählen wir einen zufälligen
-    // Track aus. Früher las das ein window.fraktallab_mod_playing-Global; das war
-    // redundant zum zentralen Audio-Fokus-State — getAudioFocus() liefert dieselbe
-    // Information (hält gerade ein Player den Fokus?) ohne globalen Mutationspfad.
-    const isVidPlaying = !!document.querySelector<HTMLVideoElement>('video:not([muted])');
+    // Falls kein anderer Audio-Player läuft, wählen wir einen zufälligen Track
+    // aus. Früher las das ein window.fraktallab_mod_playing-Global und eine
+    // video:not([muted])-Heuristik; beides ist obsolet (das Video-Panel wurde
+    // entfernt, im Frontend existiert kein video-Element mehr) — getAudioFocus()
+    // liefert dieselbe Information (hält gerade ein Player den Fokus?) ohne
+    // globalen Mutationspfad.
     const isOtherAudioPlaying = getAudioFocus() !== null;
 
-    if (!isVidPlaying && !isOtherAudioPlaying) {
+    if (!isOtherAudioPlaying) {
       const randIdx = Math.floor(Math.random() * DEFAULT_TRACKS.length);
       setTrackIdx(randIdx);
       shouldAutoPlayRef.current = false; // Keinen automatischen Start auslösen

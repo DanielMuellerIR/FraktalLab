@@ -568,15 +568,31 @@ function generateLayout(id: number, reviews: ReviewEntry[], targetCellCount?: nu
       }
     } else if (audioCells.length > 1) {
       // Mehr als ein Audio-Panel → Überzählige durch unbenutzte NICHT-Audio-gfx
-      // ersetzen (oder deaktivieren, falls kein Ersatz frei ist).
+      // ersetzen (oder deaktivieren, falls kein Ersatz frei ist). Der Ersatz muss
+      // wie im Zuweisungs-Pass zum Zellen-Seitenverhältnis passen und darf das
+      // GL-Kontingent nicht sprengen — Audio-Panels sind selbst Nicht-GL, ein
+      // GL-Ersatz käme also immer ZUSÄTZLICH hinzu (sonst droht "SLOT EVICTED").
+      // Lieber die Zelle deaktivieren als Aspect oder Kontext-Limit brechen.
+      let glUsed = 0
+      cells.forEach(c => {
+        if (c.type === 'gfx' && c.panelIdx != null && isGLPanel(getCompName(gfxPool[c.panelIdx]))) glUsed++
+      })
       for (let i = 1; i < audioCells.length; i++) {
         const cell = audioCells[i]
-        const replacement = gfxIndices.find(idx =>
-          !usedGfx.has(idx) && !AUDIO_PANELS.has(getCompName(gfxPool[idx])))
+        const cellA = cellAspect(cell)
+        const replacement = gfxIndices.find(idx => {
+          if (usedGfx.has(idx)) return false
+          const name = getCompName(gfxPool[idx])
+          if (AUDIO_PANELS.has(name)) return false
+          if (!aspectMatches(panelAspect(name), cellA)) return false
+          if (isGLPanel(name) && glUsed >= MAX_GL_PANELS_PER_LAYOUT) return false
+          return true
+        })
         usedGfx.delete(cell.panelIdx!)
         if (replacement != null) {
           cell.panelIdx = replacement
           usedGfx.add(replacement)
+          if (isGLPanel(getCompName(gfxPool[replacement]))) glUsed++
         } else {
           cell.panelIdx = undefined  // wird unten herausgefiltert
         }
