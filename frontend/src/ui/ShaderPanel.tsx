@@ -411,6 +411,10 @@ function ShaderPanel({ fragmentShader, uniforms, title, attribution, textureData
         }
       } catch (_) {}
     }
+    // hasContext/textureData/uniforms werden ueber die oben aufgefuehrten stabilen
+    // Keys beziehungsweise Refs gespiegelt; ganze Objekt-Dependencies wuerden den
+    // WebGL-Kontext bei jedem Parent-Render neu initialisieren.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fragmentShader, uniformsKeys, wakeTrigger, panelId, textureData?.data, textureData?.width, textureData?.height])
 
   // Mouse Listeners mapping coordinates matching Shadertoy specifications

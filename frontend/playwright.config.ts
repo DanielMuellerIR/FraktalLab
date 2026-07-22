@@ -17,6 +17,12 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+    // Lokales Chrome als headless Fallback, wenn Playwrights gebündeltes
+    // Chromium nach einem Dependency-Update noch nicht installiert ist.
+    {
+      name: 'chrome-headless',
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true },
+    },
     // GPU-Mess-Profil: echtes Google Chrome, sichtbar (headless=false), damit der
     // Metal-GPU-Pfad genutzt wird statt SwiftShader. Nur für perf-measure relevant.
     //   npx playwright test tests/perf-measure.spec.ts --project=chrome-gpu

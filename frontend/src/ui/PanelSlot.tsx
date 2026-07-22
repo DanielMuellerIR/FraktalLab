@@ -46,6 +46,10 @@ export default function PanelSlot({
   // Vom inneren Panel gemeldeter Titel (null → Fallback aus Komponentenname).
   const [reported, setReported] = useState<{ title: string; rightLabel?: string } | null>(null)
   const isTransitioningRef = useRef(false)
+  const mountedRef = useRef(true)
+  const navigationGenerationRef = useRef(0)
+  const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Pillen-Sichtbarkeit auf MOBILE: erst nach Tippen einblenden (Desktop nutzt
   // reines CSS-Hover, siehe Klassen unten). Auto-Ausblenden nach 3 s.
   const [revealed, setRevealed] = useState(false)
@@ -53,8 +57,21 @@ export default function PanelSlot({
   function revealPill() {
     setRevealed(true)
     if (revealTimerRef.current) clearTimeout(revealTimerRef.current)
-    revealTimerRef.current = setTimeout(() => setRevealed(false), 3000)
+    revealTimerRef.current = setTimeout(() => {
+      if (mountedRef.current) setRevealed(false)
+    }, 3000)
   }
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      navigationGenerationRef.current += 1
+      if (revealTimerRef.current) clearTimeout(revealTimerRef.current)
+      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current)
+      if (settleTimerRef.current) clearTimeout(settleTimerRef.current)
+    }
+  }, [])
 
   // Panel-Wechsel: localIdx setzen UND den gemeldeten Titel im SELBEN Update
   // zurücksetzen. Nicht per [localIdx]-Effekt — der liefe NACH dem Mount-Effekt
@@ -69,18 +86,20 @@ export default function PanelSlot({
     if (activeIdx !== localIdx && !isTransitioningRef.current) {
       switchTo(activeIdx)
     }
-  }, [activeIdx, localIdx]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeIdx, localIdx])
 
   // Zufalls-Panelwechsel mit Ausblenden/Einblenden.
   function navigate(strict: boolean) {
     if (locked || isTransitioningRef.current || pool.length <= 1) return
+    const generation = ++navigationGenerationRef.current
     isTransitioningRef.current = true
     setVisible(false)
-    setTimeout(() => {
+    fadeTimerRef.current = setTimeout(() => {
+      if (!mountedRef.current || generation !== navigationGenerationRef.current) return
       onNav(strict)
       // Backup: ändert der Parent activeIdx nicht (z.B. nur 1 Kandidat), wieder einblenden.
-      setTimeout(() => {
-        if (isTransitioningRef.current) {
+      settleTimerRef.current = setTimeout(() => {
+        if (mountedRef.current && generation === navigationGenerationRef.current && isTransitioningRef.current) {
           setVisible(true)
           isTransitioningRef.current = false
         }
@@ -91,6 +110,9 @@ export default function PanelSlot({
   // Wenn der Parent nach der Navigation activeIdx setzt → wieder einblenden.
   useEffect(() => {
     if (isTransitioningRef.current && activeIdx !== localIdx) {
+      navigationGenerationRef.current += 1
+      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current)
+      if (settleTimerRef.current) clearTimeout(settleTimerRef.current)
       switchTo(activeIdx)
       setVisible(true)
       isTransitioningRef.current = false

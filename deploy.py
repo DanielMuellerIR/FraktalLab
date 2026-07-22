@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-deploy.py — Upload des Production-Builds auf den Netcup-Webspace (dm0.de) per SFTP.
+deploy.py — Upload des Production-Builds auf den Netcup-Webspace (dm0.de) per FTPS.
 
 Lädt NUR den fertigen Build (frontend/dist/) hoch — also exakt das, was zum
 Betrieb der Seite nötig ist. KEINE Quell-/Doku-Dateien (AGENTS.md etc.).
@@ -8,7 +8,7 @@ Betrieb der Seite nötig ist. KEINE Quell-/Doku-Dateien (AGENTS.md etc.).
 Sicherheit:
   • Die Zugangsdaten werden aus einer Env-Datei gelesen (Default: Sticky/chili.env).
     Sie tauchen NICHT in der Prozessliste auf (lftp-Kommandos kommen über stdin,
-    Passwort URL-kodiert in der sftp://-URL) und werden NIE ausgegeben.
+    Passwort URL-kodiert in der ftp://-URL) und werden NIE ausgegeben.
   • Es wird NICHTS auf dem Server gelöscht (lftp `mirror -R` ohne `--delete`),
     bestehende Unterordner bleiben unangetastet.
 
@@ -26,7 +26,9 @@ Voraussetzungen: `lftp` (brew install lftp), `npm` (für den Build).
 """
 
 import argparse
+import ipaddress
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -79,8 +81,52 @@ def resolve(env, kind, default=None):
     return default
 
 
+def validate_ftps_target(host, port, remote):
+    """FTPS-Ziel validieren, bevor Zugangsdaten in ein lftp-Skript gelangen."""
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        sys.exit("FEHLER: FTP_HOST muss der zum TLS-Zertifikat passende FQDN sein, keine IP-Adresse.")
+
+    fqdn = host.rstrip(".")
+    labels = fqdn.split(".")
+    valid_label = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
+    if len(labels) < 2 or len(fqdn) > 253 or not all(valid_label.fullmatch(label) for label in labels):
+        sys.exit("FEHLER: FTP_HOST ist kein gültiger FQDN für die TLS-Zertifikatsprüfung.")
+    if not str(port).isdigit() or not 1 <= int(port) <= 65535:
+        sys.exit("FEHLER: FTP_PORT muss zwischen 1 und 65535 liegen.")
+    if not remote.startswith("/") or any(char in remote for char in ('\r', '\n', '"')):
+        sys.exit("FEHLER: Das Remote-Ziel muss ein absoluter Pfad ohne Steuerzeichen oder Anführungszeichen sein.")
+
+
+def build_lftp_commands(url, remote, dry_run):
+    """Vollständiges lftp-Skript erzeugen; wird separat ohne Netzwerk getestet."""
+    dry = "--dry-run" if dry_run else ""
+    rm_dsstore = "" if dry_run else (
+        f'rm -f "{remote}/.DS_Store"\n'
+        f'rm -f "{remote}/audio/.DS_Store"\n'
+        f'rm -f "{remote}/audio/botb/.DS_Store"\n'
+        f'rm -f "{remote}/assets/.DS_Store"\n'
+    )
+    return (
+        "set ftp:ssl-force true\n"
+        "set ftp:ssl-protect-data true\n"
+        "set ssl:verify-certificate yes\n"
+        "set ssl:check-hostname yes\n"
+        "set net:max-retries 2\n"
+        "set net:timeout 25\n"
+        "set cmd:fail-exit yes\n"
+        f"open {url}\n"
+        f'mirror -R --no-perms --parallel=1 -X .DS_Store {dry} "{LOCAL_DIST}/" "{remote}/"\n'
+        f"{rm_dsstore}"
+        "bye\n"
+    )
+
+
 def main():
-    ap = argparse.ArgumentParser(description="SFTP-Deploy von frontend/dist auf dm0.de")
+    ap = argparse.ArgumentParser(description="FTPS-Deploy von frontend/dist auf dm0.de")
     ap.add_argument("--env", default=os.environ.get("DEPLOY_ENV_FILE", DEFAULT_ENV))
     ap.add_argument("--remote", default=None, help="Zielverzeichnis auf dem Server")
     ap.add_argument("--dry-run", action="store_true", help="nichts schreiben, nur anzeigen")
@@ -114,47 +160,27 @@ def main():
         sys.exit(f"FEHLER: In der Env-Datei fehlen Werte für: {', '.join(missing)} "
                  f"(erwartete Schlüssel-Namen u.a.: {ALIASES['host'][0]}/{ALIASES['user'][0]}/{ALIASES['password'][0]}).")
 
+    validate_ftps_target(host, port, remote)
+
     print(f"→ Ziel: ftp(es)://{user}@{host}:{port}{remote}   (FTPS/TLS · Passwort verborgen)")
     print(f"→ Quelle: {LOCAL_DIST}")
     print(f"→ Modus: {'DRY-RUN (kein Schreiben)' if args.dry_run else 'UPLOAD'} · kein Löschen auf dem Server")
 
     # 3) lftp-Skript (Passwort URL-kodiert in der URL, kommt über stdin → nicht in ps)
     url = f"ftp://{quote(user, safe='')}:{quote(password, safe='')}@{host}:{port}"
-    dry = "--dry-run" if args.dry_run else ""
     # mirror -R = reverse mirror (LOKAL → REMOTE). KEIN --delete → nichts wird gelöscht.
     # WICHTIG: KEIN --verbose! lftps Verbose-Modus würde pro Datei die volle
-    # sftp://user:PASSWORT@host-URL ausgeben und so das Passwort im Terminal leaken.
+    # ftp://user:PASSWORT@host-URL ausgeben und so das Passwort im Terminal leaken.
     # Ohne --verbose zeigt lftp nur eine Transfer-Zusammenfassung.
     # .DS_Store (macOS) NIE hochladen (-X) und bereits hochgeladene Reste gezielt
     # entfernen (rm -f bricht nicht ab, wenn die Datei fehlt). Nur einzelne Dateien
     # werden gelöscht, KEINE Verzeichnisse.
-    rm_dsstore = "" if args.dry_run else (
-        f'rm -f "{remote}/.DS_Store"\n'
-        f'rm -f "{remote}/audio/.DS_Store"\n'
-        f'rm -f "{remote}/audio/botb/.DS_Store"\n'
-        f'rm -f "{remote}/assets/.DS_Store"\n'
-    )
-    cmds = (
-        # FTPS: TLS erzwingen (Steuer- UND Datenkanal). verify-certificate aus, weil
-        # per IP verbunden wird (Server-Zertifikat lautet auf den FQDN, nicht die IP);
-        # die Verbindung ist trotzdem verschlüsselt. Für Cert-Prüfung FTP_HOST auf den
-        # FQDN umstellen statt der IP.
-        "set ftp:ssl-force true\n"
-        "set ftp:ssl-protect-data true\n"
-        "set ssl:verify-certificate no\n"
-        "set net:max-retries 2\n"
-        "set net:timeout 25\n"
-        "set cmd:fail-exit yes\n"
-        f"open {url}\n"
-        # parallel=1: der Upload-Account erlaubt nur EINE gleichzeitige SFTP-Connection
-        # (mehr → „max-retries überschritten" beim Login der Parallel-Verbindungen).
-        f'mirror -R --no-perms --parallel=1 -X .DS_Store {dry} "{LOCAL_DIST}/" "{remote}/"\n'
-        f"{rm_dsstore}"
-        "bye\n"
-    )
+    # FTPS-Zertifikatspruefung und single-connection Upload sind zentral im
+    # testbaren Skript-Builder festgelegt.
+    cmds = build_lftp_commands(url, remote, args.dry_run)
 
     # WICHTIG: lftp-Ausgabe NIE ungefiltert durchreichen. `mirror --dry-run` (und
-    # verbose Läufe) echoen jede Transfer-Zeile MIT der vollen sftp://user:pass@host-
+    # verbose Läufe) echoen jede Transfer-Zeile MIT der vollen ftp://user:pass@host-
     # URL → sonst landet das Passwort im Klartext in Terminal/Session-Log. Darum
     # Output abfangen und jede Form des Geheimnisses (roh + URL-kodiert + ganze URL)
     # durch *** ersetzen, bevor irgendetwas gedruckt wird.

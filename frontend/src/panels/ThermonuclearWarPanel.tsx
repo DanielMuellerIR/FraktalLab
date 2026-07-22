@@ -753,6 +753,9 @@ function ThermonuclearWarPanel() {
       if (unsubscribe) unsubscribe()
       ro.disconnect()
     }
+    // Die Simulation besitzt ihren Zustand in dieser langlebigen Canvas-Closure;
+    // ein React-State-Dependency-Wechsel wuerde sie bei jedem Tick neu starten.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (

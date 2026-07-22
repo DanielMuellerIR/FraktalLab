@@ -3,10 +3,11 @@ import Panel from '../ui/Panel';
 import { ModPlayer } from '../utils/modplayer/player';
 import { Mod, Note } from '../utils/modplayer/mod';
 import { subscribe } from '../utils/raf-coordinator';
-import { registerAudioFocusListener, requestAudioFocus, releaseAudioFocus, registerAudioCandidate, notifyAudioEnded, getAudioFocus } from '../utils/audio-focus';
+import { createAudioInstanceId, registerAudioFocusListener, requestAudioFocus, releaseAudioFocus, registerAudioCandidate, notifyAudioEnded, getAudioFocus } from '../utils/audio-focus';
+import { collectDroppedFiles } from '../utils/dropped-files';
 import { MOD_TRACKS, BOTB_SOURCE, BOTB_LICENSE_SHORT, BOTB_LICENSE_URL } from '../utils/botb-tracks.generated';
 
-const AUDIO_ID = 'ami-mod-player';
+const AUDIO_TYPE = 'ami-mod-player';
 
 
 // ─── Musik-Tracks ─────────────────────────────────────────────────────────────
@@ -66,49 +67,6 @@ function isModName(name: string): boolean {
   return n.endsWith('.mod') || n.startsWith('mod.');
 }
 
-// Liest rekursiv alle Files aus einem DataTransfer — inklusive Ordnern.
-// Browser-API: DataTransferItem.webkitGetAsEntry() → FileEntry oder
-// DirectoryEntry. Ordner werden via DirectoryReader.readEntries() in
-// Batches durchlaufen (deshalb die while-Schleife).
-async function collectDroppedFiles(dt: DataTransfer): Promise<File[]> {
-  const out: File[] = [];
-  const items = dt.items;
-  // Pruefen, ob webkitGetAsEntry verfuegbar ist (Chrome, Edge, Safari, neuere FF).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (items && items.length && typeof (items[0] as any).webkitGetAsEntry === 'function') {
-    const entries: any[] = [];
-    for (let i = 0; i < items.length; i++) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const entry = (items[i] as any).webkitGetAsEntry();
-      if (entry) entries.push(entry);
-    }
-    for (const entry of entries) await walkEntry(entry, out);
-    return out;
-  }
-  // Fallback: keine Entry-API → nur direkt gedroppte Dateien, keine Ordner.
-  for (let i = 0; i < dt.files.length; i++) out.push(dt.files[i]);
-  return out;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function walkEntry(entry: any, out: File[]): Promise<void> {
-  if (entry.isFile) {
-    const file: File = await new Promise((res, rej) => entry.file(res, rej));
-    out.push(file);
-    return;
-  }
-  if (entry.isDirectory) {
-    const reader = entry.createReader();
-    // readEntries liefert in Batches, leeres Array signalisiert das Ende.
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const batch: any[] = await new Promise((res, rej) => reader.readEntries(res, rej));
-      if (!batch.length) break;
-      for (const child of batch) await walkEntry(child, out);
-    }
-  }
-}
-
 // Amiga-Frequenz-Perioden und Notennamen-Mapping
 const PERIODS = [
   // Oktave 1
@@ -158,6 +116,7 @@ function formatEffect(note: Note): string {
 type VuLevels = [number, number, number, number];
 
 function AmiModPanel() {
+  const [audioId] = useState(() => createAudioInstanceId(AUDIO_TYPE));
   const [trackIdx, setTrackIdx] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -290,7 +249,7 @@ function AmiModPanel() {
   // ModPlayer beim Unmount entladen und Audio-Fokus abonnieren
   useEffect(() => {
     const unsubscribe = registerAudioFocusListener((focusedId) => {
-      if (focusedId !== null && focusedId !== AUDIO_ID) {
+      if (focusedId !== null && focusedId !== audioId) {
         player.stop();
         setPlaying(false);
       }
@@ -299,9 +258,9 @@ function AmiModPanel() {
     return () => {
       unsubscribe();
       player.unload();
-      releaseAudioFocus(AUDIO_ID);
+      releaseAudioFocus(audioId);
     };
-  }, [player]);
+  }, [audioId, player]);
 
   // Als Election-Kandidat registrieren. start() spielt den (beim Mount zufällig
   // gewählten) Track ab + holt Fokus; setMuted() stoppt/startet, behält aber den
@@ -312,12 +271,12 @@ function AmiModPanel() {
       console.error('MOD play failed:', err);
       setPlaying(false);
       setLoadError(err instanceof Error ? err.message : String(err));
-      releaseAudioFocus(AUDIO_ID);
+      releaseAudioFocus(audioId);
     };
 
     const playTrack = () => {
       const p = playerRef.current;
-      requestAudioFocus(AUDIO_ID);
+      requestAudioFocus(audioId);
       if (p.mod) {
         lastPosRef.current = 0;
         justScrubbedRef.current = false;
@@ -338,7 +297,7 @@ function AmiModPanel() {
         shouldAutoPlayRef.current = true;
       }
     };
-    return registerAudioCandidate(AUDIO_ID, {
+    return registerAudioCandidate(audioId, {
       start: playTrack,
       setMuted: (m) => {
         const p = playerRef.current;
@@ -350,7 +309,7 @@ function AmiModPanel() {
         }
       },
     });
-  }, []);
+  }, [audioId]);
 
   // Caching und Autoplay-Auswahl bei Mount
   useEffect(() => {
@@ -403,7 +362,7 @@ function AmiModPanel() {
       setMod(myMod);
 
       if (shouldAutoPlayRef.current) {
-        requestAudioFocus(AUDIO_ID);
+        requestAudioFocus(audioId);
         // Atomare Uebergabe: play() schickt myMod explizit ans Worklet,
         // statt aus this.mod zu lesen.
         player.play(myMod)
@@ -414,7 +373,7 @@ function AmiModPanel() {
             console.error('MOD autoplay failed:', err);
             setPlaying(false);
             setLoadError(err instanceof Error ? err.message : String(err));
-            releaseAudioFocus(AUDIO_ID);
+            releaseAudioFocus(audioId);
           });
         shouldAutoPlayRef.current = false;
       }
@@ -445,7 +404,7 @@ function AmiModPanel() {
             player.stop();
             setPlaying(false);
             // Song zu Ende → an einen anderen Player übergeben (z.B. SID/Video).
-            notifyAudioEnded(AUDIO_ID);
+            notifyAudioEnded(audioId);
             return;
           }
           lastPosRef.current = pos;
@@ -526,7 +485,7 @@ function AmiModPanel() {
       active = false;
       player.stop();
     };
-  }, [trackIdx, player]);
+  }, [allTracks, audioId, trackIdx, player]);
 
   // VU-Meter: asymmetrische, ZEITBASIERTE EMA gegen den vom Worklet
   // gelieferten Peak-Zielwert.
@@ -701,15 +660,14 @@ function AmiModPanel() {
     dragDepthRef.current = 0;
     setDragOver(false);
     try {
-      const files = await collectDroppedFiles(e.dataTransfer);
-      const mods = files.filter((f) => isModName(f.name));
+      const result = await collectDroppedFiles(e.dataTransfer);
+      if (result.error) console.error('MOD-Drop-Verarbeitung fehlgeschlagen:', result.error);
+      const mods = result.files.filter((f) => isModName(f.name));
       if (mods.length) addUserFiles(mods, true);
     } catch (err) {
-      console.error('Drop-Verarbeitung fehlgeschlagen:', err);
-      // Fallback: nur direkt gedroppte Dateien, keine Ordner.
-      const direct = Array.from(e.dataTransfer.files || []);
-      const mods = direct.filter((f) => isModName(f.name));
-      if (mods.length) addUserFiles(mods, true);
+      // Der Helper faengt Entry-Fehler bereits ab. Dieser Guard schuetzt nur
+      // unerwartete Fehler im panel-spezifischen Verarbeitungspfad.
+      console.error('MOD-Drop-Verarbeitung fehlgeschlagen:', err);
     }
   };
 
@@ -721,7 +679,7 @@ function AmiModPanel() {
     if (playing) {
       player.stop();
       setPlaying(false);
-      releaseAudioFocus(AUDIO_ID);
+      releaseAudioFocus(audioId);
     } else {
       // Worklet beginnt bei 'play' wieder von Position 0/Row 0. lastPosRef
       // muss daher zurueckgesetzt werden, sonst feuert die Loop-Ende-
@@ -730,7 +688,7 @@ function AmiModPanel() {
       lastPosRef.current = 0;
       justScrubbedRef.current = false;
       player.resumeContext();
-      requestAudioFocus(AUDIO_ID);
+      requestAudioFocus(audioId);
       player.play()
         .then(() => {
           setPlaying(true);
@@ -739,7 +697,7 @@ function AmiModPanel() {
           console.error('MOD play failed:', err);
           setPlaying(false);
           setLoadError(err instanceof Error ? err.message : String(err));
-          releaseAudioFocus(AUDIO_ID);
+          releaseAudioFocus(audioId);
         });
     }
   };

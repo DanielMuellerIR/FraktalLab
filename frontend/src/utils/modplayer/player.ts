@@ -142,7 +142,7 @@ export class ModPlayer {
   onmessage(event: MessageEvent) {
     const { data } = event;
     switch (data.type) {
-      case 'row':
+      case 'row': {
         // Call all the general row callbacks
         for (let callback of this[ROW_CALLBACKS]) {
           callback(data.position, data.rowIndex);
@@ -156,6 +156,7 @@ export class ModPlayer {
           }
         }
         break;
+      }
       case 'stop':
         for (let callback of this[STOP_CALLBACKS]) {
           callback();

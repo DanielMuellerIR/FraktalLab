@@ -19,8 +19,8 @@
 //                     sichtbar (Auto-Wechsel-Ausschluss) und er ist „locked"
 //                     (rotiert nicht automatisch weg).
 //   • proximaSpeed  — Tempo-Faktor auf Stufe „Proxima" (nur GFX; Default 2×).
-// Größen-Label (Review-Modus) = echte Quell-/Musikgröße aus den auto-generierten
-// Dateien (scripts/gen-panel-sizes.mjs + build-audio-manifest.mjs), nicht von Hand.
+// Größen-Label (Review-Modus) = transitive lokale Quellgraph-/Musikgröße aus den
+// auto-generierten Dateien (gen-panel-sizes.mjs + build-audio-manifest.mjs).
 //
 // Reviews (Daumen rauf/runter) sind ein reines Hilfsmittel, um Todos zu übergeben,
 // und beeinflussen NICHT, welche Panels aktiv sind oder angezeigt werden.
@@ -331,7 +331,7 @@ function fmtBytes(bytes: number): string {
 }
 
 /**
- * Größen-Label fürs Review-Panel: echte Quell-Größe (Code) des Panels.
+ * Größen-Label fürs Review-Panel: transitive lokale Quellgraph-Größe des Panels.
  * Werte stammen aus panel-sizes.generated.ts (Skript gen-panel-sizes.mjs).
  * Die beiden Player zeigen ZWEI Werte: Code allein / Code + Musikdateien,
  * z.B. "89 KB / 1.1 MB". Die Musikgröße ist dynamisch aus den Dateien berechnet.

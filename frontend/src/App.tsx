@@ -15,6 +15,7 @@ import Panel         from './ui/Panel'
 import { getSharedAudioContext, unlockAudioContext } from './utils/shared-audio'
 import { setPaused } from './utils/raf-coordinator'
 import { setSpeedDensity } from './utils/panel-speed'
+import { storageGet, storageReadJson, storageRemove, storageSet } from './utils/safe-storage'
 
 import {
   getAudioFocus,
@@ -46,22 +47,36 @@ interface GeneratedLayout {
   cells:               GridCell[]
 }
 
-function generateMobileIndices(reviews: ReviewEntry[]): { textIdx: number; gfxIdx1: number; gfxIdx2: number; gfxIdx3: number } {
+interface MobileIndices {
+  textIdx: number
+  gfxIdx1: number
+  gfxIdx2: number
+  gfxIdx3: number
+}
+
+interface MobileSlotSelection {
+  key: string
+  pool: React.ComponentType<any>[]
+  activeIdx: number
+  fallbackName: string
+  locked: boolean
+  primarySlot?: number
+}
+
+function generateMobileIndices(reviews: ReviewEntry[]): MobileIndices {
   const { textPool, gfxPool } = getFilteredPools(reviews)
   const textIndices = getWeightedIndices(textPool, reviews)
   const gfxIndices = getWeightedIndices(gfxPool, reviews)
 
-  // Mobile zeigt je nach Auslastung nur 1-4 Panels. Der erste sichtbare Slot
+  // Mobile zeigt je nach Auslastung 3-15 Panels. Der erste sichtbare Slot
   // muss daher ein Audio-Panel sein, sonst haette die Erst-Klick-Election keinen
   // Kandidaten. Danach folgen bevorzugt unterschiedliche GFX-Panels.
-  const isAudio = (idx?: number) =>
-    idx != null && AUDIO_PANELS.has(getCompName(gfxPool[idx]))
-  const audioIdx = gfxIndices.find(isAudio)
-  const gfx: number[] = []
-  if (audioIdx != null) gfx.push(audioIdx)
+  const isAudio = (idx?: number) => idx != null && AUDIO_PANELS.has(getCompName(gfxPool[idx]))
+  const audioIdx = gfxIndices.find(isAudio) ?? 0
+  const gfx: number[] = [audioIdx]
   for (const idx of gfxIndices) {
     if (gfx.length >= 3) break
-    if (idx == null || gfx.includes(idx)) continue
+    if (idx == null || isAudio(idx) || gfx.includes(idx)) continue
     gfx.push(idx)
   }
   while (gfx.length < 3) {
@@ -76,6 +91,74 @@ function generateMobileIndices(reviews: ReviewEntry[]): { textIdx: number; gfxId
     gfxIdx2: gfx[1],
     gfxIdx3: gfx[2],
   };
+}
+
+/**
+ * Ein zentraler Pass fuer die TATSAECHLICH sichtbaren Mobile-Slots. Initialwahl,
+ * primaere Slots und Extras durchlaufen dieselben Audio-/Aspect-/GL-/Dedup-Regeln.
+ */
+function buildMobileSlots(
+  reviews: ReviewEntry[],
+  preferred: MobileIndices,
+  count: number,
+  cellA: Aspect,
+): MobileSlotSelection[] {
+  const { textPool, gfxPool } = getFilteredPools(reviews)
+  const slots: MobileSlotSelection[] = []
+  const usedNames = new Set<string>()
+  let glCount = 0
+
+  const addGfx = (idx: number, key: string, primarySlot?: number, requireAudio = false): boolean => {
+    const comp = gfxPool[idx]
+    if (!comp || slots.length >= count) return false
+    const name = getCompName(comp)
+    const isAudio = AUDIO_PANELS.has(name)
+    if (isAudio !== requireAudio || usedNames.has(name)) return false
+    // Audio ist die hoeherrangige Garantie: falls MOD/SID fuer die aktuelle
+    // Rasterform kein Aspect-Match haben, bleibt trotzdem genau einer sichtbar.
+    if (!requireAudio && !aspectMatches(panelAspect(name), cellA)) return false
+    if (isGLPanel(name) && glCount >= MAX_GL_PANELS_PER_LAYOUT) return false
+    usedNames.add(name)
+    if (isGLPanel(name)) glCount += 1
+    slots.push({ key, pool: gfxPool, activeIdx: idx, fallbackName: name, locked: isAudio, primarySlot })
+    return true
+  }
+
+  const addText = (idx: number, key: string, primarySlot?: number): boolean => {
+    const comp = textPool[idx]
+    if (!comp || slots.length >= count) return false
+    const name = getCompName(comp)
+    if (!name || usedNames.has(name)) return false
+    usedNames.add(name)
+    slots.push({ key, pool: textPool, activeIdx: idx, fallbackName: name, locked: false, primarySlot })
+    return true
+  }
+
+  // Genau ein reservierter Audio-Slot; alle weiteren GFX-Pfade lehnen Audio ab.
+  const audioOrder = [preferred.gfxIdx1, ...gfxPool.map((_, idx) => idx)]
+  for (const idx of audioOrder) {
+    if (addGfx(idx, 'audio', 1, true)) break
+  }
+
+  addText(preferred.textIdx, 'text', 0)
+  addGfx(preferred.gfxIdx2, 'gfx2', 2)
+  addGfx(preferred.gfxIdx3, 'gfx3', 3)
+
+  for (let idx = 0; idx < gfxPool.length && slots.length < count; idx += 1) {
+    addGfx(idx, `gfx-extra-${idx}`)
+  }
+  for (let idx = 0; idx < textPool.length && slots.length < count; idx += 1) {
+    addText(idx, `text-extra-${idx}`)
+  }
+  return slots
+}
+
+function mobileCellAspect(cols: number, rows: number): Aspect {
+  if (typeof window === 'undefined') return 'SQUARE'
+  const ratio = (window.innerWidth / Math.max(1, cols)) / (window.innerHeight / Math.max(1, rows))
+  if (ratio > 1.25) return 'WIDE'
+  if (ratio < 0.8) return 'TALL'
+  return 'SQUARE'
 }
 
 /**
@@ -647,6 +730,24 @@ interface ReviewEntry {
   ts:      number           // Unix-Timestamp (ms)
 }
 
+function isReviewEntry(value: unknown): value is ReviewEntry {
+  if (typeof value !== 'object' || value === null) return false
+  const entry = value as Partial<ReviewEntry>
+  return typeof entry.panel === 'string'
+    && (entry.rating === 'up' || entry.rating === 'down')
+    && typeof entry.comment === 'string'
+    && typeof entry.ts === 'number'
+    && Number.isFinite(entry.ts)
+}
+
+function isReviewEntryArray(value: unknown): value is ReviewEntry[] {
+  return Array.isArray(value) && value.every(isReviewEntry)
+}
+
+function readStoredReviews(): ReviewEntry[] {
+  return storageReadJson(LS_KEY, isReviewEntryArray, [])
+}
+
 const LS_KEY = 'fraktallab_reviews'
 const SEED_KEY = 'fraktallab_reviews_seeded_2026_05_30'
 // One-Shot-Migration: bei Bump werden die gespeicherten Reviews/Seeds einmalig
@@ -692,15 +793,13 @@ const REACTIVATE_KEY = 'fraktallab_reactivate_2026_06_01'
 function applyReactivationMigration(): void {
   if (typeof window === 'undefined') return
   try {
-    if (localStorage.getItem(REACTIVATE_KEY) === 'true') return
-    const raw = JSON.parse(localStorage.getItem(LS_KEY) ?? '[]') as ReviewEntry[]
+    if (storageGet(REACTIVATE_KEY) === 'true') return
+    const raw = readStoredReviews()
     const reactivate = new Set(REACTIVATE_PANELS_2026_06_01)
     // Nur die DOWN-Votes dieser Panels entfernen; eigene up-Votes des Nutzers bleiben.
-    const cleaned = Array.isArray(raw)
-      ? raw.filter(r => !(reactivate.has(r.panel) && r.rating === 'down'))
-      : []
-    localStorage.setItem(LS_KEY, JSON.stringify(cleaned))
-    localStorage.setItem(REACTIVATE_KEY, 'true')
+    const cleaned = raw.filter(r => !(reactivate.has(r.panel) && r.rating === 'down'))
+    storageSet(LS_KEY, JSON.stringify(cleaned))
+    storageSet(REACTIVATE_KEY, 'true')
   } catch (e) {
     console.error('Failed to apply reactivation migration:', e)
   }
@@ -709,22 +808,16 @@ function applyReactivationMigration(): void {
 function seedInitialReviewsIfNeeded(): void {
   if (typeof window === 'undefined') return
   try {
-    if (localStorage.getItem(SEED_KEY) !== 'true') {
-      let existing: ReviewEntry[] = []
-      try {
-        existing = JSON.parse(localStorage.getItem(LS_KEY) ?? '[]') as ReviewEntry[]
-        if (!Array.isArray(existing)) existing = []
-      } catch {
-        existing = []
-      }
+    if (storageGet(SEED_KEY) !== 'true') {
+      const existing = readStoredReviews()
       
       const existingMap = new Map(existing.map(r => [r.panel, r]))
       INITIAL_REVIEWS.forEach(init => {
         existingMap.set(init.panel, init)
       })
       
-      localStorage.setItem(LS_KEY, JSON.stringify(Array.from(existingMap.values())))
-      localStorage.setItem(SEED_KEY, 'true')
+      storageSet(LS_KEY, JSON.stringify(Array.from(existingMap.values())))
+      storageSet(SEED_KEY, 'true')
     }
   } catch (e) {
     console.error('Failed to seed initial reviews:', e)
@@ -735,11 +828,7 @@ function seedInitialReviewsIfNeeded(): void {
 function loadReviews(): ReviewEntry[] {
   seedInitialReviewsIfNeeded()
   applyReactivationMigration()
-  try {
-    return JSON.parse(localStorage.getItem(LS_KEY) ?? '[]') as ReviewEntry[]
-  } catch {
-    return []
-  }
+  return readStoredReviews()
 }
 
 // WICHTIG: Reviews (Daumen) entscheiden NICHT mehr über aktiv/inaktiv oder
@@ -766,7 +855,7 @@ function getWeightedIndices(pool: React.ComponentType<any>[], _reviews: ReviewEn
 function saveReview(entry: ReviewEntry): void {
   // Alten Eintrag für dasselbe Panel herausfiltern, neuen anhängen
   const existing = loadReviews().filter(r => r.panel !== entry.panel)
-  localStorage.setItem(LS_KEY, JSON.stringify([...existing, entry]))
+  storageSet(LS_KEY, JSON.stringify([...existing, entry]))
 }
 
 // ── Hilfsfunktion: prüft ob ein Audio-Panel gerade läuft ─────────────────────
@@ -913,7 +1002,7 @@ function isLowResolutionMobile(): boolean {
 }
 
 function initialDensityLevel(): DensityLevel {
-  const saved = localStorage.getItem(LS_DENSITY)
+  const saved = storageGet(LS_DENSITY)
   const level = DENSITY_ORDER.includes(saved as DensityLevel) ? (saved as DensityLevel) : 'turbo'
   if (isLowResolutionMobile() && (level === 'overclock' || level === 'proxima')) {
     return 'turbo'
@@ -1074,6 +1163,7 @@ export default function App() {
       const reviews = loadReviews()
       const { textPool, gfxPool } = getFilteredPools(reviews)
       const otherActiveComps = new Set<React.ComponentType<any>>()
+      let otherGL = 0
 
       if (slotIndex !== 0) {
         const comp = textPool[curr.textIdx]
@@ -1081,15 +1171,24 @@ export default function App() {
       }
       if (slotIndex !== 1) {
         const comp = gfxPool[curr.gfxIdx1]
-        if (comp) otherActiveComps.add(comp)
+        if (comp) {
+          otherActiveComps.add(comp)
+          if (isGLPanel(getCompName(comp))) otherGL += 1
+        }
       }
       if (slotIndex !== 2) {
         const comp = gfxPool[curr.gfxIdx2]
-        if (comp) otherActiveComps.add(comp)
+        if (comp) {
+          otherActiveComps.add(comp)
+          if (isGLPanel(getCompName(comp))) otherGL += 1
+        }
       }
       if (slotIndex !== 3) {
         const comp = gfxPool[curr.gfxIdx3]
-        if (comp) otherActiveComps.add(comp)
+        if (comp) {
+          otherActiveComps.add(comp)
+          if (isGLPanel(getCompName(comp))) otherGL += 1
+        }
       }
 
       let pool: React.ComponentType<any>[]
@@ -1110,10 +1209,18 @@ export default function App() {
 
       const currentComp = pool[currentIdx]
       const candidates: number[] = []
+      const landscape = typeof window !== 'undefined' && window.innerWidth > window.innerHeight
+      const grid = mobileDensityGrid(densityRef.current, landscape)
+      const targetAspect = mobileCellAspect(grid.cols, grid.rows)
       pool.forEach((comp, i) => {
-        if (comp !== currentComp && !otherActiveComps.has(comp)) {
-          candidates.push(i)
+        if (comp === currentComp || otherActiveComps.has(comp)) return
+        if (slotIndex !== 0) {
+          const name = getCompName(comp)
+          if (AUDIO_PANELS.has(name)) return
+          if (!aspectMatches(panelAspect(name), targetAspect)) return
+          if (isGLPanel(name) && otherGL >= MAX_GL_PANELS_PER_LAYOUT) return
         }
+        candidates.push(i)
       })
 
       let chosenIdx = 0
@@ -1135,7 +1242,7 @@ export default function App() {
         candidateScores.sort((a, b) => b.score - a.score)
         chosenIdx = candidateScores[0].i
       } else {
-        chosenIdx = Math.floor(Math.random() * pool.length)
+        return curr
       }
 
       if (slotIndex === 0) {
@@ -1150,39 +1257,43 @@ export default function App() {
     })
   }, [])
 
+  const rerollMobileSlots = useCallback(() => {
+    setMobileIndices(generateMobileIndices(loadReviews()))
+  }, [])
+
   // Automatische Review-Zurücksetzung bei Versionsänderung
   useEffect(() => {
-    const currentReset = localStorage.getItem('fraktallab_reset_version')
+    const currentReset = storageGet('fraktallab_reset_version')
     if (currentReset !== RESET_VERSION) {
-      localStorage.removeItem(LS_KEY)
-      localStorage.removeItem(SEED_KEY)
-      localStorage.setItem('fraktallab_reset_version', RESET_VERSION)
+      storageRemove(LS_KEY)
+      storageRemove(SEED_KEY)
+      storageSet('fraktallab_reset_version', RESET_VERSION)
     }
   }, [])
 
 
   // ── Review-Modus-State ─────────────────────────────────────────────────────
   const [reviewMode, setReviewMode] = useState(() => {
-    return localStorage.getItem('fraktallab_review_mode') === 'true'
+    return storageGet('fraktallab_review_mode') === 'true'
   })
   const [reviewIdx,  setReviewIdx]  = useState(() => {
-    const val = localStorage.getItem('fraktallab_review_idx')
-    return val ? parseInt(val, 10) : 0
+    const parsed = Number.parseInt(storageGet('fraktallab_review_idx') ?? '', 10)
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
   })
   const [hideArchived, setHideArchived] = useState(() => {
-    return localStorage.getItem('fraktallab_hide_archived') === 'true'
+    return storageGet('fraktallab_hide_archived') === 'true'
   })
 
   useEffect(() => {
-    localStorage.setItem('fraktallab_review_mode', String(reviewMode))
+    storageSet('fraktallab_review_mode', String(reviewMode))
   }, [reviewMode])
 
   useEffect(() => {
-    localStorage.setItem('fraktallab_review_idx', String(reviewIdx))
+    storageSet('fraktallab_review_idx', String(reviewIdx))
   }, [reviewIdx])
 
   useEffect(() => {
-    localStorage.setItem('fraktallab_hide_archived', String(hideArchived))
+    storageSet('fraktallab_hide_archived', String(hideArchived))
   }, [hideArchived])
 
   // Review-Liste: "HIDE ARCHIVED" blendet jetzt die DEAKTIVIERTEN Panels aus
@@ -1291,7 +1402,7 @@ export default function App() {
     // intervall-basierte Panels die neue Stufe beim nächsten Mount auf.
     setSpeedDensity(level)
     if (persist) {
-      try { localStorage.setItem(LS_DENSITY, level) } catch { /* Private-Mode etc. */ }
+      storageSet(LS_DENSITY, level)
     }
     layoutIdRef.current += 1
     const reviews = loadReviews()
@@ -1631,8 +1742,8 @@ export default function App() {
                   <button
                     onClick={() => {
                       if (window.confirm("Alle Kommentare und Bewertungen zurücksetzen?")) {
-                        localStorage.removeItem(LS_KEY)
-                        localStorage.removeItem(SEED_KEY) // Also reset seed state to allow fresh seeding
+                        storageRemove(LS_KEY)
+                        storageRemove(SEED_KEY) // Also reset seed state to allow fresh seeding
                         window.location.reload()
                       }
                     }}
@@ -1690,71 +1801,12 @@ export default function App() {
                 const landscape = typeof window !== 'undefined' && window.innerWidth > window.innerHeight
                 const mobileGrid = mobileDensityGrid(density, landscape)
                 const count = mobileGrid.count
-                type MobileSlot = {
-                  key: string
-                  pool: React.ComponentType<any>[]
-                  activeIdx: number
-                  onNav: () => void
-                  fallbackName: string
-                  locked: boolean
-                }
-                const mobileSlots: MobileSlot[] = [
-                  {
-                    key: 'gfx1',
-                    pool: gfxPool,
-                    activeIdx: mobileIndices.gfxIdx1,
-                    onNav: () => handleSkipMobileSlot(1),
-                    fallbackName: getCompName(gfxPool[mobileIndices.gfxIdx1]),
-                    locked: AUDIO_PANELS.has(getCompName(gfxPool[mobileIndices.gfxIdx1])),
-                  },
-                  {
-                    key: 'text',
-                    pool: textPool,
-                    activeIdx: mobileIndices.textIdx,
-                    onNav: () => handleSkipMobileSlot(0),
-                    fallbackName: getCompName(textPool[mobileIndices.textIdx]),
-                    locked: false,
-                  },
-                  {
-                    key: 'gfx2',
-                    pool: gfxPool,
-                    activeIdx: mobileIndices.gfxIdx2,
-                    onNav: () => handleSkipMobileSlot(2),
-                    fallbackName: getCompName(gfxPool[mobileIndices.gfxIdx2]),
-                    locked: AUDIO_PANELS.has(getCompName(gfxPool[mobileIndices.gfxIdx2])),
-                  },
-                  {
-                    key: 'gfx3',
-                    pool: gfxPool,
-                    activeIdx: mobileIndices.gfxIdx3,
-                    onNav: () => handleSkipMobileSlot(3),
-                    fallbackName: getCompName(gfxPool[mobileIndices.gfxIdx3]),
-                    locked: AUDIO_PANELS.has(getCompName(gfxPool[mobileIndices.gfxIdx3])),
-                  },
-                ]
-
-                const usedNames = new Set(mobileSlots.map(s => s.fallbackName).filter(Boolean))
-                let mobileGLCount = mobileSlots.reduce((n, slot) => n + (isGLPanel(slot.fallbackName) ? 1 : 0), 0)
-                const addExtra = (pool: React.ComponentType<any>[], prefix: string) => {
-                  for (let i = 0; i < pool.length && mobileSlots.length < count; i++) {
-                    const name = getCompName(pool[i])
-                    if (!name || usedNames.has(name)) continue
-                    const isGL = isGLPanel(name)
-                    if (isGL && mobileGLCount >= MAX_GL_PANELS_PER_LAYOUT) continue
-                    usedNames.add(name)
-                    if (isGL) mobileGLCount++
-                    mobileSlots.push({
-                      key: `${prefix}-${i}`,
-                      pool,
-                      activeIdx: i,
-                      onNav: () => applyDensity(densityRef.current, true),
-                      fallbackName: name,
-                      locked: AUDIO_PANELS.has(name),
-                    })
-                  }
-                }
-                addExtra(gfxPool, 'gfx-extra')
-                addExtra(textPool, 'text-extra')
+                const mobileSlots = buildMobileSlots(
+                  reviews,
+                  mobileIndices,
+                  count,
+                  mobileCellAspect(mobileGrid.cols, mobileGrid.rows),
+                )
 
                 const gridStyle: React.CSSProperties = {
                   gridTemplateColumns: `repeat(${mobileGrid.cols}, minmax(0, 1fr))`,
@@ -1764,11 +1816,21 @@ export default function App() {
                 return (
                   <div className="grid gap-1 h-full p-1" style={gridStyle}>
                     {mobileSlots.slice(0, count).map(slot => (
-                      <div key={slot.key} className="min-h-0 min-w-0">
+                      <div
+                        key={slot.key}
+                        className="min-h-0 min-w-0"
+                        data-mobile-panel={slot.fallbackName}
+                        data-mobile-audio={slot.locked ? 'true' : 'false'}
+                        data-mobile-gl={isGLPanel(slot.fallbackName) ? 'true' : 'false'}
+                        data-mobile-aspect={panelAspect(slot.fallbackName)}
+                      >
                         <PanelSlot
                           pool={slot.pool}
                           activeIdx={slot.activeIdx}
-                          onNav={slot.onNav}
+                          onNav={() => {
+                            if (slot.primarySlot == null) rerollMobileSlots()
+                            else handleSkipMobileSlot(slot.primarySlot)
+                          }}
                           fallbackName={slot.fallbackName}
                           className="h-full"
                           locked={slot.locked}

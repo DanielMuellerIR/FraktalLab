@@ -17,7 +17,6 @@ import ShaderPanel from '../ui/ShaderPanel'
 // Die interne Auflösung wird durch ResizeObserver aktuell gehalten und liegt
 // maximal bei maxW × maxH (Performance-Cap). Das Bild wird per drawImage auf
 // die volle Canvas-Größe hochskaliert (CSS imageRendering: pixelated).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function makeScene(
   title: string,
   maxW: number,
@@ -1643,4 +1642,3 @@ export const LissajousScene = () => {
     </Panel>
   )
 }
-

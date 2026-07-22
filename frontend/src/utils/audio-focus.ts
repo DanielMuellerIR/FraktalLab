@@ -2,6 +2,13 @@ type AudioFocusListener = (focusedId: string | null) => void;
 
 let currentFocusId: string | null = null;
 const listeners = new Set<AudioFocusListener>();
+let nextInstanceId = 0;
+
+/** Stabile ID fuer genau eine gemountete Player-Instanz. */
+export function createAudioInstanceId(playerType: string): string {
+  nextInstanceId += 1;
+  return `${playerType}:${nextInstanceId}`;
+}
 
 export function getAudioFocus(): string | null {
   return currentFocusId;
@@ -76,6 +83,9 @@ const muteListeners = new Set<(muted: boolean) => void>();
 export function registerAudioCandidate(id: string, candidate: AudioCandidate): () => void {
   candidates.set(id, candidate);
   return () => {
+    // Eine spaetere Instanz kann dieselbe ID registriert haben. Ihr Eintrag darf
+    // durch den Cleanup der alten Instanz nicht geloescht werden.
+    if (candidates.get(id) !== candidate) return;
     candidates.delete(id);
     if (activeId === id) activeId = null;
   };

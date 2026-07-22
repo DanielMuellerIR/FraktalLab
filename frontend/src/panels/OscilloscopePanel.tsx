@@ -1,11 +1,12 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import Panel from '../ui/Panel'
 import { subscribe } from '../utils/raf-coordinator'
-import { registerAudioFocusListener, requestAudioFocus, releaseAudioFocus, registerAudioCandidate } from '../utils/audio-focus'
+import { createAudioInstanceId, registerAudioFocusListener, requestAudioFocus, releaseAudioFocus, registerAudioCandidate } from '../utils/audio-focus'
+import { collectDroppedFiles } from '../utils/dropped-files'
 import { SidPlayer, type SidMetadata, type SidVisuals } from '../utils/sidplayer'
 import { SID_TRACKS, BOTB_SOURCE, BOTB_LICENSE_SHORT, BOTB_LICENSE_URL } from '../utils/botb-tracks.generated'
 
-const AUDIO_ID = 'sid-player'
+const AUDIO_TYPE = 'sid-player'
 const BASE = import.meta.env.BASE_URL
 
 // Scrubber range in seconds. SID files carry no length, so we use a fixed window
@@ -88,34 +89,8 @@ function readFileAsUint8(file: File): Promise<Uint8Array> {
   })
 }
 
-// Recursively walk dropped DataTransfer entries (files + folders) and collect
-// every .sid file. Folder drag&drop exposes a directory tree through the
-// non-standard webkitGetAsEntry() / FileSystemEntry API; readEntries() returns
-// a directory in batches, so we loop until it yields nothing more.
-async function collectSidFilesFromEntries(entries: any[]): Promise<File[]> {
-  const out: File[] = []
-  const walk = async (entry: any): Promise<void> => {
-    if (!entry) return
-    if (entry.isFile) {
-      const file: File = await new Promise((res, rej) => entry.file(res, rej))
-      if (isSidName(file.name)) out.push(file)
-    } else if (entry.isDirectory) {
-      const reader = entry.createReader()
-      const readBatch = (): Promise<any[]> =>
-        new Promise((res, rej) => reader.readEntries(res, rej))
-      let batch: any[]
-      do {
-        batch = await readBatch()
-        for (const e of batch) await walk(e)
-      } while (batch.length > 0)
-    }
-  }
-  for (const e of entries) await walk(e)
-  out.sort((a, b) => a.name.localeCompare(b.name)) // stable, alphabetical order
-  return out
-}
-
 function OscilloscopePanel() {
+  const [audioId] = useState(() => createAudioInstanceId(AUDIO_TYPE))
   const [trackIdx, setTrackIdx] = useState(() => Math.floor(Math.random() * DEFAULT_TRACKS.length))
   const [playing, setPlaying] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -249,26 +224,15 @@ function OscilloscopePanel() {
     }
   }
 
-  const onDrop: React.DragEventHandler = (e) => {
+  const onDrop: React.DragEventHandler = async (e) => {
     e.preventDefault()
     dragDepthRef.current = 0
     setDragOver(false)
 
-    const dt = e.dataTransfer
-    const items = dt.items
-    // Folder drop: capture the FileSystemEntry objects synchronously (they are
-    // only valid during the event), then walk them for .sid files. Falls back to
-    // the plain file list when the entry API isn't available.
-    if (items && items.length && typeof (items[0] as any).webkitGetAsEntry === 'function') {
-      const entries: any[] = []
-      for (let i = 0; i < items.length; i++) {
-        const entry = (items[i] as any).webkitGetAsEntry?.()
-        if (entry) entries.push(entry)
-      }
-      collectSidFilesFromEntries(entries).then(files => addUserFiles(files, true))
-      return
-    }
-    addUserFiles(Array.from(dt.files || []), true)
+    const result = await collectDroppedFiles(e.dataTransfer)
+    if (result.error) console.error('SID-Drop-Verarbeitung fehlgeschlagen:', result.error)
+    const files = result.files.filter(file => isSidName(file.name))
+    if (files.length) addUserFiles(files, true)
   }
 
   const onFilePickerChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
@@ -299,13 +263,13 @@ function OscilloscopePanel() {
       setLoading(false)
       if (shouldAutoPlayRef.current) {
         shouldAutoPlayRef.current = false
-        requestAudioFocus(AUDIO_ID)
+        requestAudioFocus(audioId)
         p.play().then(() => setPlaying(true)).catch(console.error)
       }
     })
     
     const unsubscribe = registerAudioFocusListener((focusedId) => {
-      if (focusedId !== null && focusedId !== AUDIO_ID) {
+      if (focusedId !== null && focusedId !== audioId) {
         p.stop()
         setPlaying(false)
       }
@@ -314,18 +278,18 @@ function OscilloscopePanel() {
     return () => {
       unsubscribe()
       p.unload()
-      releaseAudioFocus(AUDIO_ID)
+      releaseAudioFocus(audioId)
     }
-  }, [player])
+  }, [audioId, player])
 
   // Als Election-Kandidat registrieren. Beim Mount ist bereits ein zufälliger
   // Default-Track geladen (siehe Effekt unten) → start() spielt diesen ab.
   // setMuted() stoppt/startet, behält aber den Audio-Fokus (Pause-Verhalten).
   useEffect(() => {
-    return registerAudioCandidate(AUDIO_ID, {
+    return registerAudioCandidate(audioId, {
       start: () => {
         const p = playerRef.current
-        requestAudioFocus(AUDIO_ID)
+        requestAudioFocus(audioId)
         p.resumeContext()
         if (p.loaded) {
           p.play().then(() => setPlaying(true)).catch(console.error)
@@ -340,14 +304,14 @@ function OscilloscopePanel() {
           p.stop()
           setPlaying(false)
         } else {
-          requestAudioFocus(AUDIO_ID)
+          requestAudioFocus(audioId)
           p.resumeContext()
           if (p.loaded) p.play().then(() => setPlaying(true)).catch(console.error)
           else shouldAutoPlayRef.current = true
         }
       },
     })
-  }, [])
+  }, [audioId])
 
   // Keep playingRef readable by the RAF loop (which captures stale state).
   useEffect(() => { playingRef.current = playing }, [playing])
@@ -404,11 +368,11 @@ function OscilloscopePanel() {
     if (playing) {
       p.stop()
       setPlaying(false)
-      releaseAudioFocus(AUDIO_ID)
+      releaseAudioFocus(audioId)
     } else {
       try {
         p.resumeContext()
-        requestAudioFocus(AUDIO_ID)
+        requestAudioFocus(audioId)
         await p.play()
         setPlaying(true)
       } catch (err) {

@@ -1,17 +1,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // gen-panel-sizes.mjs
 //
-// Erzeugt  src/panels/panel-sizes.generated.ts  mit der echten Quell-Größe (Bytes)
-// jedes Panels für die Anzeige im Review-Modus ("wie viel Platz nimmt das Panel
-// im Production-Build ein"). Damit steht nie mehr fälschlich "0 KB".
+// Erzeugt src/panels/panel-sizes.generated.ts mit der transitive lokalen
+// Quellgraph-Größe jedes Panels für die Anzeige im Review-Modus.
 //
 // Vorgehen:
 //   • Panel-Namen aus der Registry (panel-registry.ts) lesen.
-//   • Für jeden Namen die DEFINIERENDE Quelldatei in src/panels/ finden (die Datei,
-//     die das Panel exportiert) und deren Größe nehmen. Teilen sich mehrere Panels
-//     eine .tsx, zeigt jedes die Größe dieser geteilten Datei (so gewünscht).
-//   • Panel-spezifische Zusatzdateien (Shader-Strings, Voxel-/Player-Engines,
-//     Worklets) werden über EXTRA addiert.
+//   • Ab der definierenden Datei alle statischen/dynamischen lokalen Imports
+//     rekursiv verfolgen. Geteilte Abhängigkeiten zählen pro Panel vollständig.
+//   • Nicht importierbare Laufzeitdateien (Audio-Worklets) explizit addieren.
 //   • Für die beiden Player zusätzlich die Musik-Gesamtgröße (aus public/audio/botb).
 //
 // Erneut ausführen nach Code-/Audio-Änderungen:  node scripts/gen-panel-sizes.mjs
@@ -25,11 +22,13 @@ import { dirname, join, resolve } from 'node:path'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const FRONTEND = resolve(__dirname, '..')
 const PANELS_DIR = join(FRONTEND, 'src', 'panels')
-const UTILS_DIR = join(FRONTEND, 'src', 'utils')
-const UI_DIR = join(FRONTEND, 'src', 'ui')
+const SRC_DIR = join(FRONTEND, 'src')
 const AUDIO_BOTB = join(FRONTEND, 'public', 'audio', 'botb')
 const REGISTRY = join(PANELS_DIR, 'panel-registry.ts')
 const OUT = join(PANELS_DIR, 'panel-sizes.generated.ts')
+// Die Registry ist der Composition Root und importiert ihrerseits ALLE Panels.
+// Beim Rueckweg ueber panel-speed waere sonst jeder Panelgraph der gesamte Build.
+const GRAPH_BOUNDARIES = new Set([REGISTRY, OUT])
 
 const sizeOf = p => (existsSync(p) ? statSync(p).size : 0)
 const sumDir = (dir, re) =>
@@ -68,19 +67,46 @@ function definingFile(name) {
   return null
 }
 
-// Panel-spezifische Zusatzdateien (zur definierenden Datei addiert).
-const SHADER_PANEL = join(UI_DIR, 'ShaderPanel.tsx')
-const EXTRA = {
-  // Shadertoy-/IQ-/Plasma-/Lovebyte-/Fractal-/DE-/Demo-Shader nutzen ShaderPanel + Shader-Strings.
-  __shaderPanelBytes: sizeOf(SHADER_PANEL),
-  __deFractalShaders: sizeOf(join(UTILS_DIR, 'de-fractals-shaders.ts')),
-  __fractalGlShader: sizeOf(join(UTILS_DIR, 'fractal-gl-shader.ts')),
-  __palettes: sizeOf(join(UTILS_DIR, 'palettes.ts')),
+const SOURCE_EXTENSIONS = ['', '.ts', '.tsx', '.js', '.jsx', '.css', '.json', '.svg', '.png']
+
+function resolveLocalImport(fromFile, specifier) {
+  if (!specifier.startsWith('.')) return null
+  const base = resolve(dirname(fromFile), specifier)
+  const candidates = SOURCE_EXTENSIONS.flatMap(ext => [base + ext, join(base, `index${ext}`)])
+  return candidates.find(candidate => {
+    if (!candidate.startsWith(`${SRC_DIR}/`) || !existsSync(candidate)) return false
+    return statSync(candidate).isFile()
+  }) ?? null
 }
 
-// Player-Engines + Worklets.
-const MOD_ENGINE = sumDir(join(UTILS_DIR, 'modplayer'), /\.ts$/) + sizeOf(join(FRONTEND, 'public', 'audio', 'mod-player-worklet.js'))
-const SID_ENGINE = sizeOf(join(UTILS_DIR, 'sidplayer.ts')) + sizeOf(join(FRONTEND, 'public', 'audio', 'sid-player-worklet.js'))
+function localImports(file) {
+  if (!/\.(?:[cm]?[jt]sx?)$/.test(file)) return []
+  const source = readFileSync(file, 'utf8')
+  const specs = []
+  const staticImport = /^\s*import(?:\s+type)?(?:\s+[\s\S]*?\s+from)?\s+['\"]([^'\"]+)['\"]/gm
+  const reExport = /^\s*export\s+(?:type\s+)?(?:\*|\{[\s\S]*?\})\s+from\s+['\"]([^'\"]+)['\"]/gm
+  const dynamicImport = /import\(\s*['\"]([^'\"]+)['\"]\s*\)/g
+  for (const re of [staticImport, reExport, dynamicImport]) {
+    for (const match of source.matchAll(re)) specs.push(match[1])
+  }
+  return specs.map(spec => resolveLocalImport(file, spec)).filter(Boolean)
+}
+
+function sourceGraphBytes(entryFile) {
+  const pending = [entryFile]
+  const visited = new Set()
+  while (pending.length) {
+    const file = pending.pop()
+    if (!file || visited.has(file)) continue
+    if (GRAPH_BOUNDARIES.has(file)) continue
+    visited.add(file)
+    pending.push(...localImports(file))
+  }
+  return [...visited].reduce((bytes, file) => bytes + sizeOf(file), 0)
+}
+
+const MOD_WORKLET = sizeOf(join(FRONTEND, 'public', 'audio', 'mod-player-worklet.js'))
+const SID_WORKLET = sizeOf(join(FRONTEND, 'public', 'audio', 'sid-player-worklet.js'))
 
 const MOD_MUSIC = sumDir(AUDIO_BOTB, /\.mod$/i)
 const SID_MUSIC = sumDir(AUDIO_BOTB, /\.sid$/i)
@@ -88,14 +114,9 @@ const SID_MUSIC = sumDir(AUDIO_BOTB, /\.sid$/i)
 const codeBytes = {}
 for (const name of names) {
   const f = definingFile(name)
-  let bytes = f ? sizeOf(join(PANELS_DIR, f)) : 0
-  // ShaderPanel-Nutzer: ShaderPanel-Datei dazurechnen.
-  if (f && /ShaderPanel/.test(fileContents.get(f) || '')) bytes += EXTRA.__shaderPanelBytes
-  if (f === 'DEFractalScenes.tsx') bytes += EXTRA.__deFractalShaders
-  if (name.startsWith('Fractal')) bytes += EXTRA.__fractalGlShader
-  // Player-Engines.
-  if (name === 'AmiModPanel') bytes += MOD_ENGINE
-  if (name === 'OscilloscopePanel') bytes += SID_ENGINE
+  let bytes = f ? sourceGraphBytes(join(PANELS_DIR, f)) : 0
+  if (name === 'AmiModPanel') bytes += MOD_WORKLET
+  if (name === 'OscilloscopePanel') bytes += SID_WORKLET
   codeBytes[name] = bytes
   if (!bytes) console.warn(`[panel-sizes] WARN: 0 Bytes für ${name} (Datei: ${f})`)
 }
@@ -104,9 +125,10 @@ const entries = names.map(n => `  '${n}': ${codeBytes[n]},`).join('\n')
 const out = `// AUTO-GENERIERT von scripts/gen-panel-sizes.mjs — NICHT von Hand ändern.
 // Neu erzeugen:  node scripts/gen-panel-sizes.mjs
 //
-// PANEL_CODE_BYTES: Quell-Größe (Bytes) der definierenden .tsx (+ panel-spezifische
-// Zusatzdateien wie ShaderPanel/Shader-Strings/Player-Engine). Geteilte Dateien
-// werden bei jedem beteiligten Panel voll gezählt (so gewünscht).
+// PANEL_CODE_BYTES: transitive lokale Quellgraph-Größe ab der definierenden Datei
+// (+ nicht importierbare Audio-Worklets). Der Composition Root panel-registry.ts
+// ist als Rueckkante ausgeschlossen; geteilte Abhängigkeiten werden bei jedem
+// beteiligten Panel voll gezählt. Das ist bewusst keine komprimierte Chunk-Größe.
 // MOD_/SID_MUSIC_BYTES: Gesamtgröße der mitgelieferten Musik (dynamisch aus den Dateien).
 
 export const PANEL_CODE_BYTES: Record<string, number> = {

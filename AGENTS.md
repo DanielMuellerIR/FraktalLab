@@ -124,8 +124,8 @@ Desktop kann auf großen Displays viele Zellen erzeugen.
 
 `panels/` enthält einzelne Panels, `ui/PanelSlot.tsx` den Slot-Wechsel, `components/FractalGL.tsx`
 den gemeinsamen Fraktalrenderer. `utils/modplayer/` ist der eigene ProTracker-Player;
-`public/audio/sid-player-worklet.js` enthält die adaptierte jsSID-/6502-Emulation. `server/` ist
-nicht der Netcup-Produktionsweg; Deployment nutzt Apache und die `.htaccess` im Frontend.
+`public/audio/sid-player-worklet.js` enthält die adaptierte jsSID-/6502-Emulation. Ein separater
+Node-/Express-Server wird nicht unterstützt; Deployment nutzt Apache und die `.htaccess` im Frontend.
 
 Neue Panels sollen:
 1. flexibel auf Containergröße reagieren,
