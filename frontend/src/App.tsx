@@ -1868,6 +1868,42 @@ export default function App() {
         )}
 
       </main>
+
+      {/* ── Rechtlicher Pflicht-Footer (§ 5 DDG / DSGVO) ──────────────────────────
+          Impressum und Datenschutz müssen dauerhaft sichtbar und unmittelbar
+          erreichbar sein — sie dürfen NICHT erst durch Öffnen eines Panels
+          erscheinen. Weil die App Vollbild ist (html/body/#root: overflow hidden),
+          wäre ein normaler Seitenfuß am Dokumentende unsichtbar. Deshalb hier
+          eine dezente, fest am Viewport verankerte Zeile unten rechts:
+          position: fixed hängt am Viewport und wird vom overflow-hidden der App
+          NICHT abgeschnitten. z-[10000] hält sie über allem — auch über dem
+          GlitchOverlay (z 9999) —, damit die Links immer klar lesbar bleiben.
+          target="_blank" öffnet die Rechtsseiten im neuen Tab, rel="noopener
+          noreferrer" schützt vor Tab-Nabbing und leakt keinen Referrer. */}
+      <footer
+        className="fixed bottom-0 right-0 z-[10000] flex items-center gap-2
+                   px-2 py-0.5 bg-black/70 backdrop-blur-sm rounded-tl
+                   border-t border-l border-green-950/60
+                   text-[10px] leading-none font-mono text-green-800 select-none"
+      >
+        <a
+          href="https://dm0.de/impressum.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-green-300 transition-colors"
+        >
+          Impressum
+        </a>
+        <span className="text-green-950" aria-hidden="true">·</span>
+        <a
+          href="https://dm0.de/datenschutz.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-green-300 transition-colors"
+        >
+          Datenschutz
+        </a>
+      </footer>
     </div>
   )
 }

@@ -25,33 +25,23 @@ const PHASE_MS = 333
 // Dauer, wie lange das fertig enhancete (scharfe) Bild stehen bleibt, bevor es weitergeht
 const HOLD_MS = 2000
 
-// Lokale Dateien (6 Fotos) + loremflickr ausschließlich mit Großstadt-Menschen-Keywords.
-// Kein Natur/Wald — nur urbane Settings mit Menschen in der Öffentlichkeit.
-// BASE_URL nötig für Unterordner-Deployment (z. B. /fraktallab/) — root-relative Pfade würden auf den Server-Root zeigen.
+// Alle Vorschau-Fotos liegen jetzt lokal im public/-Ordner — es gibt KEINE
+// Laufzeit-Requests mehr an externe Dienste. Früher wurden die kuratierten
+// Großstadt-Motive zur Laufzeit vom Unsplash-Bilder-CDN geladen; das ist aus
+// Datenschutzgründen (keine IP-/Referrer-Übertragung an Unsplash beim Aufruf)
+// entfallen. Die Motive stammen von Unsplash (Unsplash-Lizenz, freie Nutzung)
+// und wurden einmalig heruntergeladen und mitgebündelt.
+// BASE_URL nötig für Unterordner-Deployment (z. B. /x/) — root-relative Pfade
+// würden auf den Server-Root statt auf /x/ zeigen.
 const BASE = import.meta.env.BASE_URL
+
+// 6 "street"-Fotos (Menschen in urbanen Settings), lokal unter public/enhance/.
 const LOCAL = [0, 1, 2, 3, 4, 5].map(i => `${BASE}enhance/street-${i}.jpg`)
-const UNSPLASH_IDS = [
-  '1477959858617-67f85cf4f1df', // Chicago skyline night
-  '1480714378408-67cf0d13bc1b', // Detroit skyline
-  '1519501025264-65ba15a82390', // Tokyo street night
-  '1486406146926-c627a92ad1ab', // Skyscraper architecture
-  '1502899576159-f224dc23efb7', // Los Angeles skyline night
-  '1518391846015-55a9cc003b25', // New York street crossing
-  '1449034446853-66c86144b0ad', // San Francisco bridge/city
-  '1505761671935-60b3a7427bad', // London Big Ben skyline
-  '1513635269975-59663e0ac1ad', // London street red bus
-  '1503899036084-c55cdd92da26', // Tokyo Shibuya crossing
-  '1496442226666-8d4d0e62e6e9', // NYC street taxi
-  '1511527844068-006b95d162c2', // Paris street cafe/Eiffel Tower
-  '1512453979798-5ea266f8880c', // Dubai skyline
-  '1506973035872-a4ec16b8e8d9', // Sydney Opera house skyline
-  '1520121401995-928cd50d4e27', // City street traffic
-  '1475855581690-80accde3ae2b', // San Francisco city street
-  '1514565131-fce0801e5785', // City skyscrapers
-  '1494522855154-9297ac14b55f', // Tokyo street
-  '1522083165195-342750297f4e', // City walk
-]
-const CURATED = UNSPLASH_IDS.map(id => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=480&h=320&q=80`)
+
+// 17 kuratierte Großstadt-Motive (Chicago, Tokio, London, Paris, Dubai, Sydney …),
+// lokal unter public/enhance/curated/ gespeichert. Reihenfolge = Dateinummer.
+const CURATED = Array.from({ length: 17 }, (_, i) => `${BASE}enhance/curated/curated-${i}.jpg`)
+
 const PHOTOS = [...LOCAL, ...CURATED]
 
 // Zeichnet das Bild pixeliert (blockSize > 1) oder scharf (blockSize <= 1)
