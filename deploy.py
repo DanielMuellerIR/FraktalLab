@@ -81,6 +81,27 @@ def resolve(env, kind, default=None):
     return default
 
 
+def resolve_host_to_fqdn(host):
+    """Ist FTP_HOST eine IP-Adresse, per Reverse-DNS den zum TLS-Zertifikat
+    passenden Hostnamen (FQDN) ermitteln — analog zum Schwester-Deploy von
+    Scientia. So funktioniert dieselbe Env-Datei (die FTP_HOST als IP führt)
+    auch hier, ohne die Secret-Datei anzufassen. Ohne Reverse-DNS-Treffer bleibt
+    der Wert unverändert; validate_ftps_target meldet den Fehler dann weiterhin."""
+    if not host:
+        return host
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return host  # bereits ein Hostname, nichts zu tun
+    import socket
+    try:
+        name = socket.gethostbyaddr(host)[0]
+    except OSError:
+        return host  # Reverse-DNS fehlgeschlagen → unveraendert, Validierung greift
+    print(f"→ FTP_HOST ist eine IP; verbinde über '{name}' (TLS-Zertifikatsprüfung).")
+    return name
+
+
 def validate_ftps_target(host, port, remote):
     """FTPS-Ziel validieren, bevor Zugangsdaten in ein lftp-Skript gelangen."""
     try:
@@ -147,7 +168,7 @@ def main():
 
     # 2) Zugangsdaten (werden NICHT ausgegeben)
     env = parse_env_file(args.env)
-    host = resolve(env, "host")
+    host = resolve_host_to_fqdn(resolve(env, "host"))
     user = resolve(env, "user")
     password = resolve(env, "password")
     # FTPS (FTP über TLS), Port 21. Der Upload-Account kann nur FTP, kein SFTP —
