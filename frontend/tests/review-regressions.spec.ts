@@ -127,4 +127,46 @@ test.describe('Mobile-Slotauswahl', () => {
     await page.waitForTimeout(500)
     await assertInvariants()
   })
+
+  test('Panelwechsel eines Zusatz-Slots laesst Audio- und Nachbarslots stehen', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('fraktallab_density', 'proxima'))
+    await page.goto(BASE_URL, { waitUntil: 'load' })
+
+    const readSlots = () => page.locator('[data-mobile-slot]').evaluateAll(elements =>
+      elements.map(element => ({
+        key: element.getAttribute('data-mobile-slot') ?? '',
+        name: element.getAttribute('data-mobile-panel') ?? '',
+        audio: element.getAttribute('data-mobile-audio') === 'true',
+      })),
+    )
+
+    const before = await readSlots()
+    // Zusatz-Slots sind die ohne eigenen Vorzugs-Index; ihr Schluessel beginnt
+    // mit gfx-extra- bzw. text-extra-.
+    const extra = before.find(slot => /^(gfx|text)-extra-/.test(slot.key))
+    expect(extra, 'Proxima-Mobile muss Zusatz-Slots erzeugen').toBeTruthy()
+
+    const tile = page.locator(`[data-mobile-slot="${extra!.key}"]`)
+    // Mobile: Pille erscheint erst nach Antippen der Kachel (3 s sichtbar).
+    await tile.click({ position: { x: 4, y: 4 } })
+    await tile.locator('[role="button"]').click()
+
+    // PanelSlot blendet 300 ms aus, bevor onNav feuert.
+    await expect
+      .poll(async () => (await readSlots()).find(slot => slot.key === extra!.key)?.name,
+            { timeout: 5000 })
+      .not.toBe(extra!.name)
+
+    const after = await readSlots()
+    const changed = after.filter(slot => {
+      const previous = before.find(p => p.key === slot.key)
+      return !previous || previous.name !== slot.name
+    })
+    // Genau der angeklickte Slot hat gewechselt.
+    expect(changed.map(slot => slot.key)).toEqual([extra!.key])
+    // Der gelockte Audio-Slot bleibt derselbe — frueher wuerfelte dieser Pfad
+    // die komplette Mobile-Auswahl neu und riss laufendes Audio mit.
+    expect(after.find(slot => slot.audio)?.name).toBe(before.find(slot => slot.audio)?.name)
+    expect(after.map(slot => slot.key)).toEqual(before.map(slot => slot.key))
+  })
 })

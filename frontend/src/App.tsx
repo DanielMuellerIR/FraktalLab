@@ -52,6 +52,11 @@ interface MobileIndices {
   gfxIdx1: number
   gfxIdx2: number
   gfxIdx3: number
+  // Umleitungen für die Zusatz-Slots (alles jenseits der vier bevorzugten
+  // Slots): Schlüssel `gfx:<pool-index>` bzw. `text:<pool-index>` zeigt auf den
+  // stattdessen anzuzeigenden Pool-Index. Nur weitergeschaltete Slots stehen
+  // hier; alle anderen füllt die Pool-Reihenfolge unverändert auf.
+  extras: Record<string, number>
 }
 
 interface MobileSlotSelection {
@@ -90,6 +95,7 @@ function generateMobileIndices(reviews: ReviewEntry[]): MobileIndices {
     gfxIdx1: gfx[0],
     gfxIdx2: gfx[1],
     gfxIdx3: gfx[2],
+    extras: {},
   };
 }
 
@@ -144,11 +150,21 @@ function buildMobileSlots(
   addGfx(preferred.gfxIdx2, 'gfx2', 2)
   addGfx(preferred.gfxIdx3, 'gfx3', 3)
 
+  // ── Zusatz-Slots ────────────────────────────────────────────────────────────
+  // Alles jenseits der vier bevorzugten Slots. Reihenfolge und Slot-Schluessel
+  // kommen weiterhin aus der Pool-Reihenfolge; `preferred.extras` lenkt einen
+  // einzelnen Slot auf ein anderes Panel um (Schluessel `gfx:<index>` bzw.
+  // `text:<index>`). Weil nur die Belegung EINES Slots getauscht wird und die
+  // Reihenfolge unangetastet bleibt, veraendert ein Panelwechsel hier genau
+  // diesen Slot. Frueher hatten diese Slots gar keinen Zustand: jede Navigation
+  // wuerfelte stattdessen die komplette Mobile-Auswahl neu und riss dabei auch
+  // das gelockte Audio-Panel heraus.
+  const extras = preferred.extras ?? {}
   for (let idx = 0; idx < gfxPool.length && slots.length < count; idx += 1) {
-    addGfx(idx, `gfx-extra-${idx}`)
+    addGfx(extras[`gfx:${idx}`] ?? idx, `gfx-extra-${idx}`)
   }
   for (let idx = 0; idx < textPool.length && slots.length < count; idx += 1) {
-    addText(idx, `text-extra-${idx}`)
+    addText(extras[`text:${idx}`] ?? idx, `text-extra-${idx}`)
   }
   return slots
 }
@@ -1257,8 +1273,72 @@ export default function App() {
     })
   }, [])
 
-  const rerollMobileSlots = useCallback(() => {
-    setMobileIndices(generateMobileIndices(loadReviews()))
+  /**
+   * Panelwechsel fuer einen Zusatz-Slot (Slot ohne primarySlot, also alles
+   * jenseits der vier bevorzugten Mobile-Slots).
+   *
+   * Ersetzt AUSSCHLIESSLICH den angeforderten Slot. Frueher rief dieser Pfad
+   * ein komplettes rerollMobileSlots() auf: das erzeugte alle vier bevorzugten
+   * Indizes neu — inklusive gfxIdx1, also des gelockten Audio-Slots. Schon der
+   * Auto-Rotations-Timer eines beliebigen Extra-Slots konnte damit das laufende
+   * Audio-Panel austauschen und die Wiedergabe abwuergen, obwohl Audio-Slots
+   * ausdruecklich nicht rotieren duerfen.
+   */
+  const handleSkipMobileExtra = useCallback((slotKey: string) => {
+    setMobileIndices(curr => {
+      const reviews = loadReviews()
+      const { textPool, gfxPool } = getFilteredPools(reviews)
+      const landscape = typeof window !== 'undefined' && window.innerWidth > window.innerHeight
+      const grid = mobileDensityGrid(densityRef.current, landscape)
+      const targetAspect = mobileCellAspect(grid.cols, grid.rows)
+
+      // Aktuelle Belegung nachbauen: daraus kommen die bereits sichtbaren Namen
+      // (Dedup) und die Zahl der laufenden GL-Panels (Budget).
+      const slots = buildMobileSlots(reviews, curr, grid.count, targetAspect)
+      const slot = slots.find(s => s.key === slotKey)
+      if (!slot || slot.primarySlot != null) return curr
+
+      // Der Slot-Schluessel traegt den Pool und den Pool-Index, an dem dieser
+      // Slot in der Auffuell-Reihenfolge haengt — genau darauf zeigt die
+      // Umleitung, damit die Reihenfolge der uebrigen Slots gleich bleibt.
+      const isText = slotKey.startsWith('text-extra-')
+      const prefix = isText ? 'text-extra-' : 'gfx-extra-'
+      const sourceIdx = Number.parseInt(slotKey.slice(prefix.length), 10)
+      if (!Number.isFinite(sourceIdx)) return curr
+      const pool = isText ? textPool : gfxPool
+      const shownNames = new Set(slots.map(s => s.fallbackName))
+      let glCount = slots.filter(s => isGLPanel(s.fallbackName)).length
+      // Der zu ersetzende Slot selbst gibt seinen Platz frei.
+      shownNames.delete(slot.fallbackName)
+      if (isGLPanel(slot.fallbackName)) glCount -= 1
+
+      const candidates: number[] = []
+      pool.forEach((comp, i) => {
+        const name = getCompName(comp)
+        if (!name || shownNames.has(name)) return
+        if (!isText) {
+          // Audio bleibt dem einen gelockten Slot vorbehalten.
+          if (AUDIO_PANELS.has(name)) return
+          if (!aspectMatches(panelAspect(name), targetAspect)) return
+          if (isGLPanel(name) && glCount >= MAX_GL_PANELS_PER_LAYOUT) return
+        }
+        candidates.push(i)
+      })
+      if (candidates.length === 0) return curr
+
+      // Gewichtete Zufallswahl wie bei den primaeren Slots: hochgedaumelte
+      // Panels dreifach, heruntergedaumelte gar nicht.
+      const scored = candidates.map(i => {
+        const review = reviews.find(r => r.panel === getCompName(pool[i]))
+        const weight = review?.rating === 'up' ? 3.0 : review?.rating === 'down' ? 0.0 : 1.0
+        const u = Math.random()
+        return { i, score: weight > 0 ? Math.pow(u, 1 / weight) : -1 }
+      })
+      scored.sort((a, b) => b.score - a.score)
+
+      const redirectKey = `${isText ? 'text' : 'gfx'}:${sourceIdx}`
+      return { ...curr, extras: { ...curr.extras, [redirectKey]: scored[0].i } }
+    })
   }, [])
 
   // Automatische Review-Zurücksetzung bei Versionsänderung
@@ -1823,12 +1903,16 @@ export default function App() {
                         data-mobile-audio={slot.locked ? 'true' : 'false'}
                         data-mobile-gl={isGLPanel(slot.fallbackName) ? 'true' : 'false'}
                         data-mobile-aspect={panelAspect(slot.fallbackName)}
+                        data-mobile-slot={slot.key}
                       >
                         <PanelSlot
                           pool={slot.pool}
                           activeIdx={slot.activeIdx}
                           onNav={() => {
-                            if (slot.primarySlot == null) rerollMobileSlots()
+                            // Jeder Slot wechselt nur sich selbst: die vier
+                            // bevorzugten ueber ihren Index, die Zusatz-Slots
+                            // ueber ihren positionsstabilen Schluessel.
+                            if (slot.primarySlot == null) handleSkipMobileExtra(slot.key)
                             else handleSkipMobileSlot(slot.primarySlot)
                           }}
                           fallbackName={slot.fallbackName}
