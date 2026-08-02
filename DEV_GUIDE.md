@@ -20,9 +20,18 @@ cd frontend && npm run lint
 # Visueller Panel-Check (Dev-Server muss laufen)
 cd frontend && npm run test:panels
 
+# Regressionstests zu bestätigten Review-Befunden (Dev-Server muss laufen)
+cd frontend && npm run test:regressions
+
 # Performance-Messung (Production-Preview muss laufen, siehe PERF_NOTES.md)
 cd frontend && npm run test:perf
 ```
+
+> **Browserwahl:** Jeder Playwright-Lauf nutzt genau ein Projekt. Ist Playwrights
+> gebündeltes Chromium installiert, wird es genommen, sonst automatisch das lokale
+> Google Chrome (headless). Ausdrücklich erzwingen lässt sich das über
+> `PW_PROJECT=chrome-headless` bzw. `PW_PROJECT=chrome-gpu` (sichtbares Chrome für
+> die GPU-Messung).
 
 > **Hinweis:** Es gibt kein WASM-Modul mehr. Die Fraktale wurden auf einen
 > GPU-Fragment-Shader migriert (`src/components/FractalGL.tsx` +
