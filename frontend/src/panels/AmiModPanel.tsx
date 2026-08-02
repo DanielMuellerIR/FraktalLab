@@ -67,6 +67,36 @@ function isModName(name: string): boolean {
   return n.endsWith('.mod') || n.startsWith('mod.');
 }
 
+/**
+ * Neue User-Tracks in die bestehende Liste einfuegen und dabei per id
+ * (Name + Groesse) deduplizieren.
+ *
+ * WICHTIG — Rueckgabe-Identitaet: Sind alle Eintraege Duplikate, kommt das
+ * UNVERAENDERTE `prev`-Array zurueck, nicht eine gleich befuellte Kopie. Der
+ * Lade-Effect des Panels haengt an `allTracks`, das aus `userTracks` abgeleitet
+ * wird; ein neues Array haette dort eine neue Identitaet und wuerde den gerade
+ * laufenden Track stoppen und von vorn laden (Wiedergabeposition weg), obwohl
+ * sich inhaltlich nichts geaendert hat.
+ *
+ * Exportiert, damit die Regressionstests die reine Logik ohne UI pruefen koennen.
+ */
+export function mergeUserTracks(prev: Track[], incoming: Track[]): Track[] {
+  const ids = new Set(prev.map((t) => t.id));
+  const merged = [...prev];
+  for (const t of incoming) {
+    // Duplikate (gleiche id = gleicher Name + gleiche Groesse) ueberspringen —
+    // sonst landen identische Dateien mehrfach im Dropdown. Die vorab erzeugte
+    // Object-URL des Duplikats wieder freigeben, damit sie nicht leakt.
+    if (ids.has(t.id)) {
+      URL.revokeObjectURL(t.url);
+      continue;
+    }
+    ids.add(t.id);
+    merged.push(t);
+  }
+  return merged.length === prev.length ? prev : merged;
+}
+
 // Amiga-Frequenz-Perioden und Notennamen-Mapping
 const PERIODS = [
   // Oktave 1
@@ -564,8 +594,9 @@ function AmiModPanel() {
 
   // ── User-Upload-Handling ───────────────────────────────────────────────────
   // Fuegt eine Liste von Files der User-Track-Liste hinzu. Filtert auf MOD-
-  // Dateinamen, erzeugt Object-URLs, dedupliziert per Name+Size. Anschliessend
-  // optional den ersten neu hinzugefuegten Track sofort laden.
+  // Dateinamen, erzeugt Object-URLs, dedupliziert per Name+Size (siehe
+  // mergeUserTracks weiter oben). Anschliessend optional den ersten neu
+  // hinzugefuegten Track sofort laden.
   const addUserFiles = (files: File[], playFirstAdded: boolean): Track | null => {
     const mods = files.filter((f) => isModName(f.name));
     if (!mods.length) return null;
@@ -588,19 +619,7 @@ function AmiModPanel() {
     const playId = newTracks[0].id; // erster neu gewaehlter Track — der wird ggf. autoplayed
 
     setUserTracks((prev) => {
-      const ids = new Set(prev.map((t) => t.id));
-      const merged = [...prev];
-      for (const t of newTracks) {
-        // Duplikate (gleiche id = gleicher Name + gleiche Groesse) ueberspringen —
-        // sonst landen identische Dateien mehrfach im Dropdown. Die vorab erzeugte
-        // Object-URL des Duplikats wieder freigeben, damit sie nicht leakt.
-        if (ids.has(t.id)) {
-          URL.revokeObjectURL(t.url);
-          continue;
-        }
-        ids.add(t.id);
-        merged.push(t);
-      }
+      const merged = mergeUserTracks(prev, newTracks);
       if (playFirstAdded) {
         // Funktioniert fuer frisch hinzugefuegte UND bereits vorhandene (erneut
         // gedroppte) Tracks: Index in der fertigen Liste per stabiler id finden.

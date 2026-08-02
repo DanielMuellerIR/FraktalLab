@@ -60,6 +60,35 @@ test('Ordner-Drop faellt bei Entry-Fehlern auf direkte Dateien zurueck', async (
   expect(result).toEqual({ names: ['fallback.sid'], hadError: true })
 })
 
+test('erneuter Drop eines bekannten MODs behaelt die Trackliste identisch', async ({ page }) => {
+  await page.goto(BASE_URL, { waitUntil: 'load' })
+  const result = await page.evaluate(async () => {
+    const panel = await import('/src/panels/AmiModPanel.tsx')
+    const prev = [{ id: 'user:song.mod:42', name: 'song', url: 'blob:song', isUser: true }]
+    // Gleiche Datei erneut gedroppt: gleiche id, aber frisch erzeugte Object-URL.
+    const duplicate = panel.mergeUserTracks(prev, [
+      { id: 'user:song.mod:42', name: 'song', url: 'blob:song-neu', isUser: true },
+    ])
+    const added = panel.mergeUserTracks(prev, [
+      { id: 'user:other.mod:7', name: 'other', url: 'blob:other', isUser: true },
+    ])
+    return {
+      // Identitaet erhalten → allTracks bleibt stabil → der Lade-Effect laeuft
+      // NICHT erneut und stoppt den laufenden Track nicht.
+      duplicateKeepsArrayIdentity: duplicate === prev,
+      duplicateLength: duplicate.length,
+      addedIsNewArray: added !== prev,
+      addedLength: added.length,
+    }
+  })
+  expect(result).toEqual({
+    duplicateKeepsArrayIdentity: true,
+    duplicateLength: 1,
+    addedIsNewArray: true,
+    addedLength: 2,
+  })
+})
+
 test.describe('Mobile-Slotauswahl', () => {
   test.use({
     viewport: { width: 430, height: 932 },
