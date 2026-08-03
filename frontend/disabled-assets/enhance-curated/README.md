@@ -38,6 +38,19 @@ Bedingungen für die neuen Bilder:
    Domain entfällt die Pflicht, das Manifest bleibt trotzdem nötig.
 
 Achtung: Die sechs verbliebenen Fotos `frontend/public/enhance/street-*.jpg`
-haben dieselbe Lücke — auch zu ihnen ist kein Urheber dokumentiert. Sie werden
-weiterhin ausgeliefert. Beim Neuaufbau der Motive gehören sie mit in das
-Manifest oder mit auf den Austausch-Zettel; siehe `BACKLOG.md`.
+haben dieselbe Lücke, nur mit bekannter Quellplattform. `scripts/fetch-images.mjs`
+hat sie 2026-05-20 als 400-px-Vorschaubilder von Wikimedia Commons geladen
+(Suchbegriff „pedestrian street crossing"). Das Skript gibt die Dateititel nur
+auf der Konsole aus und schreibt in `manifest.json` ausschließlich die
+Dateinamen — welche Commons-Datei, welcher Urheber und welche Lizenz zu
+`street-N.jpg` gehören, ist damit nicht festgehalten. Auf Commons liegen Dateien
+unter sehr verschiedenen Lizenzen (CC0, CC BY, CC BY-SA, gemeinfrei); die
+meisten verlangen Namensnennung. Diese sechs Bilder werden weiterhin
+ausgeliefert und laufen im Review-Modus noch im deaktivierten Panel. Beim
+Neuaufbau der Motive gehören sie mit in das Manifest oder mit auf den
+Austausch-Zettel; siehe `BACKLOG.md`.
+
+Nebenbefund: Der Kommentar in `scripts/fetch-images.mjs` behauptet,
+`EnhancePhoto.tsx` lese `manifest.json`. Das stimmt nicht — die Komponente
+zählt die Dateinamen `street-0` bis `street-5` fest auf, `manifest.json` wird
+nirgends gelesen.

@@ -33,10 +33,17 @@ Vor Übernahme jeden Punkt gegen aktuellen Code und bestehenden Projekt-Backlog 
   4. sichtbarer Attribution im Panel, sobald die Lizenz sie verlangt.
   Details: `frontend/disabled-assets/enhance-curated/README.md`.
 - Die sechs verbliebenen Fotos `frontend/public/enhance/street-*.jpg` haben dieselbe
-  Lücke wie die stillgelegten Motive: kein Urheber, kein Original, keine
-  Bearbeitung dokumentiert. Sie werden weiterhin ausgeliefert (337 KB) und laufen
-  im Review-Modus noch im deaktivierten Enhance-Panel. Beim Neuaufbau der Motive
-  mit erledigen — belegen oder ebenfalls ersetzen.
+  Lücke wie die stillgelegten Motive, nur mit bekannter Quellplattform:
+  `scripts/fetch-images.mjs` hat sie 2026-05-20 als 400-px-Vorschaubilder von
+  Wikimedia Commons geladen (Suchbegriff „pedestrian street crossing"). Das Skript
+  gibt die Dateititel nur auf der Konsole aus und schreibt in `manifest.json` nur
+  die Dateinamen — Commons-Datei, Urheber und Lizenz je Bild sind also nicht
+  festgehalten, und die meisten Commons-Lizenzen verlangen Namensnennung. Die
+  Bilder werden weiterhin ausgeliefert (337 KB) und laufen im Review-Modus noch im
+  deaktivierten Enhance-Panel. Beim Neuaufbau der Motive mit erledigen — belegen
+  oder ebenfalls ersetzen. Nebenbefund: Der Kommentar in `scripts/fetch-images.mjs`
+  behauptet, `EnhancePhoto.tsx` lese `manifest.json`; tatsächlich zählt die
+  Komponente `street-0` bis `street-5` fest auf und liest das Manifest nie.
 - **Wartet auf Daniels Entscheidung:** Die BotB-Stücke stehen unter CC BY-NC-SA und
   werden über `dm0.de/x` von einer Domain ausgeliefert, die auf kommerzielle Beratung
   verweist — die NC-Klausel wird dadurch angreifbar. Vier Optionen (so lassen, auf eine

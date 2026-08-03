@@ -35,6 +35,9 @@ const HOLD_MS = 2000
 const BASE = import.meta.env.BASE_URL
 
 // 6 "street"-Fotos (Menschen in urbanen Settings), lokal unter public/enhance/.
+// Von scripts/fetch-images.mjs einmalig als 400-px-Vorschaubilder von Wikimedia
+// Commons geladen; welche Commons-Datei, welcher Urheber und welche Lizenz zu
+// welcher Nummer gehoert, ist nirgends festgehalten (siehe BACKLOG.md).
 const LOCAL = [0, 1, 2, 3, 4, 5].map(i => `${BASE}enhance/street-${i}.jpg`)
 
 // Die 17 kuratierten Großstadt-Motive sind am 2026-08-03 aus dem Build genommen
