@@ -7,6 +7,23 @@ Vor Übernahme jeden Punkt gegen aktuellen Code und bestehenden Projekt-Backlog 
 - Schwächere Hardware mit mehreren Canvas-/GL-Panels messen; nur bestätigte Engpässe bearbeiten.
 - Archiviertes Daggerfall-Panel nur auf ausdrücklichen Wunsch modernisieren.
 - Lizenz-/Attributions-Registry für weitere externe Demoszene-Werke ausbauen.
+- Vollständigen Text der SIL Open Font License zu den mitgelieferten Schriften
+  legen. Die Web-Subsets in `frontend/public/fonts/` tragen nur die Lizenz-URL
+  (Name-ID 14), nicht den Lizenztext; Urheber, Version und Prüfsummen sind in
+  `frontend/public/fonts/README.md` dokumentiert.
+- `Press Start 2P` wird nirgends als `font-family` verwendet — nur die beiden
+  `@font-face`-Regeln in `frontend/src/index.css` nennen die Familie. Entweder an
+  der gedachten Stelle einsetzen oder Regeln und die beiden woff2-Dateien
+  (22.368 Byte) entfernen.
+- **Wartet auf Daniels Entscheidung:** Die 17 kuratierten Großstadt-Fotos unter
+  `frontend/public/enhance/curated/` haben keine Zuordnung zu Urheber, Original
+  und Bearbeitung; im Panel erscheint keine Attribution. Das verletzt die eigene
+  Invariante aus `AGENTS.md` (Fremdwerke nur mit verifizierter Lizenz und
+  sichtbarer Attribution). Die ursprünglichen Foto-Kennungen stehen noch in der
+  Git-Historie (Stand vor dem Selfhosting-Commit), die Urheber jedoch nirgends.
+  Optionen: Herkunft je Datei rekonstruieren und ein Manifest samt sichtbarer
+  Attribution ergänzen, die Motive durch prozedurale oder eindeutig
+  dokumentierte Bilder ersetzen, oder die Invariante bewusst enger fassen.
 - **Wartet auf Daniels Entscheidung:** Die BotB-Stücke stehen unter CC BY-NC-SA und
   werden über `dm0.de/x` von einer Domain ausgeliefert, die auf kommerzielle Beratung
   verweist — die NC-Klausel wird dadurch angreifbar. Vier Optionen (so lassen, auf eine

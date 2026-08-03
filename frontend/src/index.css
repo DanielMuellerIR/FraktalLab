@@ -14,6 +14,9 @@
    landet und die Fonts unter fonts/). Dadurch bleibt die URL relativ und
    funktioniert korrekt im Unterordner /x — nicht nur am Server-Root.
 
+   Herkunft, Urheber, Version und Lizenz der vier Dateien stehen in
+   public/fonts/README.md (Angaben aus der name-Tabelle der Dateien selbst).
+
    font-display: swap → Text bleibt sofort sichtbar (Fallback-Font), die
    Web-Schrift wird nachgeladen und getauscht, sobald sie da ist.
    unicode-range → der Browser lädt latin-ext nur, wenn wirklich ein Zeichen
