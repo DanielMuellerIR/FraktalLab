@@ -25,12 +25,11 @@ const PHASE_MS = 333
 // Dauer, wie lange das fertig enhancete (scharfe) Bild stehen bleibt, bevor es weitergeht
 const HOLD_MS = 2000
 
-// Alle Vorschau-Fotos liegen jetzt lokal im public/-Ordner — es gibt KEINE
-// Laufzeit-Requests mehr an externe Dienste. Früher wurden die kuratierten
+// Alle Vorschau-Fotos liegen lokal im public/-Ordner — es gibt KEINE
+// Laufzeit-Requests an externe Dienste. Früher wurden die kuratierten
 // Großstadt-Motive zur Laufzeit vom Unsplash-Bilder-CDN geladen; das ist aus
 // Datenschutzgründen (keine IP-/Referrer-Übertragung an Unsplash beim Aufruf)
-// entfallen. Die Motive stammen von Unsplash (Unsplash-Lizenz, freie Nutzung)
-// und wurden einmalig heruntergeladen und mitgebündelt.
+// entfallen.
 // BASE_URL nötig für Unterordner-Deployment (z. B. /x/) — root-relative Pfade
 // würden auf den Server-Root statt auf /x/ zeigen.
 const BASE = import.meta.env.BASE_URL
@@ -38,11 +37,14 @@ const BASE = import.meta.env.BASE_URL
 // 6 "street"-Fotos (Menschen in urbanen Settings), lokal unter public/enhance/.
 const LOCAL = [0, 1, 2, 3, 4, 5].map(i => `${BASE}enhance/street-${i}.jpg`)
 
-// 17 kuratierte Großstadt-Motive (Chicago, Tokio, London, Paris, Dubai, Sydney …),
-// lokal unter public/enhance/curated/ gespeichert. Reihenfolge = Dateinummer.
-const CURATED = Array.from({ length: 17 }, (_, i) => `${BASE}enhance/curated/curated-${i}.jpg`)
-
-const PHOTOS = [...LOCAL, ...CURATED]
+// Die 17 kuratierten Großstadt-Motive sind am 2026-08-03 aus dem Build genommen
+// worden: zu keinem war Urheber, Original oder Bearbeitung belegt. Sie liegen
+// unverändert unter frontend/disabled-assets/enhance-curated/ (außerhalb von
+// public/, also nicht mehr im Build). Das ganze Panel ist deshalb in
+// panel-registry.ts auf active:false gesetzt und erscheint nur noch im
+// Review-Modus; die Bedingungen für neue Motive stehen im README dort und in
+// BACKLOG.md. Auch zu den sechs street-Fotos fehlt der Herkunftsnachweis noch.
+const PHOTOS = LOCAL
 
 // Zeichnet das Bild pixeliert (blockSize > 1) oder scharf (blockSize <= 1)
 function drawPixelated(

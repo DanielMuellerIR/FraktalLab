@@ -15,15 +15,28 @@ Vor Übernahme jeden Punkt gegen aktuellen Code und bestehenden Projekt-Backlog 
   `@font-face`-Regeln in `frontend/src/index.css` nennen die Familie. Entweder an
   der gedachten Stelle einsetzen oder Regeln und die beiden woff2-Dateien
   (22.368 Byte) entfernen.
-- **Wartet auf Daniels Entscheidung:** Die 17 kuratierten Großstadt-Fotos unter
-  `frontend/public/enhance/curated/` haben keine Zuordnung zu Urheber, Original
-  und Bearbeitung; im Panel erscheint keine Attribution. Das verletzt die eigene
-  Invariante aus `AGENTS.md` (Fremdwerke nur mit verifizierter Lizenz und
-  sichtbarer Attribution). Die ursprünglichen Foto-Kennungen stehen noch in der
-  Git-Historie (Stand vor dem Selfhosting-Commit), die Urheber jedoch nirgends.
-  Optionen: Herkunft je Datei rekonstruieren und ein Manifest samt sichtbarer
-  Attribution ergänzen, die Motive durch prozedurale oder eindeutig
-  dokumentierte Bilder ersetzen, oder die Invariante bewusst enger fassen.
+- **Enhance-Panel wieder einschalten, sobald es neue Motive gibt.** Entschieden am
+  2026-08-03: `EnhanceView` steht in `frontend/src/panels/panel-registry.ts` auf
+  `active: false`, die 17 kuratierten Großstadt-Fotos liegen unter
+  `frontend/disabled-assets/enhance-curated/` und damit außerhalb des Builds. Grund
+  war die fehlende Zuordnung zu Urheber, Original und Bearbeitung — ein Verstoß
+  gegen die Invariante aus `AGENTS.md` (Fremdwerke nur mit verifizierter Lizenz und
+  sichtbarer Attribution). Die alten Bilder kommen nicht zurück. Ein
+  Wiedereinschalten braucht neue Motive mit:
+  1. nachweislich freier Lizenz (Public Domain/CC0 oder freie Lizenz mit
+     dokumentierter Quelle) — die Herkunft beim Beschaffen festhalten, nicht
+     hinterher rekonstruieren;
+  2. dem gewünschten Thema: Aufnahmen, die wie eine Überwachungskamera im
+     öffentlichen Raum wirken (passend zum Panel-Text „CCTV FEED");
+  3. einem versionierten Manifest je Bild mit Quelle, Urheber, Lizenz und
+     Bearbeitung, nach dem Vorbild von `frontend/public/fonts/README.md`;
+  4. sichtbarer Attribution im Panel, sobald die Lizenz sie verlangt.
+  Details: `frontend/disabled-assets/enhance-curated/README.md`.
+- Die sechs verbliebenen Fotos `frontend/public/enhance/street-*.jpg` haben dieselbe
+  Lücke wie die stillgelegten Motive: kein Urheber, kein Original, keine
+  Bearbeitung dokumentiert. Sie werden weiterhin ausgeliefert (337 KB) und laufen
+  im Review-Modus noch im deaktivierten Enhance-Panel. Beim Neuaufbau der Motive
+  mit erledigen — belegen oder ebenfalls ersetzen.
 - **Wartet auf Daniels Entscheidung:** Die BotB-Stücke stehen unter CC BY-NC-SA und
   werden über `dm0.de/x` von einer Domain ausgeliefert, die auf kommerzielle Beratung
   verweist — die NC-Klausel wird dadurch angreifbar. Vier Optionen (so lassen, auf eine

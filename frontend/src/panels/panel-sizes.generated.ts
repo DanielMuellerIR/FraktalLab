@@ -30,7 +30,7 @@ export const PANEL_CODE_BYTES: Record<string, number> = {
   'TunnelScene': 94189,
   'RotozoomScene': 94189,
   'PlasmaDemo': 39574,
-  'EnhanceView': 18939,
+  'EnhanceView': 19067,
   'VoxelDemoColor': 47936,
   'VoxelDemoBW': 47936,
   'GlobePanel': 72269,

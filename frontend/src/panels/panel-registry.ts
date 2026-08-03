@@ -171,7 +171,11 @@ const RAW: RawPanel[] = [
   { name: 'TunnelScene',           Component: TunnelScene,           pool: 'gfx',  aspect: 'SQUARE', gl: true, proximaSpeed: 4 },
   { name: 'RotozoomScene',         Component: RotozoomScene,         pool: 'gfx',  aspect: 'ANY',  gl: true },
   { name: 'PlasmaDemo',            Component: PlasmaDemo,            pool: 'gfx',  aspect: 'ANY',  gl: true, proximaSpeed: 8 },
-  { name: 'EnhanceView',           Component: EnhanceView,           pool: 'gfx',  aspect: 'WIDE', size: 'no-large' },
+  // Deaktiviert 2026-08-03: Zu den kuratierten Motiven war kein Urheber, kein Original und
+  // keine Bearbeitung belegt. Sie liegen jetzt außerhalb des Builds unter
+  // frontend/disabled-assets/enhance-curated/. Wiedereinschalten erst mit neuen Motiven —
+  // Bedingungen im README dort und in BACKLOG.md.
+  { name: 'EnhanceView',           Component: EnhanceView,           pool: 'gfx',  active: false, aspect: 'WIDE', size: 'no-large' },
   { name: 'VoxelDemoColor',        Component: VoxelDemoColor,        pool: 'gfx',  aspect: 'WIDE', gl: true },
   { name: 'VoxelDemoBW',           Component: VoxelDemoBW,            pool: 'gfx',  aspect: 'WIDE', gl: true },
   { name: 'GlobePanel',            Component: GlobePanel,            pool: 'gfx',  aspect: 'SQUARE', gl: true },
