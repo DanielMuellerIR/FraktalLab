@@ -18,39 +18,28 @@ Dieser Ordner liegt außerhalb von `frontend/public/` und ist deshalb **nicht**
 Teil des Builds. Die Dateien bleiben nur als früherer Stand versioniert; sie
 werden nicht wieder eingebaut.
 
-## Was ein Wiedereinschalten des Panels braucht
+## Wie es weiterging: Motive werden erzeugt statt beschafft
 
-Daniels Entscheidung vom 2026-08-03: Das Panel bleibt deaktiviert
-(`active: false` in `src/panels/panel-registry.ts`), bis es neue Motive gibt.
-Bedingungen für die neuen Bilder:
+Daniels Entscheidung vom 2026-08-03 lief zunächst darauf hinaus, neue Bilder mit
+belegter freier Lizenz zu **beschaffen**. Noch am selben Tag hat er den Weg
+gewechselt: Die Motive werden **selbst erzeugt**. Das löst die Lizenzfrage
+vollständig — an einem eigenen Bild gibt es keinen fremden Urheber, der genannt
+werden müsste, und keine Lizenzbedingung, die zu erfüllen wäre.
 
-1. **Lizenz.** Nachweislich Public Domain (z. B. CC0) oder eine freie Lizenz mit
-   dokumentierter Quelle. „Vermutlich frei" reicht nicht; die Herkunft muss beim
-   Beschaffen festgehalten werden, nicht hinterher rekonstruiert.
-2. **Motiv-Thema.** Die Bilder sollen wie Aufnahmen einer Überwachungskamera im
-   öffentlichen Raum aussehen. Das passt zum Panel-Text („CCTV FEED ● DOWNTOWN
-   SECTOR") und zum Enhance-Gag.
-3. **Manifest je Bild.** Eine versionierte Datei neben den Bildern mit je Datei:
-   Quelle (URL), Urheber, Lizenz und Bearbeitung (Zuschnitt, Skalierung,
-   Kompression). Vorbild ist `frontend/public/fonts/README.md`, das dasselbe für
-   die mitgelieferten Schriften leistet.
-4. **Sichtbare Attribution**, sobald die Lizenz sie verlangt. Bei echter Public
-   Domain entfällt die Pflicht, das Manifest bleibt trotzdem nötig.
+Seither zeigt das Panel sechs lokal erzeugte Motive in Überwachungskamera-Optik
+unter `frontend/public/enhance/cctv-0.jpg` bis `cctv-5.jpg`. Der Eintrag
+`EnhanceView` in `src/panels/panel-registry.ts` ist wieder aktiv. Werkzeug,
+Modell, Prompt, Nachbearbeitung, Lizenzlage und Prüfsummen je Datei stehen in
+[`frontend/public/enhance/README.md`](../../public/enhance/README.md) — nach dem
+Vorbild von `frontend/public/fonts/README.md`.
 
-Achtung: Die sechs verbliebenen Fotos `frontend/public/enhance/street-*.jpg`
-haben dieselbe Lücke, nur mit bekannter Quellplattform. `scripts/fetch-images.mjs`
-hat sie 2026-05-20 als 400-px-Vorschaubilder von Wikimedia Commons geladen
-(Suchbegriff „pedestrian street crossing"). Das Skript gibt die Dateititel nur
-auf der Konsole aus und schreibt in `manifest.json` ausschließlich die
-Dateinamen — welche Commons-Datei, welcher Urheber und welche Lizenz zu
-`street-N.jpg` gehören, ist damit nicht festgehalten. Auf Commons liegen Dateien
-unter sehr verschiedenen Lizenzen (CC0, CC BY, CC BY-SA, gemeinfrei); die
-meisten verlangen Namensnennung. Diese sechs Bilder werden weiterhin
-ausgeliefert und laufen im Review-Modus noch im deaktivierten Panel. Beim
-Neuaufbau der Motive gehören sie mit in das Manifest oder mit auf den
-Austausch-Zettel; siehe `BACKLOG.md`.
+Die 17 Bilder in diesem Ordner sind davon nicht berührt: Sie bleiben stillgelegt
+und kommen nicht zurück.
 
-Nebenbefund: Der Kommentar in `scripts/fetch-images.mjs` behauptet,
-`EnhancePhoto.tsx` lese `manifest.json`. Das stimmt nicht — die Komponente
-zählt die Dateinamen `street-0` bis `street-5` fest auf, `manifest.json` wird
-nirgends gelesen.
+Ebenfalls ersetzt wurden die sechs Fotos, die bis dahin noch unter
+`frontend/public/enhance/street-*.jpg` ausgeliefert wurden. Sie hatten dieselbe
+Lücke, nur mit bekannter Quellplattform: `scripts/fetch-images.mjs` hatte sie am
+2026-05-20 als 400-px-Vorschaubilder von Wikimedia Commons geladen. Sie liegen
+jetzt unter
+[`frontend/disabled-assets/enhance-street/`](../enhance-street/); das Skript ist
+entfernt worden, weil Motive nicht mehr beschafft werden.

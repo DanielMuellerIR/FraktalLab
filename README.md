@@ -217,7 +217,9 @@ Raycasting), inzwischen auf GPU-Raymarching migriert. Heightmaps prozedural aus
   Kacheln keine abgeschnittenen Fehlerdialoge zeigen.
 - **EnhanceView** *(Canvas-2D)* — „Enhance"-Slideshow: ein Bild wird über zwölf
   Stufen von grob gepixelt zu scharf hochgezogen — das Hochskalieren selbst ist das
-  Stil-Element.
+  Stil-Element. Die sechs Motive in Überwachungskamera-Optik sind selbst erzeugt,
+  nicht beschafft; Werkzeug, Modell, Prompt und Lizenzlage stehen je Datei in
+  `frontend/public/enhance/README.md`.
 
 ### Audio
 

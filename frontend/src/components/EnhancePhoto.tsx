@@ -34,20 +34,18 @@ const HOLD_MS = 2000
 // würden auf den Server-Root statt auf /x/ zeigen.
 const BASE = import.meta.env.BASE_URL
 
-// 6 "street"-Fotos (Menschen in urbanen Settings), lokal unter public/enhance/.
-// Von scripts/fetch-images.mjs einmalig als 400-px-Vorschaubilder von Wikimedia
-// Commons geladen; welche Commons-Datei, welcher Urheber und welche Lizenz zu
-// welcher Nummer gehoert, ist nirgends festgehalten (siehe BACKLOG.md).
-const LOCAL = [0, 1, 2, 3, 4, 5].map(i => `${BASE}enhance/street-${i}.jpg`)
-
-// Die 17 kuratierten Großstadt-Motive sind am 2026-08-03 aus dem Build genommen
-// worden: zu keinem war Urheber, Original oder Bearbeitung belegt. Sie liegen
-// unverändert unter frontend/disabled-assets/enhance-curated/ (außerhalb von
-// public/, also nicht mehr im Build). Das ganze Panel ist deshalb in
-// panel-registry.ts auf active:false gesetzt und erscheint nur noch im
-// Review-Modus; die Bedingungen für neue Motive stehen im README dort und in
-// BACKLOG.md. Auch zu den sechs street-Fotos fehlt der Herkunftsnachweis noch.
-const PHOTOS = LOCAL
+// 6 Motive in Überwachungskamera-Optik, lokal unter public/enhance/.
+// Am 2026-08-03 selbst erzeugt (mflux mit dem Modell Z-Image-Turbo, Apache-2.0),
+// also kein Fremdwerk: kein Urheber zu nennen, keine Lizenzbedingung zu
+// erfüllen. Prompt, Nachbearbeitung und Prüfsummen je Datei stehen in
+// public/enhance/README.md.
+//
+// Vorgeschichte: Bis dahin lagen hier sechs Wikimedia-Commons-Vorschauen
+// (street-0..5.jpg) und davor 17 kuratierte Großstadtfotos. Zu keinem der
+// beiden Bestände waren Urheber, Original und Bearbeitung belegt; sie liegen
+// jetzt außerhalb des Builds unter frontend/disabled-assets/enhance-street/
+// bzw. .../enhance-curated/ und kommen nicht zurück.
+const PHOTOS = [0, 1, 2, 3, 4, 5].map(i => `${BASE}enhance/cctv-${i}.jpg`)
 
 // Zeichnet das Bild pixeliert (blockSize > 1) oder scharf (blockSize <= 1)
 function drawPixelated(
