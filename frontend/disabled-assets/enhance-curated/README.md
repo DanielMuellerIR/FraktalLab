@@ -39,7 +39,7 @@ und kommen nicht zurück.
 Ebenfalls ersetzt wurden die sechs Fotos, die bis dahin noch unter
 `frontend/public/enhance/street-*.jpg` ausgeliefert wurden. Sie hatten dieselbe
 Lücke, nur mit bekannter Quellplattform: `scripts/fetch-images.mjs` hatte sie am
-2026-05-20 als 400-px-Vorschaubilder von Wikimedia Commons geladen. Sie liegen
+2026-05-20 als 500-px-Vorschaubilder von Wikimedia Commons geladen. Sie liegen
 jetzt unter
 [`frontend/disabled-assets/enhance-street/`](../enhance-street/); das Skript ist
 entfernt worden, weil Motive nicht mehr beschafft werden.

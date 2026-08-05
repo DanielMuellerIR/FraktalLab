@@ -169,4 +169,53 @@ test.describe('Mobile-Slotauswahl', () => {
     expect(after.find(slot => slot.audio)?.name).toBe(before.find(slot => slot.audio)?.name)
     expect(after.map(slot => slot.key)).toEqual(before.map(slot => slot.key))
   })
+
+  test('Zusatz-Slot waehlt bei Folgeklicks nie sein eigenes Panel erneut', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('fraktallab_density', 'proxima'))
+    await page.goto(BASE_URL, { waitUntil: 'load' })
+
+    // Die Panelwahl ist normalerweise gewichteter Zufall. Ein heruntergedaumeltes
+    // Panel bekommt Gewicht 0 und damit die feste Punktzahl -1 statt eines
+    // Zufallswerts. Sind ALLE Panels heruntergedaumelt, haben alle Kandidaten
+    // dieselbe Punktzahl; die stabile Sortierung nimmt dann immer den Kandidaten
+    // mit dem kleinsten Pool-Index. Damit ist der Test deterministisch — ohne
+    // Math.random anzufassen (das wuerde EnhancePhoto in eine Endlosschleife
+    // schicken, weil es bei gleichem Zufallswert ewig weiterwuerfelt).
+    // Die beiden Migrations-Schluessel werden mitgesetzt, damit die Einmal-
+    // Migrationen in App.tsx die gesetzten Reviews nicht wieder ueberschreiben.
+    await page.evaluate(async () => {
+      const registry = await import('/src/panels/panel-registry.ts?extra-slot-regression')
+      const reviews = registry.PANELS.map((panel: { name: string }) => (
+        { panel: panel.name, rating: 'down', comment: '', ts: 1 }
+      ))
+      localStorage.setItem('fraktallab_reviews', JSON.stringify(reviews))
+      localStorage.setItem('fraktallab_reviews_seeded_2026_05_30', 'true')
+      localStorage.setItem('fraktallab_reactivate_2026_06_01', 'true')
+    })
+
+    const nameOf = (key: string) =>
+      page.locator(`[data-mobile-slot="${key}"]`).getAttribute('data-mobile-panel')
+
+    const keys = await page.locator('[data-mobile-slot]').evaluateAll(elements =>
+      elements.map(element => element.getAttribute('data-mobile-slot') ?? ''),
+    )
+    const key = keys.find(candidate => /^(gfx|text)-extra-/.test(candidate))
+    expect(key, 'Proxima-Mobile muss Zusatz-Slots erzeugen').toBeTruthy()
+
+    // Regression: handleSkipMobileExtra nimmt den eigenen Namen bewusst aus der
+    // Liste der schon sichtbaren Panels heraus, damit der frei werdende Platz
+    // wieder zaehlt. Dadurch stand das Panel aber auch selbst wieder zur Wahl.
+    // Mit der Determinierung oben faellt die Wahl dann spaetestens beim zweiten
+    // Klick erneut auf dasselbe Panel: "naechstes Panel" tut sichtbar nichts.
+    const tile = page.locator(`[data-mobile-slot="${key}"]`)
+    for (let round = 1; round <= 5; round += 1) {
+      const before = await nameOf(key!)
+      // Mobile: Die Pille erscheint erst nach Antippen der Kachel.
+      await tile.click({ position: { x: 4, y: 4 } })
+      await tile.locator('[role="button"]').click()
+      await expect
+        .poll(() => nameOf(key!), { timeout: 3000, message: `Klick ${round} von 5` })
+        .not.toBe(before)
+    }
+  })
 })

@@ -9,8 +9,10 @@ Sicherheit:
   • Die Zugangsdaten werden aus einer Env-Datei gelesen (Default: Sticky/chili.env).
     Sie tauchen NICHT in der Prozessliste auf (lftp-Kommandos kommen über stdin,
     Passwort URL-kodiert in der ftp://-URL) und werden NIE ausgegeben.
-  • Es wird NICHTS auf dem Server gelöscht (lftp `mirror -R` ohne `--delete`),
-    bestehende Unterordner bleiben unangetastet.
+  • Der Upload läuft ohne `--delete` (lftp `mirror -R`): es wird nie ein
+    Verzeichnis gelöscht und nie etwas, das der Build zufällig nicht enthält.
+    Gelöscht werden ausschließlich die einzelnen, namentlich in
+    STALE_REMOTE_FILES aufgeführten Altdateien.
   • Der Hostname für die TLS-Zertifikatsprüfung kommt ausschließlich aus der
     Konfiguration, nie aus einer DNS-Antwort (siehe resolve_tls_host).
 
@@ -58,6 +60,34 @@ ALIASES = {
     # TLS-Zertifikat geprüft wird (siehe resolve_tls_host).
     "tls_host": ["FTP_TLS_HOST", "SFTP_TLS_HOST", "DEPLOY_TLS_HOST", "TLS_HOST"],
 }
+
+# ── Altdateien auf dem Server ─────────────────────────────────────────────────
+# Der Upload spiegelt frontend/dist nur HINZU (`mirror -R` ohne `--delete`).
+# Das ist Absicht: Ein fehlgeschlagener oder unvollständiger Build würde mit
+# `--delete` die komplette Seite auf dem Webspace löschen. Die Kehrseite ist,
+# dass eine Datei, die aus dem Build genommen wurde, oben liegen bleibt und
+# öffentlich abrufbar ist. Deshalb hier eine ausdrückliche Liste einzelner
+# Dateien, die nach dem Upload gelöscht werden — bewusst KEINE Verzeichnisse.
+#
+# Woher die Einträge kommen:
+#   • .DS_Store: macOS-Reste aus früheren Uploads.
+#   • enhance/street-*.jpg, enhance/manifest.json, enhance/curated/curated-*.jpg:
+#     am 2026-08-03 aus dem Build genommene Bilder ohne belegte Lizenz. Sie
+#     liegen jetzt unter frontend/disabled-assets/ und dürfen nicht länger
+#     ausgeliefert werden (siehe deren README-Dateien).
+# Pfade sind relativ zum Remote-Wurzelverzeichnis, also genau die Pfade, unter
+# denen die Dateien auch in frontend/dist lagen.
+STALE_REMOTE_FILES = (
+    [
+        ".DS_Store",
+        "audio/.DS_Store",
+        "audio/botb/.DS_Store",
+        "assets/.DS_Store",
+    ]
+    + [f"enhance/street-{n}.jpg" for n in range(6)]
+    + ["enhance/manifest.json"]
+    + [f"enhance/curated/curated-{n}.jpg" for n in range(17)]
+)
 
 
 def parse_env_file(path):
@@ -171,11 +201,11 @@ def validate_ftps_target(host, port, remote):
 def build_lftp_commands(url, remote, dry_run):
     """Vollständiges lftp-Skript erzeugen; wird separat ohne Netzwerk getestet."""
     dry = "--dry-run" if dry_run else ""
-    rm_dsstore = "" if dry_run else (
-        f'rm -f "{remote}/.DS_Store"\n'
-        f'rm -f "{remote}/audio/.DS_Store"\n'
-        f'rm -f "{remote}/audio/botb/.DS_Store"\n'
-        f'rm -f "{remote}/assets/.DS_Store"\n'
+    # Jede Altdatei einzeln mit `rm -f` entfernen. `rm -f` meldet keinen Fehler,
+    # wenn die Datei gar nicht (mehr) da ist — der Deploy läuft also auch dann
+    # durch, wenn ein Eintrag längst gelöscht wurde.
+    rm_stale = "" if dry_run else "".join(
+        f'rm -f "{remote}/{name}"\n' for name in STALE_REMOTE_FILES
     )
     return (
         "set ftp:ssl-force true\n"
@@ -187,7 +217,7 @@ def build_lftp_commands(url, remote, dry_run):
         "set cmd:fail-exit yes\n"
         f"open {url}\n"
         f'mirror -R --no-perms --parallel=1 -X .DS_Store {dry} "{LOCAL_DIST}/" "{remote}/"\n'
-        f"{rm_dsstore}"
+        f"{rm_stale}"
         "bye\n"
     )
 
@@ -236,7 +266,8 @@ def main():
 
     print(f"→ Ziel: ftp(es)://{user}@{host}:{port}{remote}   (FTPS/TLS · Passwort verborgen)")
     print(f"→ Quelle: {LOCAL_DIST}")
-    print(f"→ Modus: {'DRY-RUN (kein Schreiben)' if args.dry_run else 'UPLOAD'} · kein Löschen auf dem Server")
+    print(f"→ Modus: {'DRY-RUN (kein Schreiben)' if args.dry_run else 'UPLOAD'} · "
+          f"kein Verzeichnis-Löschen, nur {len(STALE_REMOTE_FILES)} bekannte Altdateien")
 
     # 3) lftp-Skript (Passwort URL-kodiert in der URL, kommt über stdin → nicht in ps)
     url = f"ftp://{quote(user, safe='')}:{quote(password, safe='')}@{host}:{port}"
@@ -244,8 +275,9 @@ def main():
     # WICHTIG: KEIN --verbose! lftps Verbose-Modus würde pro Datei die volle
     # ftp://user:PASSWORT@host-URL ausgeben und so das Passwort im Terminal leaken.
     # Ohne --verbose zeigt lftp nur eine Transfer-Zusammenfassung.
-    # .DS_Store (macOS) NIE hochladen (-X) und bereits hochgeladene Reste gezielt
-    # entfernen (rm -f bricht nicht ab, wenn die Datei fehlt). Nur einzelne Dateien
+    # .DS_Store (macOS) NIE hochladen (-X). Bereits hochgeladene Reste und aus dem
+    # Build genommene Altdateien werden gezielt entfernt (rm -f bricht nicht ab,
+    # wenn die Datei fehlt) — siehe STALE_REMOTE_FILES. Nur einzelne Dateien
     # werden gelöscht, KEINE Verzeichnisse.
     # FTPS-Zertifikatspruefung und single-connection Upload sind zentral im
     # testbaren Skript-Builder festgelegt.

@@ -1316,6 +1316,13 @@ export default function App() {
       pool.forEach((comp, i) => {
         const name = getCompName(comp)
         if (!name || shownNames.has(name)) return
+        // Das gerade sichtbare Panel darf sich nicht selbst wieder ziehen.
+        // shownNames hat seinen Namen oben absichtlich freigegeben, damit der
+        // Platz fuer andere Slots wieder zaehlt — ohne diese Zeile stand es
+        // damit aber auch selbst wieder zur Wahl, und "naechstes Panel" tat
+        // sichtbar nichts. Der primaere Navigationspfad schliesst sein
+        // aktuelles Panel ueber `comp === currentComp` genauso aus.
+        if (i === slot.activeIdx || name === slot.fallbackName) return
         if (!isText) {
           // Audio bleibt dem einen gelockten Slot vorbehalten.
           if (AUDIO_PANELS.has(name)) return

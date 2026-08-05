@@ -1,3 +1,5 @@
+import os
+import re
 import unittest
 from unittest import mock
 
@@ -26,6 +28,66 @@ class DeploySecurityTests(unittest.TestCase):
     def test_rejects_command_injection_in_remote_path(self):
         with self.assertRaisesRegex(SystemExit, "Remote-Ziel"):
             deploy.validate_ftps_target("upload.example.com", "21", '/htdocs"\nbye')
+
+
+class StaleRemoteFileTests(unittest.TestCase):
+    """Der Upload spiegelt nur hinzu. Aus dem Build genommene Dateien muessen
+    deshalb ausdruecklich geloescht werden, sonst bleiben sie oeffentlich
+    abrufbar — genau das war bei den 23 Enhance-JPEGs und der manifest.json
+    passiert. Diese Tests halten die Loeschliste vollstaendig und harmlos."""
+
+    REMOTE = "/htdocs/x"
+
+    def upload_script(self):
+        """Das echte (nicht dry-run) Skript, so wie es an lftp geht."""
+        return deploy.build_lftp_commands(
+            "ftp://user:password@upload.example.com:21", self.REMOTE, False,
+        )
+
+    def test_upload_deletes_every_disabled_asset(self):
+        # Erwartung nicht abtippen, sondern aus frontend/disabled-assets/ ableiten:
+        # so faellt es auf, wenn spaeter weitere Dateien stillgelegt werden, ohne
+        # die Loeschliste nachzuziehen.
+        base = os.path.join(deploy.SCRIPT_DIR, "frontend", "disabled-assets")
+        # Ordnername im Repo → Ordner auf dem Server, unter dem die Datei lag.
+        folders = {"enhance-street": "enhance", "enhance-curated": "enhance/curated"}
+        expected = set()
+        for folder, remote_dir in folders.items():
+            for name in os.listdir(os.path.join(base, folder)):
+                if name == "README.md":
+                    continue  # Doku, war nie Teil des Builds
+                expected.add(f"{remote_dir}/{name}")
+        self.assertEqual(len(expected), 24, "6 street + manifest.json + 17 curated")
+
+        script = self.upload_script()
+        for path in sorted(expected):
+            self.assertIn(f'rm -f "{self.REMOTE}/{path}"\n', script, path)
+
+    def test_upload_still_removes_the_ds_store_leftovers(self):
+        script = self.upload_script()
+        for path in (".DS_Store", "audio/.DS_Store", "audio/botb/.DS_Store", "assets/.DS_Store"):
+            self.assertIn(f'rm -f "{self.REMOTE}/{path}"\n', script, path)
+
+    def test_upload_never_deletes_directories_or_mirrors_with_delete(self):
+        # Ein fehlgeschlagener Build wuerde mit `--delete` oder einem
+        # Verzeichnis-Loeschen die komplette Seite abraeumen.
+        script = self.upload_script()
+        self.assertNotIn("--delete", script)
+        self.assertNotIn("rm -r", script)
+        self.assertNotIn("rmdir", script)
+        removed = re.findall(r'^rm -f "([^"]+)"$', script, re.MULTILINE)
+        self.assertEqual(len(removed), len(deploy.STALE_REMOTE_FILES))
+        for path in removed:
+            self.assertTrue(path.startswith(self.REMOTE + "/"), path)
+            # Jeder Eintrag endet auf einen Dateinamen mit Endung (auch
+            # ".DS_Store" zaehlt), niemals auf einen Verzeichnisnamen.
+            self.assertRegex(os.path.basename(path), r"\.[A-Za-z0-9_]+$", path)
+
+    def test_dry_run_deletes_nothing_at_all(self):
+        script = deploy.build_lftp_commands(
+            "ftp://user:password@upload.example.com:21", self.REMOTE, True,
+        )
+        self.assertNotIn("rm -f", script)
 
 
 class ResolveTlsHostTests(unittest.TestCase):

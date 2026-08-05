@@ -4,6 +4,19 @@ Vor Übernahme jeden Punkt gegen aktuellen Code und bestehenden Projekt-Backlog 
 
 ## Produkt/Qualität
 
+- **MOD-Panel: erneuter Drop des gestoppten aktuellen Stücks startet es nicht.**
+  Wer dasselbe MOD noch einmal in `AmiModPanel` zieht, während genau dieses Stück
+  ausgewählt und gestoppt ist, bekommt keine Wiedergabe. Kette:
+  `mergeUserTracks` (`frontend/src/panels/AmiModPanel.tsx:97`) gibt bei einem
+  reinen Duplikat absichtlich `prev` zurück, damit die Trackliste ihre Identität
+  behält; der Drop-Pfad (`:621-632`) setzt danach `setTrackIdx(targetIdx)` auf den
+  Wert, der ohnehin schon gilt. Damit ändert sich keine der Abhängigkeiten des
+  Lade-Effects `[allTracks, audioId, trackIdx, player]` (`:518`), der Effect läuft
+  nicht erneut, und `shouldAutoPlayRef` bleibt gesetzt liegen. Bei der Lösung
+  darauf achten, dass die Identität von `allTracks` erhalten bleibt — sie
+  verhindert, dass ein Drop den gerade laufenden Track abwürgt (siehe Test
+  „erneuter Drop eines bekannten MODs behaelt die Trackliste identisch" in
+  `frontend/tests/review-regressions.spec.ts`).
 - Schwächere Hardware mit mehreren Canvas-/GL-Panels messen; nur bestätigte Engpässe bearbeiten.
 - Archiviertes Daggerfall-Panel nur auf ausdrücklichen Wunsch modernisieren.
 - Lizenz-/Attributions-Registry für weitere externe Demoszene-Werke ausbauen.

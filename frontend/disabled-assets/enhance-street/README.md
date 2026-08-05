@@ -6,7 +6,7 @@ angezeigt. Alles unterhalb von `frontend/public/` kopiert Vite unverändert in
 den Build — die Bilder wurden also mit ausgeliefert.
 
 **Warum sie hier liegen:** Ein Skript `scripts/fetch-images.mjs` hatte sie am
-2026-05-20 als 400-px-Vorschaubilder von Wikimedia Commons geladen (Suchbegriff
+2026-05-20 als 500-px-Vorschaubilder von Wikimedia Commons geladen (Suchbegriff
 „pedestrian street crossing"). Das Skript gab die Commons-Dateititel nur auf der
 Konsole aus und schrieb in die beiliegende `manifest.json` ausschließlich die
 Dateinamen. Welche Commons-Datei, welcher Urheber und welche Lizenz zu

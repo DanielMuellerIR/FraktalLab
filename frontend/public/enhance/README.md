@@ -82,14 +82,15 @@ ausgelieferten Dateien sind unten über ihre Prüfsumme eindeutig festgehalten.
 | `cctv-5.jpg` | Parkplatz vor einem Wohnblock im Morgennebel, eine Person quert | 29.044 Byte | `671b832099366a573e0e9f374e2793c3df33dbb34c250e205cb4571aa42a1b0d` |
 
 Zusammen 216.007 Byte. Der vorherige Bestand — sechs Wikimedia-Commons-Vorschauen
-mit 400 px Breite — belegte 337.322 Byte; die neuen Bilder sind also kleiner und
-haben trotzdem die doppelte Kantenlänge.
+mit 500 px Breite — belegte 337.322 Byte; die neuen Bilder sind also kleiner und
+haben trotzdem die 1,6-fache Breite und mindestens die 1,2-fache Höhe
+(800 × 450 statt 500 × 333–375).
 
 ## Was vorher hier lag
 
 Bis zum 2026-08-03 lagen in diesem Ordner sechs Dateien `street-0.jpg` bis
 `street-5.jpg` samt einer `manifest.json`, die nur die Dateinamen enthielt. Ein
-Skript `scripts/fetch-images.mjs` hatte sie am 2026-05-20 als 400-px-Vorschauen
+Skript `scripts/fetch-images.mjs` hatte sie am 2026-05-20 als 500-px-Vorschauen
 von Wikimedia Commons geladen. Welche Commons-Datei, welcher Urheber und welche
 Lizenz zu welcher Nummer gehörten, war nirgends festgehalten — und die meisten
 Lizenzen auf Commons verlangen Namensnennung. Die sechs Dateien liegen jetzt
