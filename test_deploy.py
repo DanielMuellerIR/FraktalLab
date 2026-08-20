@@ -1,5 +1,6 @@
 import os
 import re
+import tempfile
 import unittest
 from unittest import mock
 
@@ -34,7 +35,8 @@ class StaleRemoteFileTests(unittest.TestCase):
     """Der Upload spiegelt nur hinzu. Aus dem Build genommene Dateien muessen
     deshalb ausdruecklich geloescht werden, sonst bleiben sie oeffentlich
     abrufbar — genau das war bei den 23 Enhance-JPEGs und der manifest.json
-    passiert. Diese Tests halten die Loeschliste vollstaendig und harmlos."""
+    passiert. Diese Tests gleichen Archiv, historische Ausnahmen und das
+    erzeugte lftp-Skript gegeneinander ab."""
 
     REMOTE = "/htdocs/x"
 
@@ -44,50 +46,109 @@ class StaleRemoteFileTests(unittest.TestCase):
             "ftp://user:password@upload.example.com:21", self.REMOTE, False,
         )
 
-    def test_upload_deletes_every_disabled_asset(self):
-        # Erwartung nicht abtippen, sondern aus frontend/disabled-assets/ ableiten:
-        # so faellt es auf, wenn spaeter weitere Dateien stillgelegt werden, ohne
-        # die Loeschliste nachzuziehen.
-        base = os.path.join(deploy.SCRIPT_DIR, "frontend", "disabled-assets")
-        # Ordnername im Repo → Ordner auf dem Server, unter dem die Datei lag.
-        folders = {"enhance-street": "enhance", "enhance-curated": "enhance/curated"}
-        expected = set()
-        for folder, remote_dir in folders.items():
-            for name in os.listdir(os.path.join(base, folder)):
-                if name == "README.md":
-                    continue  # Doku, war nie Teil des Builds
-                expected.add(f"{remote_dir}/{name}")
-        self.assertEqual(len(expected), 24, "6 street + manifest.json + 17 curated")
+    def test_stale_list_is_exactly_archive_plus_explicit_history(self):
+        expected = deploy.LEGACY_STALE_REMOTE_FILES + deploy.disabled_asset_remote_files()
+        self.assertEqual(deploy.STALE_REMOTE_FILES, expected)
 
-        script = self.upload_script()
-        for path in sorted(expected):
-            self.assertIn(f'rm -f "{self.REMOTE}/{path}"\n', script, path)
+        removed = re.findall(r'^rm -f "([^"]+)"$', self.upload_script(), re.MULTILINE)
+        self.assertEqual(removed, [f"{self.REMOTE}/{name}" for name in expected])
 
-    def test_upload_still_removes_the_ds_store_leftovers(self):
-        script = self.upload_script()
-        for path in (".DS_Store", "audio/.DS_Store", "audio/botb/.DS_Store", "assets/.DS_Store"):
-            self.assertIn(f'rm -f "{self.REMOTE}/{path}"\n', script, path)
+    def test_history_only_files_are_removed_too(self):
+        required = {
+            "target.jpg",
+            "audio/botb/botb-14870.sid",
+            "audio/track_142827.mod.bin",
+            "audio/track_58072.mod.bin",
+            "audio/track_87180.mod.bin",
+        }
+        self.assertLessEqual(required, set(deploy.STALE_REMOTE_FILES))
+
+    def test_archive_scan_ignores_docs_hidden_files_and_symlinks(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = os.path.join(temp_dir, "disabled-assets")
+            street = os.path.join(base, "enhance-street")
+            curated = os.path.join(base, "enhance-curated")
+            os.makedirs(os.path.join(street, "nested"))
+            os.makedirs(curated)
+            for path in (
+                os.path.join(street, "README.md"),
+                os.path.join(street, ".DS_Store"),
+                os.path.join(street, "street-0.jpg"),
+                os.path.join(street, "nested", "manifest.json"),
+            ):
+                with open(path, "wb") as file:
+                    file.write(b"x")
+            os.symlink(
+                os.path.join(street, "street-0.jpg"),
+                os.path.join(curated, "link.jpg"),
+            )
+            self.assertEqual(
+                deploy.disabled_asset_remote_files(base),
+                ("enhance/street-0.jpg", "enhance/nested/manifest.json"),
+            )
+
+    def test_archive_scan_rejects_unmapped_folder(self):
+        with tempfile.TemporaryDirectory() as base:
+            for folder in (*deploy.DISABLED_ASSET_REMOTE_DIRS, "new-disabled-assets"):
+                os.makedirs(os.path.join(base, folder))
+            with self.assertRaisesRegex(RuntimeError, "new-disabled-assets"):
+                deploy.disabled_asset_remote_files(base)
 
     def test_upload_never_deletes_directories_or_mirrors_with_delete(self):
-        # Ein fehlgeschlagener Build wuerde mit `--delete` oder einem
-        # Verzeichnis-Loeschen die komplette Seite abraeumen.
+        # Die gesamte Spiegelzeile ist der Vertrag. So fallen auch Kurzformen
+        # wie `-e` oder Varianten wie --Remove-source-files auf.
         script = self.upload_script()
-        self.assertNotIn("--delete", script)
+        mirror = next(line for line in script.splitlines() if line.startswith("mirror "))
+        self.assertEqual(
+            mirror,
+            f'mirror -R --no-perms --parallel=1 -X .DS_Store '
+            f'"{deploy.LOCAL_DIST}/" "{self.REMOTE}/"',
+        )
         self.assertNotIn("rm -r", script)
         self.assertNotIn("rmdir", script)
-        removed = re.findall(r'^rm -f "([^"]+)"$', script, re.MULTILINE)
-        self.assertEqual(len(removed), len(deploy.STALE_REMOTE_FILES))
-        for path in removed:
-            self.assertTrue(path.startswith(self.REMOTE + "/"), path)
-            # Jeder Eintrag endet auf einen Dateinamen mit Endung (auch
-            # ".DS_Store" zaehlt), niemals auf einen Verzeichnisnamen.
-            self.assertRegex(os.path.basename(path), r"\.[A-Za-z0-9_]+$", path)
+
+    def test_rejects_traversal_and_noncanonical_paths(self):
+        with tempfile.TemporaryDirectory() as local_dist:
+            for path in ("../index.html", "/index.html", "assets//x.js", "assets\\x.js"):
+                with self.subTest(path=path):
+                    with self.assertRaisesRegex(ValueError, "Unsicherer"):
+                        deploy.validate_stale_remote_files((path,), local_dist)
+
+    def test_rejects_stale_name_that_exists_in_current_build(self):
+        with tempfile.TemporaryDirectory() as local_dist:
+            collision = os.path.join(local_dist, "enhance", "manifest.json")
+            os.makedirs(os.path.dirname(collision))
+            with open(collision, "wb") as file:
+                file.write(b"current")
+            with self.assertRaisesRegex(ValueError, "kollidiert"):
+                deploy.build_lftp_commands(
+                    "opaque-test-url",
+                    self.REMOTE,
+                    False,
+                    local_dist=local_dist,
+                    stale_files=("enhance/manifest.json",),
+                )
+
+    def test_no_stale_name_exists_in_public_source(self):
+        public = os.path.join(deploy.SCRIPT_DIR, "frontend", "public")
+        for name in deploy.STALE_REMOTE_FILES:
+            with self.subTest(name=name):
+                self.assertFalse(os.path.exists(os.path.join(public, *name.split("/"))))
 
     def test_dry_run_deletes_nothing_at_all(self):
         script = deploy.build_lftp_commands(
             "ftp://user:password@upload.example.com:21", self.REMOTE, True,
         )
         self.assertNotIn("rm -f", script)
+
+    def test_dry_run_lists_every_planned_delete_without_claiming_to_delete(self):
+        lines = deploy.stale_mode_lines(self.REMOTE, True, ("old-a.jpg", "old-b.sid"))
+        self.assertIn("2 geplante Altdatei-Löschungen", lines[0])
+        self.assertIn("nur angezeigt", lines[0])
+        self.assertEqual(lines[1:], [
+            f"  - {self.REMOTE}/old-a.jpg",
+            f"  - {self.REMOTE}/old-b.sid",
+        ])
 
 
 class ResolveTlsHostTests(unittest.TestCase):

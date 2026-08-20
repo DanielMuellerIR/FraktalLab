@@ -143,6 +143,12 @@ npm run build
 npm run lint
 ```
 
+Änderungen an `deploy.py` oder den Enhance-Assets zusätzlich aus dem Repo-Root prüfen:
+
+```bash
+python3 -m unittest test_deploy test_enhance_docs
+```
+
 Für visuelle Paneländerungen Dev-Server starten und danach:
 
 ```bash

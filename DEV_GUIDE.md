@@ -17,6 +17,9 @@ cd frontend && npm run build
 # Lint
 cd frontend && npm run lint
 
+# Deploy- und Enhance-Asset-Regressionen (aus dem Repo-Root)
+python3 -m unittest test_deploy test_enhance_docs
+
 # Visueller Panel-Check (Dev-Server muss laufen)
 cd frontend && npm run test:panels
 
@@ -51,4 +54,5 @@ cd frontend && npm run test:perf
 
 **Tailwind v4:** Kein `tailwind.config.js`. Konfiguration ausschließlich via CSS in `frontend/src/index.css`.
 
-**Neue Panels:** Immer in `POOL_TEXT` oder `POOL_GFX` in `App.tsx` eintragen. Sonst erscheinen sie nie im Grid.
+**Neue Panels:** In `frontend/src/panels/panel-registry.ts` registrieren und dort dem
+Text- oder GFX-Pool zuordnen. Sonst erscheinen sie nie im Grid.

@@ -2,8 +2,10 @@
 """
 deploy.py — Upload des Production-Builds auf den Netcup-Webspace (dm0.de) per FTPS.
 
-Lädt NUR den fertigen Build (frontend/dist/) hoch — also exakt das, was zum
-Betrieb der Seite nötig ist. KEINE Quell-/Doku-Dateien (AGENTS.md etc.).
+Lädt ausschließlich den fertigen Vite-Build (frontend/dist/) hoch. Dazu gehören
+auch Dateien, die Vite unverändert aus frontend/public/ übernimmt, etwa die
+öffentlichen Herkunfts-READMEs der Bilder und Schriften; Projektquellen wie
+AGENTS.md werden nicht hochgeladen.
 
 Sicherheit:
   • Die Zugangsdaten werden aus einer Env-Datei gelesen (Default: Sticky/chili.env).
@@ -39,6 +41,7 @@ import shutil
 import socket
 import subprocess
 import sys
+from pathlib import PurePosixPath
 from urllib.parse import quote
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
@@ -69,25 +72,67 @@ ALIASES = {
 # öffentlich abrufbar ist. Deshalb hier eine ausdrückliche Liste einzelner
 # Dateien, die nach dem Upload gelöscht werden — bewusst KEINE Verzeichnisse.
 #
-# Woher die Einträge kommen:
-#   • .DS_Store: macOS-Reste aus früheren Uploads.
-#   • enhance/street-*.jpg, enhance/manifest.json, enhance/curated/curated-*.jpg:
-#     am 2026-08-03 aus dem Build genommene Bilder ohne belegte Lizenz. Sie
-#     liegen jetzt unter frontend/disabled-assets/ und dürfen nicht länger
-#     ausgeliefert werden (siehe deren README-Dateien).
-# Pfade sind relativ zum Remote-Wurzelverzeichnis, also genau die Pfade, unter
-# denen die Dateien auch in frontend/dist lagen.
-STALE_REMOTE_FILES = (
-    [
-        ".DS_Store",
-        "audio/.DS_Store",
-        "audio/botb/.DS_Store",
-        "assets/.DS_Store",
-    ]
-    + [f"enhance/street-{n}.jpg" for n in range(6)]
-    + ["enhance/manifest.json"]
-    + [f"enhance/curated/curated-{n}.jpg" for n in range(17)]
+# Stillgelegte Ordner im Repo und ihr früherer Ort unter frontend/public/.
+# Die Dateinamen selbst werden daraus abgeleitet, damit neuer stillgelegter
+# Bestand nicht an einer zweiten handgepflegten Liste vorbeiläuft.
+DISABLED_ASSET_REMOTE_DIRS = {
+    "enhance-curated": "enhance/curated",
+    "enhance-street": "enhance",
+}
+
+# Altdateien ohne lokale Archivkopie. Die fünf Audio-/Bilddateien stammen aus
+# belegten Löschungen der Git-Historie von frontend/public/; die .DS_Store-Pfade
+# sind macOS-Reste aus früheren Uploads.
+LEGACY_STALE_REMOTE_FILES = (
+    ".DS_Store",
+    "audio/.DS_Store",
+    "audio/botb/.DS_Store",
+    "assets/.DS_Store",
+    "target.jpg",
+    "audio/botb/botb-14870.sid",
+    "audio/track_142827.mod.bin",
+    "audio/track_58072.mod.bin",
+    "audio/track_87180.mod.bin",
 )
+
+
+def disabled_asset_remote_files(base=None):
+    """Stillgelegte Dateien auf ihre früheren public/-Pfade abbilden.
+
+    Markdown und versteckte Finder-Dateien waren keine ausgelieferten Assets.
+    Symlinks werden bewusst nicht verfolgt: Die Löschliste soll nur Dateien
+    enthalten, deren Archivkopie direkt in diesem Repo liegt.
+    """
+    base = base or os.path.join(SCRIPT_DIR, "frontend", "disabled-assets")
+    actual_folders = {
+        entry.name for entry in os.scandir(base)
+        if entry.is_dir(follow_symlinks=False) and not entry.name.startswith(".")
+    }
+    unmapped = actual_folders - set(DISABLED_ASSET_REMOTE_DIRS)
+    if unmapped:
+        raise RuntimeError(
+            "Stillgelegte Asset-Ordner ohne früheren Remote-Pfad: "
+            + ", ".join(sorted(unmapped))
+        )
+    result = []
+    for folder, remote_dir in sorted(DISABLED_ASSET_REMOTE_DIRS.items()):
+        local_dir = os.path.join(base, folder)
+        if not os.path.isdir(local_dir):
+            raise RuntimeError(f"Stillgelegter Asset-Ordner fehlt: {local_dir}")
+        for root, dirs, names in os.walk(local_dir):
+            dirs[:] = sorted(name for name in dirs if not name.startswith("."))
+            for name in sorted(names):
+                if name.startswith(".") or name.lower().endswith(".md"):
+                    continue
+                local_path = os.path.join(root, name)
+                if not os.path.isfile(local_path) or os.path.islink(local_path):
+                    continue
+                relative = os.path.relpath(local_path, local_dir).replace(os.sep, "/")
+                result.append(str(PurePosixPath(remote_dir, relative)))
+    return tuple(result)
+
+
+STALE_REMOTE_FILES = LEGACY_STALE_REMOTE_FILES + disabled_asset_remote_files()
 
 
 def parse_env_file(path):
@@ -198,14 +243,40 @@ def validate_ftps_target(host, port, remote):
         sys.exit("FEHLER: Das Remote-Ziel muss ein absoluter Pfad ohne Steuerzeichen oder Anführungszeichen sein.")
 
 
-def build_lftp_commands(url, remote, dry_run):
+def validate_stale_remote_files(stale_files, local_dist=LOCAL_DIST):
+    """Nur relative Einzeldateien zulassen, die der Build nicht neu ausliefert."""
+    validated = []
+    for name in stale_files:
+        if not isinstance(name, str) or not name:
+            raise ValueError("Leerer oder ungültiger Altdatei-Pfad")
+        path = PurePosixPath(name)
+        if (path.is_absolute() or ".." in path.parts or path.as_posix() != name
+                or any(char in name for char in ('\\', '\r', '\n', '"'))):
+            raise ValueError(f"Unsicherer Altdatei-Pfad: {name}")
+        local_path = os.path.join(local_dist, *path.parts)
+        if os.path.exists(local_path):
+            raise ValueError(
+                f"Altdatei kollidiert mit dem aktuellen Build: {name} ({local_path})"
+            )
+        validated.append(name)
+    if len(validated) != len(set(validated)):
+        raise ValueError("Altdatei-Liste enthält doppelte Pfade")
+    return tuple(validated)
+
+
+def build_lftp_commands(url, remote, dry_run, *, local_dist=LOCAL_DIST,
+                        stale_files=None):
     """Vollständiges lftp-Skript erzeugen; wird separat ohne Netzwerk getestet."""
-    dry = "--dry-run" if dry_run else ""
+    stale_files = validate_stale_remote_files(
+        STALE_REMOTE_FILES if stale_files is None else stale_files,
+        local_dist,
+    )
+    dry = " --dry-run" if dry_run else ""
     # Jede Altdatei einzeln mit `rm -f` entfernen. `rm -f` meldet keinen Fehler,
     # wenn die Datei gar nicht (mehr) da ist — der Deploy läuft also auch dann
     # durch, wenn ein Eintrag längst gelöscht wurde.
     rm_stale = "" if dry_run else "".join(
-        f'rm -f "{remote}/{name}"\n' for name in STALE_REMOTE_FILES
+        f'rm -f "{remote}/{name}"\n' for name in stale_files
     )
     return (
         "set ftp:ssl-force true\n"
@@ -216,10 +287,24 @@ def build_lftp_commands(url, remote, dry_run):
         "set net:timeout 25\n"
         "set cmd:fail-exit yes\n"
         f"open {url}\n"
-        f'mirror -R --no-perms --parallel=1 -X .DS_Store {dry} "{LOCAL_DIST}/" "{remote}/"\n'
+        f'mirror -R --no-perms --parallel=1 -X .DS_Store{dry} "{local_dist}/" "{remote}/"\n'
         f"{rm_stale}"
         "bye\n"
     )
+
+
+def stale_mode_lines(remote, dry_run, stale_files):
+    """Benutzeranzeige für den Löschteil; Dry-Run nennt jedes geplante Ziel."""
+    if dry_run:
+        return [
+            f"→ Modus: DRY-RUN (kein Schreiben) · {len(stale_files)} geplante "
+            "Altdatei-Löschungen werden nur angezeigt",
+            *(f"  - {remote.rstrip('/')}/{name}" for name in stale_files),
+        ]
+    return [
+        f"→ Modus: UPLOAD · kein Verzeichnis-Löschen, nur "
+        f"{len(stale_files)} bekannte Altdateien",
+    ]
 
 
 def main():
@@ -243,6 +328,10 @@ def main():
             sys.exit("FEHLER: Build fehlgeschlagen.")
     if not os.path.isdir(LOCAL_DIST) or not os.listdir(LOCAL_DIST):
         sys.exit(f"FEHLER: Build-Ordner fehlt/leer: {LOCAL_DIST} (ohne --no-build bauen).")
+    try:
+        stale_files = validate_stale_remote_files(STALE_REMOTE_FILES)
+    except ValueError as err:
+        sys.exit(f"FEHLER: {err}")
 
     # 2) Zugangsdaten (werden NICHT ausgegeben)
     env = parse_env_file(args.env)
@@ -266,12 +355,13 @@ def main():
 
     print(f"→ Ziel: ftp(es)://{user}@{host}:{port}{remote}   (FTPS/TLS · Passwort verborgen)")
     print(f"→ Quelle: {LOCAL_DIST}")
-    print(f"→ Modus: {'DRY-RUN (kein Schreiben)' if args.dry_run else 'UPLOAD'} · "
-          f"kein Verzeichnis-Löschen, nur {len(STALE_REMOTE_FILES)} bekannte Altdateien")
+    for line in stale_mode_lines(remote, args.dry_run, stale_files):
+        print(line)
 
     # 3) lftp-Skript (Passwort URL-kodiert in der URL, kommt über stdin → nicht in ps)
     url = f"ftp://{quote(user, safe='')}:{quote(password, safe='')}@{host}:{port}"
-    # mirror -R = reverse mirror (LOKAL → REMOTE). KEIN --delete → nichts wird gelöscht.
+    # mirror -R = reverse mirror (LOKAL → REMOTE). Ohne --delete entfernt der
+    # Spiegel selbst nichts; nur die validierten Einzeldateien folgen per rm -f.
     # WICHTIG: KEIN --verbose! lftps Verbose-Modus würde pro Datei die volle
     # ftp://user:PASSWORT@host-URL ausgeben und so das Passwort im Terminal leaken.
     # Ohne --verbose zeigt lftp nur eine Transfer-Zusammenfassung.
@@ -281,7 +371,7 @@ def main():
     # werden gelöscht, KEINE Verzeichnisse.
     # FTPS-Zertifikatspruefung und single-connection Upload sind zentral im
     # testbaren Skript-Builder festgelegt.
-    cmds = build_lftp_commands(url, remote, args.dry_run)
+    cmds = build_lftp_commands(url, remote, args.dry_run, stale_files=stale_files)
 
     # WICHTIG: lftp-Ausgabe NIE ungefiltert durchreichen. `mirror --dry-run` (und
     # verbose Läufe) echoen jede Transfer-Zeile MIT der vollen ftp://user:pass@host-

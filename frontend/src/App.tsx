@@ -57,6 +57,10 @@ interface MobileIndices {
   // stattdessen anzuzeigenden Pool-Index. Nur weitergeschaltete Slots stehen
   // hier; alle anderen füllt die Pool-Reihenfolge unverändert auf.
   extras: Record<string, number>
+  // Manueller Notnagel: Wenn kein freies kompatibles Panel existiert, darf
+  // genau dieser Slot einen bereits sichtbaren Namen ein zweites Mal nutzen.
+  // Auto-Rotation setzt diesen Eintrag nie.
+  duplicateSlots: Record<string, boolean>
 }
 
 interface MobileSlotSelection {
@@ -96,6 +100,7 @@ function generateMobileIndices(reviews: ReviewEntry[]): MobileIndices {
     gfxIdx2: gfx[1],
     gfxIdx3: gfx[2],
     extras: {},
+    duplicateSlots: {},
   };
 }
 
@@ -111,20 +116,51 @@ function buildMobileSlots(
 ): MobileSlotSelection[] {
   const { textPool, gfxPool } = getFilteredPools(reviews)
   const slots: MobileSlotSelection[] = []
-  const usedNames = new Set<string>()
+  const extras = preferred.extras ?? {}
+  const duplicateSlots = preferred.duplicateSlots ?? {}
+  const duplicateNameAllowance = new Map<string, number>()
+  const usedNameCounts = new Map<string, number>()
   let glCount = 0
+
+  const allowDuplicateFor = (
+    key: string,
+    pool: React.ComponentType<any>[],
+    idx: number,
+  ) => {
+    if (!duplicateSlots[key]) return
+    const name = getCompName(pool[idx])
+    if (!name) return
+    duplicateNameAllowance.set(name, (duplicateNameAllowance.get(name) ?? 0) + 1)
+  }
+  allowDuplicateFor('text', textPool, preferred.textIdx)
+  allowDuplicateFor('audio', gfxPool, preferred.gfxIdx1)
+  allowDuplicateFor('gfx2', gfxPool, preferred.gfxIdx2)
+  allowDuplicateFor('gfx3', gfxPool, preferred.gfxIdx3)
+  gfxPool.forEach((_, idx) => {
+    allowDuplicateFor(`gfx-extra-${idx}`, gfxPool, extras[`gfx:${idx}`] ?? idx)
+  })
+  textPool.forEach((_, idx) => {
+    allowDuplicateFor(`text-extra-${idx}`, textPool, extras[`text:${idx}`] ?? idx)
+  })
+
+  const canUseName = (name: string): boolean => (
+    (usedNameCounts.get(name) ?? 0) < 1 + (duplicateNameAllowance.get(name) ?? 0)
+  )
+  const rememberName = (name: string) => {
+    usedNameCounts.set(name, (usedNameCounts.get(name) ?? 0) + 1)
+  }
 
   const addGfx = (idx: number, key: string, primarySlot?: number, requireAudio = false): boolean => {
     const comp = gfxPool[idx]
     if (!comp || slots.length >= count) return false
     const name = getCompName(comp)
     const isAudio = AUDIO_PANELS.has(name)
-    if (isAudio !== requireAudio || usedNames.has(name)) return false
+    if (isAudio !== requireAudio || !canUseName(name)) return false
     // Audio ist die hoeherrangige Garantie: falls MOD/SID fuer die aktuelle
     // Rasterform kein Aspect-Match haben, bleibt trotzdem genau einer sichtbar.
     if (!requireAudio && !aspectMatches(panelAspect(name), cellA)) return false
     if (isGLPanel(name) && glCount >= MAX_GL_PANELS_PER_LAYOUT) return false
-    usedNames.add(name)
+    rememberName(name)
     if (isGLPanel(name)) glCount += 1
     slots.push({ key, pool: gfxPool, activeIdx: idx, fallbackName: name, locked: isAudio, primarySlot })
     return true
@@ -134,8 +170,8 @@ function buildMobileSlots(
     const comp = textPool[idx]
     if (!comp || slots.length >= count) return false
     const name = getCompName(comp)
-    if (!name || usedNames.has(name)) return false
-    usedNames.add(name)
+    if (!name || !canUseName(name)) return false
+    rememberName(name)
     slots.push({ key, pool: textPool, activeIdx: idx, fallbackName: name, locked: false, primarySlot })
     return true
   }
@@ -159,14 +195,65 @@ function buildMobileSlots(
   // diesen Slot. Frueher hatten diese Slots gar keinen Zustand: jede Navigation
   // wuerfelte stattdessen die komplette Mobile-Auswahl neu und riss dabei auch
   // das gelockte Audio-Panel heraus.
-  const extras = preferred.extras ?? {}
   for (let idx = 0; idx < gfxPool.length && slots.length < count; idx += 1) {
-    addGfx(extras[`gfx:${idx}`] ?? idx, `gfx-extra-${idx}`)
+    const redirected = extras[`gfx:${idx}`]
+    if (!addGfx(redirected ?? idx, `gfx-extra-${idx}`)
+        && redirected != null && redirected !== idx) {
+      // Eine Umleitung kann nach Dichte-/Orientierungswechsel inkompatibel sein.
+      // Dann bleibt der Slot mit seinem natürlichen Panel erhalten.
+      addGfx(idx, `gfx-extra-${idx}`)
+    }
   }
   for (let idx = 0; idx < textPool.length && slots.length < count; idx += 1) {
-    addText(extras[`text:${idx}`] ?? idx, `text-extra-${idx}`)
+    const redirected = extras[`text:${idx}`]
+    if (!addText(redirected ?? idx, `text-extra-${idx}`)
+        && redirected != null && redirected !== idx) {
+      addText(idx, `text-extra-${idx}`)
+    }
   }
   return slots
+}
+
+function pickMobileReplacement(
+  slots: MobileSlotSelection[],
+  slot: MobileSlotSelection,
+  pool: React.ComponentType<any>[],
+  isText: boolean,
+  targetAspect: Aspect,
+  reviews: ReviewEntry[],
+  strict: boolean,
+): { idx: number; allowDuplicate: boolean } | null {
+  const shownElsewhere = new Set(
+    slots.filter(candidate => candidate.key !== slot.key).map(candidate => candidate.fallbackName),
+  )
+  const otherGL = slots.filter(candidate => (
+    candidate.key !== slot.key && isGLPanel(candidate.fallbackName)
+  )).length
+
+  const compatible: number[] = []
+  pool.forEach((comp, idx) => {
+    const name = getCompName(comp)
+    if (!name || name === slot.fallbackName) return
+    if (!isText) {
+      if (AUDIO_PANELS.has(name)) return
+      if (!aspectMatches(panelAspect(name), targetAspect)) return
+      if (isGLPanel(name) && otherGL + 1 > MAX_GL_PANELS_PER_LAYOUT) return
+    }
+    compatible.push(idx)
+  })
+
+  const distinct = compatible.filter(idx => !shownElsewhere.has(getCompName(pool[idx])))
+  const candidates = distinct.length > 0 ? distinct : strict ? [] : compatible
+  if (candidates.length === 0) return null
+
+  const scored = candidates.map(idx => {
+    const review = reviews.find(entry => entry.panel === getCompName(pool[idx]))
+    const weight = review?.rating === 'up' ? 3.0 : review?.rating === 'down' ? 0.0 : 1.0
+    const random = Math.random()
+    return { idx, score: weight > 0 ? Math.pow(random, 1 / weight) : -1 }
+  })
+  scored.sort((a, b) => b.score - a.score)
+  return { idx: scored[0].idx, allowDuplicate: distinct.length === 0 }
 }
 
 function mobileCellAspect(cols: number, rows: number): Aspect {
@@ -1057,10 +1144,16 @@ export default function App() {
   const [isMobile, setIsMobile] = useState(() => {
     return detectMobileLayout()
   })
+  const [mobileLandscape, setMobileLandscape] = useState(() => (
+    typeof window !== 'undefined' && window.innerWidth > window.innerHeight
+  ))
 
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(detectMobileLayout())
+      // isMobile bleibt beim Drehen eines Telefons `true`; ein eigener Zustand
+      // erzwingt trotzdem den Neuaufbau des 3×5-/5×3-Rasters.
+      setMobileLandscape(window.innerWidth > window.innerHeight)
     }
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
@@ -1174,117 +1267,12 @@ export default function App() {
     })
   }, [])
 
-  const handleSkipMobileSlot = useCallback((slotIndex: number) => {
-    setMobileIndices(curr => {
-      const reviews = loadReviews()
-      const { textPool, gfxPool } = getFilteredPools(reviews)
-      const otherActiveComps = new Set<React.ComponentType<any>>()
-      let otherGL = 0
-
-      if (slotIndex !== 0) {
-        const comp = textPool[curr.textIdx]
-        if (comp) otherActiveComps.add(comp)
-      }
-      if (slotIndex !== 1) {
-        const comp = gfxPool[curr.gfxIdx1]
-        if (comp) {
-          otherActiveComps.add(comp)
-          if (isGLPanel(getCompName(comp))) otherGL += 1
-        }
-      }
-      if (slotIndex !== 2) {
-        const comp = gfxPool[curr.gfxIdx2]
-        if (comp) {
-          otherActiveComps.add(comp)
-          if (isGLPanel(getCompName(comp))) otherGL += 1
-        }
-      }
-      if (slotIndex !== 3) {
-        const comp = gfxPool[curr.gfxIdx3]
-        if (comp) {
-          otherActiveComps.add(comp)
-          if (isGLPanel(getCompName(comp))) otherGL += 1
-        }
-      }
-
-      let pool: React.ComponentType<any>[]
-      let currentIdx: number
-      if (slotIndex === 0) {
-        pool = textPool
-        currentIdx = curr.textIdx
-      } else if (slotIndex === 1) {
-        pool = gfxPool
-        currentIdx = curr.gfxIdx1
-      } else if (slotIndex === 2) {
-        pool = gfxPool
-        currentIdx = curr.gfxIdx2
-      } else {
-        pool = gfxPool
-        currentIdx = curr.gfxIdx3
-      }
-
-      const currentComp = pool[currentIdx]
-      const candidates: number[] = []
-      const landscape = typeof window !== 'undefined' && window.innerWidth > window.innerHeight
-      const grid = mobileDensityGrid(densityRef.current, landscape)
-      const targetAspect = mobileCellAspect(grid.cols, grid.rows)
-      pool.forEach((comp, i) => {
-        if (comp === currentComp || otherActiveComps.has(comp)) return
-        if (slotIndex !== 0) {
-          const name = getCompName(comp)
-          if (AUDIO_PANELS.has(name)) return
-          if (!aspectMatches(panelAspect(name), targetAspect)) return
-          if (isGLPanel(name) && otherGL >= MAX_GL_PANELS_PER_LAYOUT) return
-        }
-        candidates.push(i)
-      })
-
-      let chosenIdx = 0
-      if (candidates.length > 0) {
-        const candidateScores = candidates.map(i => {
-          const comp = pool[i]
-          const name = getCompName(comp)
-          const review = reviews.find(r => r.panel === name)
-          let weight = 1.0
-          if (review?.rating === 'up') {
-            weight = 3.0
-          } else if (review?.rating === 'down') {
-            weight = 0.0
-          }
-          const u = Math.random()
-          const score = weight > 0 ? Math.pow(u, 1 / weight) : -1
-          return { i, score }
-        })
-        candidateScores.sort((a, b) => b.score - a.score)
-        chosenIdx = candidateScores[0].i
-      } else {
-        return curr
-      }
-
-      if (slotIndex === 0) {
-        return { ...curr, textIdx: chosenIdx }
-      } else if (slotIndex === 1) {
-        return { ...curr, gfxIdx1: chosenIdx }
-      } else if (slotIndex === 2) {
-        return { ...curr, gfxIdx2: chosenIdx }
-      } else {
-        return { ...curr, gfxIdx3: chosenIdx }
-      }
-    })
-  }, [])
-
   /**
-   * Panelwechsel fuer einen Zusatz-Slot (Slot ohne primarySlot, also alles
-   * jenseits der vier bevorzugten Mobile-Slots).
-   *
-   * Ersetzt AUSSCHLIESSLICH den angeforderten Slot. Frueher rief dieser Pfad
-   * ein komplettes rerollMobileSlots() auf: das erzeugte alle vier bevorzugten
-   * Indizes neu — inklusive gfxIdx1, also des gelockten Audio-Slots. Schon der
-   * Auto-Rotations-Timer eines beliebigen Extra-Slots konnte damit das laufende
-   * Audio-Panel austauschen und die Wiedergabe abwuergen, obwohl Audio-Slots
-   * ausdruecklich nicht rotieren duerfen.
+   * Einheitlicher Wechsel fuer bevorzugte und zusätzliche Mobile-Slots. Beide
+   * Pfade rechnen gegen die tatsächlich sichtbare Belegung aus buildMobileSlots;
+   * nur der Schreibort im MobileIndices-State unterscheidet sich.
    */
-  const handleSkipMobileExtra = useCallback((slotKey: string) => {
+  const handleSkipMobileSlot = useCallback((slotKey: string, strict: boolean) => {
     setMobileIndices(curr => {
       const reviews = loadReviews()
       const { textPool, gfxPool } = getFilteredPools(reviews)
@@ -1292,59 +1280,33 @@ export default function App() {
       const grid = mobileDensityGrid(densityRef.current, landscape)
       const targetAspect = mobileCellAspect(grid.cols, grid.rows)
 
-      // Aktuelle Belegung nachbauen: daraus kommen die bereits sichtbaren Namen
-      // (Dedup) und die Zahl der laufenden GL-Panels (Budget).
       const slots = buildMobileSlots(reviews, curr, grid.count, targetAspect)
       const slot = slots.find(s => s.key === slotKey)
-      if (!slot || slot.primarySlot != null) return curr
+      if (!slot || slot.locked) return curr
 
-      // Der Slot-Schluessel traegt den Pool und den Pool-Index, an dem dieser
-      // Slot in der Auffuell-Reihenfolge haengt — genau darauf zeigt die
-      // Umleitung, damit die Reihenfolge der uebrigen Slots gleich bleibt.
-      const isText = slotKey.startsWith('text-extra-')
+      const isText = slot.primarySlot === 0 || slotKey.startsWith('text-extra-')
+      const pool = isText ? textPool : gfxPool
+      const replacement = pickMobileReplacement(
+        slots, slot, pool, isText, targetAspect, reviews, strict,
+      )
+      if (!replacement) return curr
+
+      const duplicateSlots = { ...curr.duplicateSlots }
+      if (replacement.allowDuplicate) duplicateSlots[slotKey] = true
+      else delete duplicateSlots[slotKey]
+      const next = { ...curr, duplicateSlots }
+
+      if (slot.primarySlot === 0) return { ...next, textIdx: replacement.idx }
+      if (slot.primarySlot === 1) return { ...next, gfxIdx1: replacement.idx }
+      if (slot.primarySlot === 2) return { ...next, gfxIdx2: replacement.idx }
+      if (slot.primarySlot === 3) return { ...next, gfxIdx3: replacement.idx }
+
+      // Zusatz-Slots speichern eine Umleitung ihres stabilen Pool-Quellindex.
       const prefix = isText ? 'text-extra-' : 'gfx-extra-'
       const sourceIdx = Number.parseInt(slotKey.slice(prefix.length), 10)
       if (!Number.isFinite(sourceIdx)) return curr
-      const pool = isText ? textPool : gfxPool
-      const shownNames = new Set(slots.map(s => s.fallbackName))
-      let glCount = slots.filter(s => isGLPanel(s.fallbackName)).length
-      // Der zu ersetzende Slot selbst gibt seinen Platz frei.
-      shownNames.delete(slot.fallbackName)
-      if (isGLPanel(slot.fallbackName)) glCount -= 1
-
-      const candidates: number[] = []
-      pool.forEach((comp, i) => {
-        const name = getCompName(comp)
-        if (!name || shownNames.has(name)) return
-        // Das gerade sichtbare Panel darf sich nicht selbst wieder ziehen.
-        // shownNames hat seinen Namen oben absichtlich freigegeben, damit der
-        // Platz fuer andere Slots wieder zaehlt — ohne diese Zeile stand es
-        // damit aber auch selbst wieder zur Wahl, und "naechstes Panel" tat
-        // sichtbar nichts. Der primaere Navigationspfad schliesst sein
-        // aktuelles Panel ueber `comp === currentComp` genauso aus.
-        if (i === slot.activeIdx || name === slot.fallbackName) return
-        if (!isText) {
-          // Audio bleibt dem einen gelockten Slot vorbehalten.
-          if (AUDIO_PANELS.has(name)) return
-          if (!aspectMatches(panelAspect(name), targetAspect)) return
-          if (isGLPanel(name) && glCount >= MAX_GL_PANELS_PER_LAYOUT) return
-        }
-        candidates.push(i)
-      })
-      if (candidates.length === 0) return curr
-
-      // Gewichtete Zufallswahl wie bei den primaeren Slots: hochgedaumelte
-      // Panels dreifach, heruntergedaumelte gar nicht.
-      const scored = candidates.map(i => {
-        const review = reviews.find(r => r.panel === getCompName(pool[i]))
-        const weight = review?.rating === 'up' ? 3.0 : review?.rating === 'down' ? 0.0 : 1.0
-        const u = Math.random()
-        return { i, score: weight > 0 ? Math.pow(u, 1 / weight) : -1 }
-      })
-      scored.sort((a, b) => b.score - a.score)
-
       const redirectKey = `${isText ? 'text' : 'gfx'}:${sourceIdx}`
-      return { ...curr, extras: { ...curr.extras, [redirectKey]: scored[0].i } }
+      return { ...next, extras: { ...curr.extras, [redirectKey]: replacement.idx } }
     })
   }, [])
 
@@ -1885,8 +1847,7 @@ export default function App() {
                   Election auch bei 25 MHz funktionieren. GL-Panels bleiben
                   unter MAX_GL_PANELS_PER_LAYOUT. */
               (() => {
-                const landscape = typeof window !== 'undefined' && window.innerWidth > window.innerHeight
-                const mobileGrid = mobileDensityGrid(density, landscape)
+                const mobileGrid = mobileDensityGrid(density, mobileLandscape)
                 const count = mobileGrid.count
                 const mobileSlots = buildMobileSlots(
                   reviews,
@@ -1915,13 +1876,7 @@ export default function App() {
                         <PanelSlot
                           pool={slot.pool}
                           activeIdx={slot.activeIdx}
-                          onNav={() => {
-                            // Jeder Slot wechselt nur sich selbst: die vier
-                            // bevorzugten ueber ihren Index, die Zusatz-Slots
-                            // ueber ihren positionsstabilen Schluessel.
-                            if (slot.primarySlot == null) handleSkipMobileExtra(slot.key)
-                            else handleSkipMobileSlot(slot.primarySlot)
-                          }}
+                          onNav={(strict) => handleSkipMobileSlot(slot.key, strict)}
                           fallbackName={slot.fallbackName}
                           className="h-full"
                           locked={slot.locked}
