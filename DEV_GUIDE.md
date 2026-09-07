@@ -17,6 +17,9 @@ cd frontend && npm run build
 # Lint
 cd frontend && npm run lint
 
+# MOD-Loader mit künstlichen Vier-/Mehrkanaldateien, ohne Browser oder Audio
+cd frontend && npm run test:mod
+
 # Deploy- und Enhance-Asset-Regressionen (aus dem Repo-Root)
 python3 -m unittest test_deploy test_enhance_docs
 

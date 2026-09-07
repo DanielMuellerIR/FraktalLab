@@ -1,7 +1,7 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "1.23.20",
+  "version": "1.23.21",
   "type": "module",
   "scripts": {
     "gen:audio": "node scripts/build-audio-manifest.mjs",
@@ -14,6 +14,7 @@
     "preview": "vite preview",
     "test:panels": "playwright test tests/panel-check.spec.ts",
     "test:regressions": "playwright test tests/review-regressions.spec.ts",
+    "test:mod": "node --test tests/mod-loader.test.mjs",
     "test:perf": "playwright test tests/perf-measure.spec.ts"
   },
   "dependencies": {

@@ -19,12 +19,13 @@ export const loadMod = async (url: string): Promise<Mod> => {
     throw new Error(`MOD file too small (${arrayBuffer.byteLength} bytes) — possibly not a valid MOD: ${url}`);
   }
 
-  // Check for M.K. / FLT4 / 4CHN / etc. signature at offset 1080
+  // Der Parser verwendet durchgehend vier Kanäle und 1024 Bytes je Pattern.
+  // Mehrkanal-Formate müssen vor dem Parsen abgewiesen werden, sonst verschieben sich Samples.
   const sig = new Uint8Array(arrayBuffer, 1080, 4);
   const sigStr = String.fromCharCode(sig[0], sig[1], sig[2], sig[3]);
-  const validSigs = ['M.K.', 'M!K!', 'FLT4', 'FLT8', '4CHN', '6CHN', '8CHN'];
+  const validSigs = ['M.K.', 'M!K!', 'FLT4', '4CHN'];
   if (!validSigs.includes(sigStr)) {
-    throw new Error(`Invalid MOD signature "${sigStr}" — file may be corrupted or not a ProTracker MOD: ${url}`);
+    throw new Error(`Unsupported MOD signature "${sigStr}" — only 4-channel ProTracker MODs are supported: ${url}`);
   }
 
   const mod = new Mod(arrayBuffer);
