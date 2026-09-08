@@ -202,6 +202,15 @@ test.describe('Mobile-Slotauswahl', () => {
 
   test('manueller Klick wechselt auch bei vollem GL-Budget den Nicht-GL-Slot', async ({ page }) => {
     await prepareProximaMobile(page)
+    await page.addInitScript(() => {
+      // Determinismus: DNAHelix im primären Slot gfx2, FractalJulia in gfx3
+      localStorage.setItem('fraktallab_initial_mobile_indices', JSON.stringify({
+        textIdx: 0,
+        gfxIdx1: 12,
+        gfxIdx2: 33,
+        gfxIdx3: 0,
+      }))
+    })
     await page.goto(BASE_URL, { waitUntil: 'load' })
 
     const readSlots = () => page.locator('[data-mobile-slot]').evaluateAll(elements =>
@@ -215,7 +224,9 @@ test.describe('Mobile-Slotauswahl', () => {
     const before = await readSlots()
     expect(before).toHaveLength(15)
     expect(before.filter(slot => slot.gl)).toHaveLength(11)
+    expect(before.find(slot => slot.name === 'DNAHelix')?.key).toBe('gfx2')
     const lidar = before.find(slot => slot.name === 'LidarScanPanel')!
+    expect(lidar.key).toBe('gfx-extra-37')
 
     await clickMobilePill(page, lidar.key)
     await expect.poll(
@@ -227,8 +238,54 @@ test.describe('Mobile-Slotauswahl', () => {
     expect(after.map(slot => slot.key)).toEqual(before.map(slot => slot.key))
     expect(after.filter(slot => slot.gl)).toHaveLength(11)
     expect(after.filter(slot => slot.name === 'DNAHelix')).toHaveLength(2)
+    // gfx-extra-33 darf die Duplikatfreigabe nicht verbraucht haben
+    expect(after.find(slot => slot.key === 'gfx-extra-33')).toBeUndefined()
     expect(after.filter((slot, index) => slot.name !== before[index].name).map(slot => slot.key))
       .toEqual([lidar.key])
+  })
+
+  test('manueller Klick auf primären GFX-Slot ersetzt nur diesen Eintrag ohne Zusatz-Slots zu verschieben', async ({ page }) => {
+    await prepareProximaMobile(page)
+    await page.addInitScript(() => {
+      localStorage.setItem('fraktallab_initial_mobile_indices', JSON.stringify({
+        textIdx: 0,
+        gfxIdx1: 12,
+        gfxIdx2: 0,
+        gfxIdx3: 2,
+      }))
+    })
+    await page.goto(BASE_URL, { waitUntil: 'load' })
+
+    const readSlots = () => page.locator('[data-mobile-slot]').evaluateAll(elements =>
+      elements.map(element => ({
+        key: element.getAttribute('data-mobile-slot') ?? '',
+        name: element.getAttribute('data-mobile-panel') ?? '',
+        gl: element.getAttribute('data-mobile-gl') === 'true',
+      })),
+    )
+    await expect(page.locator('[data-mobile-slot="gfx2"]')).toBeVisible()
+    const before = await readSlots()
+    expect(before).toHaveLength(15)
+    expect(before.find(slot => slot.key === 'gfx2')?.name).toBe('FractalJulia')
+    const swirlBefore = before.find(slot => slot.name === 'FractalSwirl')
+    expect(swirlBefore, 'FractalSwirl in Initialbelegung vorhanden').toBeTruthy()
+
+    await clickMobilePill(page, 'gfx2')
+    await expect.poll(
+      () => page.locator('[data-mobile-slot="gfx2"]').getAttribute('data-mobile-panel'),
+      { timeout: 5000 },
+    ).not.toBe('FractalJulia')
+
+    const after = await readSlots()
+    // Alle Slot-Schlüssel und ihre Reihenfolge bleiben exakt identisch
+    expect(after.map(slot => slot.key)).toEqual(before.map(slot => slot.key))
+    // Genau und nur gfx2 hat sein Panel gewechselt
+    expect(after.filter((slot, index) => slot.name !== before[index].name).map(slot => slot.key))
+      .toEqual(['gfx2'])
+    // FractalJulia erscheint nicht fälschlich neu als gfx-extra-0
+    expect(after.find(slot => slot.key === 'gfx-extra-0')).toBeUndefined()
+    // Der unbeteiligte Slot mit FractalSwirl bleibt stabil vorhanden
+    expect(after.find(slot => slot.key === swirlBefore!.key)?.name).toBe('FractalSwirl')
   })
 
   test('inkompatible Zusatz-Umleitung laesst nach Drehung keinen Slot verschwinden', async ({ page }) => {

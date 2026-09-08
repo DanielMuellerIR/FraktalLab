@@ -61,6 +61,9 @@ interface MobileIndices {
   // genau dieser Slot einen bereits sichtbaren Namen ein zweites Mal nutzen.
   // Auto-Rotation setzt diesen Eintrag nie.
   duplicateSlots: Record<string, boolean>
+  // Geordnete Slot-Schlüssel der aktuellen sichtbaren Belegung, damit eine
+  // Navigation nur den angeforderten Eintrag ersetzt statt Zusatz-Slots neu abzuleiten.
+  slotKeys?: string[]
 }
 
 interface MobileSlotSelection {
@@ -118,34 +121,17 @@ function buildMobileSlots(
   const slots: MobileSlotSelection[] = []
   const extras = preferred.extras ?? {}
   const duplicateSlots = preferred.duplicateSlots ?? {}
-  const duplicateNameAllowance = new Map<string, number>()
   const usedNameCounts = new Map<string, number>()
   let glCount = 0
 
-  const allowDuplicateFor = (
-    key: string,
-    pool: React.ComponentType<any>[],
-    idx: number,
-  ) => {
-    if (!duplicateSlots[key]) return
-    const name = getCompName(pool[idx])
-    if (!name) return
-    duplicateNameAllowance.set(name, (duplicateNameAllowance.get(name) ?? 0) + 1)
+  // Duplikatfreigabe ist strikt an den konkreten Slot-Schlüssel gebunden.
+  // Ein unmarkierter natürlicher Zusatz-Slot darf die Freigabe eines anderen Slots
+  // niemals verbrauchen.
+  const canUseName = (name: string, key: string): boolean => {
+    const currentCount = usedNameCounts.get(name) ?? 0
+    if (currentCount === 0) return true
+    return Boolean(duplicateSlots[key])
   }
-  allowDuplicateFor('text', textPool, preferred.textIdx)
-  allowDuplicateFor('audio', gfxPool, preferred.gfxIdx1)
-  allowDuplicateFor('gfx2', gfxPool, preferred.gfxIdx2)
-  allowDuplicateFor('gfx3', gfxPool, preferred.gfxIdx3)
-  gfxPool.forEach((_, idx) => {
-    allowDuplicateFor(`gfx-extra-${idx}`, gfxPool, extras[`gfx:${idx}`] ?? idx)
-  })
-  textPool.forEach((_, idx) => {
-    allowDuplicateFor(`text-extra-${idx}`, textPool, extras[`text:${idx}`] ?? idx)
-  })
-
-  const canUseName = (name: string): boolean => (
-    (usedNameCounts.get(name) ?? 0) < 1 + (duplicateNameAllowance.get(name) ?? 0)
-  )
   const rememberName = (name: string) => {
     usedNameCounts.set(name, (usedNameCounts.get(name) ?? 0) + 1)
   }
@@ -154,8 +140,9 @@ function buildMobileSlots(
     const comp = gfxPool[idx]
     if (!comp || slots.length >= count) return false
     const name = getCompName(comp)
+    if (!name) return false
     const isAudio = AUDIO_PANELS.has(name)
-    if (isAudio !== requireAudio || !canUseName(name)) return false
+    if (isAudio !== requireAudio || !canUseName(name, key)) return false
     // Audio ist die hoeherrangige Garantie: falls MOD/SID fuer die aktuelle
     // Rasterform kein Aspect-Match haben, bleibt trotzdem genau einer sichtbar.
     if (!requireAudio && !aspectMatches(panelAspect(name), cellA)) return false
@@ -170,12 +157,48 @@ function buildMobileSlots(
     const comp = textPool[idx]
     if (!comp || slots.length >= count) return false
     const name = getCompName(comp)
-    if (!name || !canUseName(name)) return false
+    if (!name || !canUseName(name, key)) return false
     rememberName(name)
     slots.push({ key, pool: textPool, activeIdx: idx, fallbackName: name, locked: false, primarySlot })
     return true
   }
 
+  // ── 1. Geordnete Belegung für Navigation erhalten ───────────────────────────
+  // Liegt bereits eine Slot-Reihenfolge vor, die zur Ziel-Kachelzahl passt,
+  // wird genau diese geordnete Belegung instanziiert. Nur der gezielt gewechselte
+  // Eintrag ändert sich; es werden keine neuen Slots eingeschoben oder verdrängt.
+  if (preferred.slotKeys && preferred.slotKeys.length === count) {
+    for (const key of preferred.slotKeys) {
+      if (key === 'audio') {
+        addGfx(preferred.gfxIdx1, 'audio', 1, true)
+      } else if (key === 'text') {
+        addText(preferred.textIdx, 'text', 0)
+      } else if (key === 'gfx2') {
+        addGfx(preferred.gfxIdx2, 'gfx2', 2)
+      } else if (key === 'gfx3') {
+        addGfx(preferred.gfxIdx3, 'gfx3', 3)
+      } else if (key.startsWith('gfx-extra-')) {
+        const sourceIdx = Number.parseInt(key.slice('gfx-extra-'.length), 10)
+        const redirected = extras[`gfx:${sourceIdx}`]
+        if (!addGfx(redirected ?? sourceIdx, key)
+            && redirected != null && redirected !== sourceIdx) {
+          addGfx(sourceIdx, key)
+        }
+      } else if (key.startsWith('text-extra-')) {
+        const sourceIdx = Number.parseInt(key.slice('text-extra-'.length), 10)
+        const redirected = extras[`text:${sourceIdx}`]
+        if (!addText(redirected ?? sourceIdx, key)
+            && redirected != null && redirected !== sourceIdx) {
+          addText(sourceIdx, key)
+        }
+      }
+    }
+    if (slots.length === count) {
+      return slots
+    }
+  }
+
+  // ── 2. Initialer Aufbau & Rastergeometrie-Wechsel (vollständiges Auffüllen) ─
   // Genau ein reservierter Audio-Slot; alle weiteren GFX-Pfade lehnen Audio ab.
   const audioOrder = [preferred.gfxIdx1, ...gfxPool.map((_, idx) => idx)]
   for (const idx of audioOrder) {
@@ -186,29 +209,59 @@ function buildMobileSlots(
   addGfx(preferred.gfxIdx2, 'gfx2', 2)
   addGfx(preferred.gfxIdx3, 'gfx3', 3)
 
-  // ── Zusatz-Slots ────────────────────────────────────────────────────────────
-  // Alles jenseits der vier bevorzugten Slots. Reihenfolge und Slot-Schluessel
-  // kommen weiterhin aus der Pool-Reihenfolge; `preferred.extras` lenkt einen
-  // einzelnen Slot auf ein anderes Panel um (Schluessel `gfx:<index>` bzw.
-  // `text:<index>`). Weil nur die Belegung EINES Slots getauscht wird und die
-  // Reihenfolge unangetastet bleibt, veraendert ein Panelwechsel hier genau
-  // diesen Slot. Frueher hatten diese Slots gar keinen Zustand: jede Navigation
-  // wuerfelte stattdessen die komplette Mobile-Auswahl neu und riss dabei auch
-  // das gelockte Audio-Panel heraus.
-  for (let idx = 0; idx < gfxPool.length && slots.length < count; idx += 1) {
-    const redirected = extras[`gfx:${idx}`]
-    if (!addGfx(redirected ?? idx, `gfx-extra-${idx}`)
-        && redirected != null && redirected !== idx) {
-      // Eine Umleitung kann nach Dichte-/Orientierungswechsel inkompatibel sein.
-      // Dann bleibt der Slot mit seinem natürlichen Panel erhalten.
-      addGfx(idx, `gfx-extra-${idx}`)
+  // Vorab reservieren: Slots mit expliziter Duplikatberechtigung oder Umleitung
+  // dürfen beim Auffüllen nicht durch unmarkierte natürliche Slots verdrängt werden.
+  const explicitGfxExtras = new Map<number, number>()
+  const explicitTextExtras = new Map<number, number>()
+
+  for (const [key, allowed] of Object.entries(duplicateSlots)) {
+    if (!allowed) continue
+    if (key.startsWith('gfx-extra-')) {
+      const src = Number.parseInt(key.slice('gfx-extra-'.length), 10)
+      if (Number.isFinite(src)) explicitGfxExtras.set(src, extras[`gfx:${src}`] ?? src)
+    } else if (key.startsWith('text-extra-')) {
+      const src = Number.parseInt(key.slice('text-extra-'.length), 10)
+      if (Number.isFinite(src)) explicitTextExtras.set(src, extras[`text:${src}`] ?? src)
     }
   }
+  for (const [redirectKey, targetIdx] of Object.entries(extras)) {
+    const [type, srcStr] = redirectKey.split(':')
+    const src = Number.parseInt(srcStr, 10)
+    if (!Number.isFinite(src)) continue
+    if (type === 'gfx' && !explicitGfxExtras.has(src)) {
+      explicitGfxExtras.set(src, targetIdx)
+    } else if (type === 'text' && !explicitTextExtras.has(src)) {
+      explicitTextExtras.set(src, targetIdx)
+    }
+  }
+
+  let remainingExplicitGfx = explicitGfxExtras.size
+  for (let idx = 0; idx < gfxPool.length && slots.length < count; idx += 1) {
+    const isExplicit = explicitGfxExtras.has(idx)
+    const key = `gfx-extra-${idx}`
+    if (isExplicit) {
+      remainingExplicitGfx -= 1
+      const redirected = explicitGfxExtras.get(idx)!
+      if (!addGfx(redirected, key) && redirected !== idx) {
+        addGfx(idx, key)
+      }
+    } else if (slots.length + remainingExplicitGfx < count) {
+      addGfx(idx, key)
+    }
+  }
+
+  let remainingExplicitText = explicitTextExtras.size
   for (let idx = 0; idx < textPool.length && slots.length < count; idx += 1) {
-    const redirected = extras[`text:${idx}`]
-    if (!addText(redirected ?? idx, `text-extra-${idx}`)
-        && redirected != null && redirected !== idx) {
-      addText(idx, `text-extra-${idx}`)
+    const isExplicit = explicitTextExtras.has(idx)
+    const key = `text-extra-${idx}`
+    if (isExplicit) {
+      remainingExplicitText -= 1
+      const redirected = explicitTextExtras.get(idx)!
+      if (!addText(redirected, key) && redirected !== idx) {
+        addText(idx, key)
+      }
+    } else if (slots.length + remainingExplicitText < count) {
+      addText(idx, key)
     }
   }
   return slots
@@ -1137,8 +1190,17 @@ export default function App() {
   useEffect(() => { densityRef.current = density }, [density])
 
   const [mobileIndices, setMobileIndices] = useState(() => {
+    const override = storageReadJson<Partial<MobileIndices> | null>(
+      'fraktallab_initial_mobile_indices',
+      (val): val is Partial<MobileIndices> => typeof val === 'object' && val !== null,
+      null,
+    )
     const reviews = loadReviews()
-    return generateMobileIndices(reviews)
+    const base = generateMobileIndices(reviews)
+    if (override) {
+      return { ...base, ...override }
+    }
+    return base
   })
 
   const [isMobile, setIsMobile] = useState(() => {
@@ -1294,10 +1356,9 @@ export default function App() {
       const duplicateSlots = { ...curr.duplicateSlots }
       if (replacement.allowDuplicate) duplicateSlots[slotKey] = true
       else delete duplicateSlots[slotKey]
-      const next = { ...curr, duplicateSlots }
+      const next: MobileIndices = { ...curr, duplicateSlots, slotKeys: slots.map(s => s.key) }
 
       if (slot.primarySlot === 0) return { ...next, textIdx: replacement.idx }
-      if (slot.primarySlot === 1) return { ...next, gfxIdx1: replacement.idx }
       if (slot.primarySlot === 2) return { ...next, gfxIdx2: replacement.idx }
       if (slot.primarySlot === 3) return { ...next, gfxIdx3: replacement.idx }
 
